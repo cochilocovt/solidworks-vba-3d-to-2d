@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "projectName": "Fable",
+  "targetSwp": "../../Fable.swp",
+  "sourceDirectory": "../../src/target-spec-hybrid-v2",
+  "bootstrapModule": "Module0_SourceDeployment",
+  "bootstrapProcedure": "DeployFromRequest",
+  "compileProbeProcedure": "CompileProbe",
+  "revisionSourceFile": "Module1_Main.bas",
+  "revisionPattern": "target-spec-hybrid-v2-2026-07-18-r[0-9]+",
+  "components": [
+    { "name": "Module1_Main", "file": "Module1_Main.bas", "kind": "StdModule" },
+    { "name": "Module2_DrawingPipeline", "file": "Module2_DrawingPipeline.bas", "kind": "StdModule" },
+    { "name": "Module3_ModelAudit", "file": "Module3_ModelAudit.bas", "kind": "StdModule" },
+    { "name": "Module4_ModelItemImporter", "file": "Module4_ModelItemImporter.bas", "kind": "StdModule" },
+    { "name": "Module5_FallbackDimensionEngine", "file": "Module5_FallbackDimensionEngine.bas", "kind": "StdModule" },
+    { "name": "Module6_QAEngine", "file": "Module6_QAEngine.bas", "kind": "StdModule" },
+    { "name": "Module7_TitleBlockEngine", "file": "Module7_TitleBlockEngine.bas", "kind": "StdModule" },
+    { "name": "Module8_RuntimeSupport", "file": "Module8_RuntimeSupport.bas", "kind": "StdModule" },
+    { "name": "Module9_LayoutEngine", "file": "Module9_LayoutEngine.bas", "kind": "StdModule" },
+    { "name": "BtnHandler", "file": "BtnHandler.cls", "kind": "ClassModule" },
+    { "name": "CDatumProof", "file": "CDatumProof.cls", "kind": "ClassModule" },
+    { "name": "CHoleCandidate", "file": "CHoleCandidate.cls", "kind": "ClassModule" },
+    { "name": "CRunEvidence", "file": "CRunEvidence.cls", "kind": "ClassModule" },
+    { "name": "SectionBtnHandler", "file": "SectionBtnHandler.cls", "kind": "ClassModule" },
+    { "name": "SectionDlgBtnHandler", "file": "SectionDlgBtnHandler.cls", "kind": "ClassModule" }
+  ]
+}

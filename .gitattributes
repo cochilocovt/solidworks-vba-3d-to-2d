@@ -1,0 +1,5 @@
+# Preserve deployable VBA source exactly: Windows-1252/ANSI and CRLF are required
+# by the SOLIDWORKS VBA editor.
+*.bas -text
+*.cls -text
+*.frm -text
