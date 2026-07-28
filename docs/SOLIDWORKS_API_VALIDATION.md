@@ -391,3 +391,100 @@ Related-member searches returned:
 - For `AlignDimensions`: `AlignOrdinate`, `AlignParallelDimensions`, `BreakDimensionAlignment`.
 
 These are reference points only. The current evidence supports narrow corrections to the active workflow, not a speculative API rewrite.
+
+## 2026-07-28 CodeStack drawing-corpus addendum
+
+The complete CodeStack
+[`solidworks-api/document/drawing`](https://www.codestack.net/solidworks-api/document/drawing/)
+corpus was reviewed at source commit
+`0cde3849a184cdbbface61238ef431a6ebb9d530`.
+
+- 33 of 33 article pages and 35 of 35 adjacent VBA/C# examples were read.
+- All 33 derived public article URLs returned HTTP 200.
+- CodeStack is retained as practical secondary guidance; official SOLIDWORKS
+  2025 Help, the installed type library, and local runtime evidence remain
+  authoritative.
+- The corpus does not contain a complete manufacturing-drawing pipeline and
+  does not cover the project's full section/detail, model-item import,
+  ordinate, title-block, layout, and fail-closed QA requirements.
+
+The complete ledger and the project-specific synthesis are:
+
+- [`CODESTACK_DRAWING_API_COVERAGE.md`](CODESTACK_DRAWING_API_COVERAGE.md)
+- [`3D_TO_2D_DRAWING_AUTOMATION_FIELD_GUIDE.md`](3D_TO_2D_DRAWING_AUTOMATION_FIELD_GUIDE.md)
+
+The most important confirmed alignment with current project evidence is:
+
+1. real drawing views must be distinguished from the sheet pseudo-view;
+2. `GetVisibleEntities2` should receive the actual `Component2` returned by
+   `GetVisibleComponents`;
+3. model-context entities and drawing-context visible entities use different
+   correspondence/selection routes;
+4. model annotation import is selected-view state;
+5. ordinate creation is a datum-first stateful transaction ending in
+   `SetPickMode`;
+6. model, view-sketch, and sheet coordinate systems must remain explicit; and
+7. CodeStack examples require production hardening rather than direct copying.
+
+This addendum does not revise historical snapshot assessments above. Where an
+older table or copied numeric value conflicts with newer installed-type-library
+evidence, the newer evidence and current source take precedence.
+
+## 2026-07-28 R20 final-contract addendum
+
+The final R20 repair also queried the project `solidworks-api` MCP for the
+following load-bearing contracts:
+
+- `IModelDoc2.InsertNote`: selections made before insertion supply leader
+  attachment points; no selection produces a free-standing leaderless note.
+  SOLIDWORKS symbols must use `<LibraryName-SymbolName>` syntax, so diameter is
+  emitted as `<MOD-DIAM>`.
+- `IAnnotation.GetAttachedEntities3`: an unassociated note returns an empty
+  array. R20 therefore requires a nonempty attachment readback for each
+  controlled manufacturing callout.
+- `IAnnotation.GetLeaderCount`: R20 requires at least one visible leader on
+  each controlled callout.
+- `IView.GetSectionLineInfo2`: the flattened result contains segment endpoints,
+  arrow geometry, label positions, and text height. R20 parses those fields and
+  rejects J-J geometry that enters the measured part-identification extent.
+- `IEntity.Select4`: the callout uses the drawing-document `IEntity` obtained
+  from the ownership-proven corresponding drawing edge, with
+  `ISelectData.View` bound to its drawing view.
+- `IView.ModelToViewTransform` returns drawing-view-space coordinates.
+  CodeStack's dimension examples use the transformed values directly for
+  drawing placement; R20 now adds a runtime invariant requiring each such point
+  to fall within the current `IView.GetOutline` before treating it as page
+  evidence.
+
+The installed SOLIDWORKS 2025 interop was also checked for the arrangement
+signatures used by the fail-closed fallback:
+`IAnnotation.Select3`, `IAnnotation.GetPosition`,
+`IAnnotation.SetPosition2`, `IModelDocExtension.AlignDimensions`, and
+`IView.GetOutline`. Radial and diametric dimensions are not moved by the
+fallback because `SetPosition2` does not support them; their existing origins
+must already pass the content-border check.
+
+## 2026-07-28 R20 GetSectionLineCount2 correction
+
+The user's full-project compile highlighted `Argument not optional` at the
+parameterless Module6 call to `IView.GetSectionLineCount2`.
+
+- MCP contract:
+  `System.Int32 GetSectionLineCount2(out System.Int32 Size)`. `Size` is the
+  returned section-line data size and includes the layer-ID double for each
+  section line.
+- Installed SOLIDWORKS 2025 interop:
+  `Int32 GetSectionLineCount2(Int32 ByRef)` with `IsOut=True` and
+  `IsOptional=False`.
+- Adjacent contract:
+  `IView.GetSectionLineInfo2()` is parameterless and returns the flattened
+  double array.
+- Source correction:
+  `Module6_QAEngine.CheckSectionLineClearance` now passes a `Long` by reference
+  and rejects an invalid size or a returned array whose item count differs from
+  that size.
+
+This also invalidated the earlier interpretation of the deployment
+`COMPILE_PROBE`: it executes only the bootstrap procedure and does not perform
+VBA Editor **Compile Project**. Manual full-project compilation remains the E5
+gate.

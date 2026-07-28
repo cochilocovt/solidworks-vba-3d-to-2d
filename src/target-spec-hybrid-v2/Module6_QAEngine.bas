@@ -14,6 +14,7 @@ Private Const swOrdinateDimension As Long = 1
 Private Const swHorOrdinateDimension As Long = 7
 Private Const swVertOrdinateDimension As Long = 8
 Private Const swAngularOrdinateDimension As Long = 16
+Private Const BOUNDARY_TOLERANCE_M As Double = 0.000001
 
 Public Sub PerformFinalDrawingChecks( _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
@@ -96,6 +97,8 @@ Public Sub PerformFinalDrawingChecks( _
 
         Dim viewDimensionCount As Long
         Dim viewOrdinateCount As Long
+        viewDimensionCount = 0
+        viewOrdinateCount = 0
         CountViewDimensions swView, viewDimensionCount, viewOrdinateCount
 
         currentDimensionCount = currentDimensionCount + viewDimensionCount
@@ -128,6 +131,11 @@ Public Sub PerformFinalDrawingChecks( _
 
         Set swView = swView.GetNextView
     Loop
+
+    If Not CheckSectionLineClearance(swDraw, evidence) Then
+        annotationExtentsValid = False
+        finalQaValid = False
+    End If
 
     If realViewCount = 0 Then
         evidence.AddFailure "QA: no model views exist."
@@ -263,10 +271,10 @@ Public Sub PerformFinalDrawingChecks( _
 
     If annotationExtentsValid Then
         evidence.MarkStageProved "ANNOTATION_EXTENTS", _
-            "model-view annotation origins, note extents, and leader geometry passed"
+            "position-capable annotation origins, measurable note extents, and leader geometry passed"
     Else
         evidence.MarkStageFailed "ANNOTATION_EXTENTS", _
-            "one or more annotation, note, or leader extents were unproved or invalid"
+            "one or more annotation origins, measurable note extents, or leader paths were invalid"
     End If
 
     If finalQaValid Then
@@ -309,6 +317,8 @@ Private Sub CountViewDimensions( _
     ByRef ordinateCount As Long)
 
     On Error GoTo Failed
+    dimensionCount = 0
+    ordinateCount = 0
 
     Dim dimensions As Variant
     dimensions = swView.GetDisplayDimensions
@@ -417,6 +427,43 @@ Private Function AnnotationSupportsPosition( _
     End Select
 End Function
 
+Private Function AnnotationTypeLabel(ByVal annotationType As Long) As String
+    Select Case annotationType
+        Case swDatumTag: AnnotationTypeLabel = "DatumFeature"
+        Case swDatumTargetSym: AnnotationTypeLabel = "DatumTarget"
+        Case swDisplayDimension: AnnotationTypeLabel = "DisplayDimension"
+        Case swGTol: AnnotationTypeLabel = "GeometricTolerance"
+        Case swNote: AnnotationTypeLabel = "Note"
+        Case swSFSymbol: AnnotationTypeLabel = "SurfaceFinish"
+        Case swWeldSymbol: AnnotationTypeLabel = "WeldSymbol"
+        Case swTableAnnotation: AnnotationTypeLabel = "Table"
+        Case Else: AnnotationTypeLabel = "Type" & CStr(annotationType)
+    End Select
+End Function
+
+Private Function SafeAnnotationName( _
+    ByRef annotation As SldWorks.Annotation) As String
+
+    If annotation Is Nothing Then
+        SafeAnnotationName = "(nothing)"
+        Exit Function
+    End If
+
+    On Error GoTo Unavailable
+    SafeAnnotationName = Trim$(annotation.GetName)
+    If Len(SafeAnnotationName) = 0 Then SafeAnnotationName = "(unnamed)"
+    Exit Function
+
+Unavailable:
+    SafeAnnotationName = "(name-unavailable)"
+End Function
+
+Private Function EvidenceValue(ByVal value As String) As String
+    EvidenceValue = Replace$(Trim$(value), "|", "/")
+    EvidenceValue = Replace$(EvidenceValue, vbCr, " ")
+    EvidenceValue = Replace$(EvidenceValue, vbLf, " ")
+End Function
+
 Private Function CheckAnnotationGeometry( _
     ByRef annotation As SldWorks.Annotation, _
     ByRef swView As SldWorks.View, _
@@ -429,6 +476,10 @@ Private Function CheckAnnotationGeometry( _
 
     Dim position As Variant
     position = annotation.GetPosition
+    Dim annotationType As Long
+    Dim annotationName As String
+    annotationType = annotation.GetType
+    annotationName = SafeAnnotationName(annotation)
 
     If Not IsArray(position) Then
         evidence.AddFailure "Annotation position is unavailable in '" & _
@@ -440,14 +491,31 @@ Private Function CheckAnnotationGeometry( _
         CheckAnnotationGeometry = False
     Else
         Dim positionIndex As Long
+        Dim positionX As Double
+        Dim positionY As Double
+        Dim violationReason As String
         positionIndex = LBound(position)
-        If PointViolatesControlledRegions( _
-            CDbl(position(positionIndex)), CDbl(position(positionIndex + 1)), _
-            sheetWidth, sheetHeight, evidence) Then
+        positionX = CDbl(position(positionIndex))
+        positionY = CDbl(position(positionIndex + 1))
 
-            evidence.AddFailure "Annotation origin violates the sheet, border, " & _
-                "or controlled title/note band in '" & _
-                Module8_RuntimeSupport.GetViewName(swView) & "'."
+        evidence.AddInfo "ANNOTATION_GEOMETRY|view=" & _
+            EvidenceValue(Module8_RuntimeSupport.GetViewName(swView)) & _
+            "|type=" & EvidenceValue(AnnotationTypeLabel(annotationType)) & _
+            "|name=" & EvidenceValue(annotationName) & _
+            "|x=" & Format$(positionX, "0.000000") & _
+            "|y=" & Format$(positionY, "0.000000")
+
+        If PointViolatesControlledRegions( _
+            positionX, positionY, sheetWidth, sheetHeight, _
+            evidence, violationReason) Then
+
+            evidence.AddFailure "Annotation origin violation in '" & _
+                Module8_RuntimeSupport.GetViewName(swView) & _
+                "': type=" & AnnotationTypeLabel(annotationType) & _
+                ", name=" & annotationName & _
+                ", x=" & Format$(positionX, "0.000000") & _
+                ", y=" & Format$(positionY, "0.000000") & _
+                ", region=" & violationReason & "."
             CheckAnnotationGeometry = False
         End If
     End If
@@ -513,6 +581,7 @@ Private Function CheckLeaderPoints( _
     Dim previousX As Double
     Dim previousY As Double
     Dim hasPrevious As Boolean
+    Dim violationReason As String
 
     For pointIndex = firstIndex To UBound(leaderPoints) Step 3
         Dim currentX As Double
@@ -521,11 +590,14 @@ Private Function CheckLeaderPoints( _
         currentY = CDbl(leaderPoints(pointIndex + 1))
 
         If PointViolatesControlledRegions( _
-            currentX, currentY, sheetWidth, sheetHeight, evidence) Then
+            currentX, currentY, sheetWidth, sheetHeight, _
+            evidence, violationReason) Then
 
-            evidence.AddFailure "Leader point violates the sheet, border, or " & _
-                "controlled title/note band in '" & _
-                Module8_RuntimeSupport.GetViewName(swView) & "'."
+            evidence.AddFailure "Leader point violation in '" & _
+                Module8_RuntimeSupport.GetViewName(swView) & _
+                "': x=" & Format$(currentX, "0.000000") & _
+                ", y=" & Format$(currentY, "0.000000") & _
+                ", region=" & violationReason & "."
             CheckLeaderPoints = False
         End If
 
@@ -556,6 +628,20 @@ Private Function CheckModelViewNoteExtent( _
     ByRef evidence As CRunEvidence) As Boolean
 
     On Error GoTo Failed
+
+    Dim renderedText As String
+    If Not TryReadRenderedNoteText(note, renderedText) Then
+        evidence.AddFailure "Mandatory note text could not be read in '" & _
+            Module8_RuntimeSupport.GetViewName(swView) & "'."
+        Exit Function
+    End If
+
+    If Len(renderedText) = 0 Then
+        evidence.AddInfo "NON_RENDERED_NOTE_SKIPPED|context=FinalQA|view=" & _
+            Module8_RuntimeSupport.GetViewName(swView)
+        CheckModelViewNoteExtent = True
+        Exit Function
+    End If
 
     Dim extent As Variant
     extent = note.GetExtent
@@ -623,24 +709,48 @@ Private Function CheckModelViewNoteExtent( _
         Exit Function
     End If
 
-    If extentLeft < 0# Or extentBottom < 0# Or _
-       extentRight > sheetWidth Or extentTop > sheetHeight Then
+    If extentLeft < evidence.ContentBorderLeft - BOUNDARY_TOLERANCE_M Or _
+       extentBottom < evidence.ContentBorderBottom - BOUNDARY_TOLERANCE_M Or _
+       extentRight > evidence.ContentBorderRight + BOUNDARY_TOLERANCE_M Or _
+       extentTop > evidence.ContentBorderTop + BOUNDARY_TOLERANCE_M Then
 
-        evidence.AddFailure "Note extent lies outside the sheet in '" & _
-            Module8_RuntimeSupport.GetViewName(swView) & "'."
+        evidence.AddFailure "Note extent crosses the measured zoned border in '" & _
+            Module8_RuntimeSupport.GetViewName(swView) & "': " & _
+            Format$(extentLeft, "0.000000") & "," & _
+            Format$(extentBottom, "0.000000") & " to " & _
+            Format$(extentRight, "0.000000") & "," & _
+            Format$(extentTop, "0.000000") & "."
         Exit Function
     End If
 
-    If extentBottom < evidence.UsableBottom Or _
-       RectanglesOverlap( _
+    If RectanglesOverlap( _
             extentLeft, extentBottom, extentRight, extentTop, _
             evidence.TitleBlockLeft, evidence.TitleBlockBottom, _
             evidence.TitleBlockRight, evidence.TitleBlockTop) Then
 
-        evidence.AddFailure "Note extent intrudes into the controlled " & _
-            "title/note band in '" & _
+        evidence.AddFailure "Note extent intrudes into the measured title-block " & _
+            "rectangle in '" & _
             Module8_RuntimeSupport.GetViewName(swView) & "'."
         Exit Function
+    End If
+
+    If evidence.PartIdentificationBoundsProven And _
+       InStr(1, renderedText, _
+             "*" & Module1_Main.GetFixtureKey(evidence.PartPath) & "*", _
+             vbTextCompare) = 0 Then
+
+        If RectanglesOverlap( _
+                extentLeft, extentBottom, extentRight, extentTop, _
+                evidence.PartIdentificationLeft, _
+                evidence.PartIdentificationBottom, _
+                evidence.PartIdentificationRight, _
+                evidence.PartIdentificationTop) Then
+
+            evidence.AddFailure "Note extent intrudes into the measured " & _
+                "part-identification rectangle in '" & _
+                Module8_RuntimeSupport.GetViewName(swView) & "'."
+            Exit Function
+        End If
     End If
 
     CheckModelViewNoteExtent = True
@@ -651,19 +761,45 @@ Failed:
         Module8_RuntimeSupport.GetViewName(swView) & "': " & Err.Description
 End Function
 
+Private Function TryReadRenderedNoteText( _
+    ByRef note As SldWorks.Note, _
+    ByRef renderedText As String) As Boolean
+
+    On Error GoTo Failed
+
+    renderedText = note.GetText
+    renderedText = Replace$(renderedText, vbCr, vbNullString)
+    renderedText = Replace$(renderedText, vbLf, vbNullString)
+    renderedText = Trim$(renderedText)
+    TryReadRenderedNoteText = True
+    Exit Function
+
+Failed:
+    renderedText = vbNullString
+End Function
+
 Private Function PointViolatesControlledRegions( _
     ByVal x As Double, _
     ByVal y As Double, _
     ByVal sheetWidth As Double, _
     ByVal sheetHeight As Double, _
-    ByRef evidence As CRunEvidence) As Boolean
+    ByRef evidence As CRunEvidence, _
+    ByRef violationReason As String) As Boolean
+
+    violationReason = vbNullString
 
     If x < 0# Or x > sheetWidth Or y < 0# Or y > sheetHeight Then
+        violationReason = "PhysicalSheet"
         PointViolatesControlledRegions = True
         Exit Function
     End If
 
-    If y < evidence.UsableBottom Then
+    If x < evidence.ContentBorderLeft - BOUNDARY_TOLERANCE_M Or _
+       x > evidence.ContentBorderRight + BOUNDARY_TOLERANCE_M Or _
+       y < evidence.ContentBorderBottom - BOUNDARY_TOLERANCE_M Or _
+       y > evidence.ContentBorderTop + BOUNDARY_TOLERANCE_M Then
+
+        violationReason = "ZonedBorder"
         PointViolatesControlledRegions = True
         Exit Function
     End If
@@ -672,6 +808,9 @@ Private Function PointViolatesControlledRegions( _
         PointInsideRectangle( _
             x, y, evidence.TitleBlockLeft, evidence.TitleBlockBottom, _
             evidence.TitleBlockRight, evidence.TitleBlockTop)
+    If PointViolatesControlledRegions Then
+        violationReason = "TitleBlock"
+    End If
 End Function
 
 Private Function PointInsideRectangle( _
@@ -772,6 +911,270 @@ Private Function CrossProduct( _
         (by - ay) * (px - ax)
 End Function
 
+Private Function CheckSectionLineClearance( _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    CheckSectionLineClearance = True
+    If Module1_Main.GetFixtureKey(evidence.PartPath) <> _
+       "P-0251-14A-001" Then Exit Function
+
+    On Error GoTo Failed
+    evidence.RequireStage "SECTION_CLEARANCE"
+
+    If Not evidence.PartIdentificationBoundsProven Then
+        evidence.AddFailure "P-0251 section clearance cannot be checked because " & _
+            "the part-identification note extent is unproved."
+        GoTo ClearanceFailed
+    End If
+
+    Dim sectionLineCount As Long
+    Dim swView As SldWorks.View
+    Set swView = swDraw.GetFirstView
+    If Not swView Is Nothing Then Set swView = swView.GetNextView
+
+    Do While Not swView Is Nothing
+        Dim viewSectionLineCount As Long
+        Dim sectionLineInfoSize As Long
+        viewSectionLineCount = _
+            swView.GetSectionLineCount2(sectionLineInfoSize)
+
+        If viewSectionLineCount > 0 Then
+            If sectionLineInfoSize < 1 Then
+                evidence.AddFailure "P-0251 section-line count is nonzero but " & _
+                    "IView.GetSectionLineCount2 returned an invalid data size " & _
+                    "for '" & Module8_RuntimeSupport.GetViewName(swView) & "'."
+                GoTo ClearanceFailed
+            End If
+
+            Dim sectionInfo As Variant
+            sectionInfo = swView.GetSectionLineInfo2
+
+            If IsArray(sectionInfo) Then
+                Dim sectionInfoItemCount As Long
+                sectionInfoItemCount = _
+                    Module8_RuntimeSupport.CountVariantItems(sectionInfo)
+
+                If sectionInfoItemCount <> sectionLineInfoSize Then
+                    evidence.AddFailure "P-0251 section-line data-size mismatch " & _
+                        "in '" & Module8_RuntimeSupport.GetViewName(swView) & _
+                        "': expected=" & CStr(sectionLineInfoSize) & _
+                        ", actual=" & CStr(sectionInfoItemCount) & "."
+                    GoTo ClearanceFailed
+                End If
+
+                evidence.AddInfo "SECTION_LINE_READBACK|view=" & _
+                    EvidenceValue( _
+                        Module8_RuntimeSupport.GetViewName(swView)) & _
+                    "|count=" & CStr(viewSectionLineCount) & _
+                    "|size=" & CStr(sectionLineInfoSize)
+
+                If Not ValidateSectionLineInfo( _
+                    sectionInfo, swView, evidence, sectionLineCount) Then
+
+                    GoTo ClearanceFailed
+                End If
+            Else
+                evidence.AddFailure "P-0251 section-line count is nonzero but " & _
+                    "IView.GetSectionLineInfo2 returned no array in '" & _
+                    Module8_RuntimeSupport.GetViewName(swView) & "'."
+                GoTo ClearanceFailed
+            End If
+        End If
+
+        Set swView = swView.GetNextView
+    Loop
+
+    If sectionLineCount = 0 Then
+        evidence.AddFailure "P-0251 J-J section-line geometry readback is empty."
+        GoTo ClearanceFailed
+    End If
+
+    evidence.MarkStageProved "SECTION_CLEARANCE", _
+        CStr(sectionLineCount) & _
+        " section line(s) proved clear of the measured part-identification extent"
+    Exit Function
+
+ClearanceFailed:
+    evidence.MarkStageFailed "SECTION_CLEARANCE", _
+        "section segment, arrow, or label geometry was unavailable or intersected the part-identification extent"
+    CheckSectionLineClearance = False
+    Exit Function
+
+Failed:
+    evidence.AddFailure "P-0251 section-line clearance API error " & _
+        CStr(Err.Number) & ": " & Err.Description
+    Resume ClearanceFailed
+End Function
+
+Private Function ValidateSectionLineInfo( _
+    ByVal sectionInfo As Variant, _
+    ByRef swView As SldWorks.View, _
+    ByRef evidence As CRunEvidence, _
+    ByRef accumulatedLineCount As Long) As Boolean
+
+    On Error GoTo Failed
+
+    Dim cursor As Long
+    Dim upperIndex As Long
+    cursor = LBound(sectionInfo)
+    upperIndex = UBound(sectionInfo)
+    If cursor > upperIndex Then Exit Function
+
+    Dim lineCount As Long
+    lineCount = CLng(sectionInfo(cursor))
+    cursor = cursor + 1
+    If lineCount < 0 Then Exit Function
+    If lineCount = 0 Then
+        ValidateSectionLineInfo = True
+        Exit Function
+    End If
+
+    Dim lineIndex As Long
+    For lineIndex = 1 To lineCount
+        If cursor + 1 > upperIndex Then Exit Function
+
+        Dim layerValue As Double
+        Dim segmentCount As Long
+        layerValue = CDbl(sectionInfo(cursor))
+        cursor = cursor + 1
+        segmentCount = CLng(sectionInfo(cursor))
+        cursor = cursor + 1
+        If segmentCount < 1 Then Exit Function
+
+        Dim segmentIndex As Long
+        For segmentIndex = 1 To segmentCount
+            If cursor + 6 > upperIndex Then Exit Function
+
+            Dim startX As Double
+            Dim startY As Double
+            Dim endX As Double
+            Dim endY As Double
+            startX = CDbl(sectionInfo(cursor + 1))
+            startY = CDbl(sectionInfo(cursor + 2))
+            endX = CDbl(sectionInfo(cursor + 4))
+            endY = CDbl(sectionInfo(cursor + 5))
+
+            If SectionSegmentTouchesPartIdentification( _
+                startX, startY, endX, endY, evidence) Then
+
+                evidence.AddFailure "P-0251 J-J section segment intersects " & _
+                    "the measured part-identification extent in '" & _
+                    Module8_RuntimeSupport.GetViewName(swView) & "'."
+                Exit Function
+            End If
+            cursor = cursor + 7
+        Next segmentIndex
+
+        If cursor + 24 > upperIndex Then Exit Function
+
+        Dim arrow1StartX As Double
+        Dim arrow1StartY As Double
+        Dim arrow1EndX As Double
+        Dim arrow1EndY As Double
+        arrow1StartX = CDbl(sectionInfo(cursor))
+        arrow1StartY = CDbl(sectionInfo(cursor + 1))
+        arrow1EndX = CDbl(sectionInfo(cursor + 3))
+        arrow1EndY = CDbl(sectionInfo(cursor + 4))
+        cursor = cursor + 9
+
+        Dim arrow2StartX As Double
+        Dim arrow2StartY As Double
+        Dim arrow2EndX As Double
+        Dim arrow2EndY As Double
+        arrow2StartX = CDbl(sectionInfo(cursor))
+        arrow2StartY = CDbl(sectionInfo(cursor + 1))
+        arrow2EndX = CDbl(sectionInfo(cursor + 3))
+        arrow2EndY = CDbl(sectionInfo(cursor + 4))
+        cursor = cursor + 9
+
+        If SectionSegmentTouchesPartIdentification( _
+               arrow1StartX, arrow1StartY, arrow1EndX, arrow1EndY, evidence) Or _
+           SectionSegmentTouchesPartIdentification( _
+               arrow2StartX, arrow2StartY, arrow2EndX, arrow2EndY, evidence) Then
+
+            evidence.AddFailure "P-0251 J-J arrow geometry intersects the " & _
+                "measured part-identification extent in '" & _
+                Module8_RuntimeSupport.GetViewName(swView) & "'."
+            Exit Function
+        End If
+
+        Dim text1X As Double
+        Dim text1Y As Double
+        Dim text2X As Double
+        Dim text2Y As Double
+        Dim textHeight As Double
+        text1X = CDbl(sectionInfo(cursor))
+        text1Y = CDbl(sectionInfo(cursor + 1))
+        text2X = CDbl(sectionInfo(cursor + 3))
+        text2Y = CDbl(sectionInfo(cursor + 4))
+        textHeight = Abs(CDbl(sectionInfo(cursor + 6)))
+        cursor = cursor + 7
+
+        Dim textClearance As Double
+        textClearance = textHeight * 2#
+        If textClearance < 0.002 Then textClearance = 0.002
+
+        If PointTouchesPartIdentification( _
+               text1X, text1Y, textClearance, evidence) Or _
+           PointTouchesPartIdentification( _
+               text2X, text2Y, textClearance, evidence) Then
+
+            evidence.AddFailure "P-0251 J-J label position intersects the " & _
+                "measured part-identification extent in '" & _
+                Module8_RuntimeSupport.GetViewName(swView) & "'."
+            Exit Function
+        End If
+
+        evidence.AddInfo "SECTION_LINE_GEOMETRY|view=" & _
+            EvidenceValue(Module8_RuntimeSupport.GetViewName(swView)) & _
+            "|line=" & CStr(lineIndex) & _
+            "|layer=" & Format$(layerValue, "0.###") & _
+            "|segments=" & CStr(segmentCount) & _
+            "|text1=" & Format$(text1X, "0.000000") & "," & _
+                Format$(text1Y, "0.000000") & _
+            "|text2=" & Format$(text2X, "0.000000") & "," & _
+                Format$(text2Y, "0.000000") & _
+            "|textHeight=" & Format$(textHeight, "0.000000")
+    Next lineIndex
+
+    accumulatedLineCount = accumulatedLineCount + lineCount
+    ValidateSectionLineInfo = True
+    Exit Function
+
+Failed:
+    ValidateSectionLineInfo = False
+End Function
+
+Private Function SectionSegmentTouchesPartIdentification( _
+    ByVal startX As Double, _
+    ByVal startY As Double, _
+    ByVal endX As Double, _
+    ByVal endY As Double, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    Const clearance As Double = 0.002
+    SectionSegmentTouchesPartIdentification = SegmentIntersectsRectangle( _
+        startX, startY, endX, endY, _
+        evidence.PartIdentificationLeft - clearance, _
+        evidence.PartIdentificationBottom - clearance, _
+        evidence.PartIdentificationRight + clearance, _
+        evidence.PartIdentificationTop + clearance)
+End Function
+
+Private Function PointTouchesPartIdentification( _
+    ByVal x As Double, _
+    ByVal y As Double, _
+    ByVal clearance As Double, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    PointTouchesPartIdentification = _
+        (x >= evidence.PartIdentificationLeft - clearance) And _
+        (x <= evidence.PartIdentificationRight + clearance) And _
+        (y >= evidence.PartIdentificationBottom - clearance) And _
+        (y <= evidence.PartIdentificationTop + clearance)
+End Function
+
 Private Sub SwapDouble(ByRef firstValue As Double, ByRef secondValue As Double)
     Dim temporaryValue As Double
     temporaryValue = firstValue
@@ -809,6 +1212,14 @@ Private Function ApplyFixtureSpecificChecks( _
                 ApplyFixtureSpecificChecks = False
             End If
 
+            If Not evidence.StageIsProved("MANUFACTURING_DEFINITION") Or _
+               Not P0251ManufacturingDefinitionIsVisible(swDraw) Then
+
+                evidence.AddFailure "P-0251 acceptance requires the visible " & _
+                    "stepped-bore, six-hole counterbore, and four-hole tapped definitions."
+                ApplyFixtureSpecificChecks = False
+            End If
+
             If evidence.UniquePhysicalLocationCount < 10 Then
                 evidence.AddFailure "P-0251 canonical evidence contains fewer than " & _
                     "the ten reference hole locations."
@@ -838,6 +1249,94 @@ Private Function ApplyFixtureSpecificChecks( _
                 ApplyFixtureSpecificChecks = False
             End If
     End Select
+End Function
+
+Private Function P0251ManufacturingDefinitionIsVisible( _
+    ByRef swDraw As SldWorks.DrawingDoc) As Boolean
+
+    P0251ManufacturingDefinitionIsVisible = _
+        AssociatedCalloutContainsTokens( _
+            swDraw, Array( _
+                "DIAMETER:47 H7 (+0.025/+0.000)", _
+                "DIAMETER:40")) And _
+        AssociatedCalloutContainsTokens( _
+            swDraw, Array( _
+                "6X DIAMETER:6.6 THRU", _
+                "C'BORE DIAMETER:11 x 6 DEEP")) And _
+        AssociatedCalloutContainsTokens( _
+            swDraw, Array( _
+                "4X DIAMETER:4.2 x 12.4 DEEP", _
+                "TAP M5x0.8-6H x 10 DEEP"))
+End Function
+
+Private Function AssociatedCalloutContainsTokens( _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByVal requiredTokens As Variant) As Boolean
+
+    On Error GoTo Failed
+
+    Dim swView As SldWorks.View
+    Set swView = swDraw.GetFirstView
+
+    Do While Not swView Is Nothing
+        Dim note As SldWorks.Note
+        Set note = swView.GetFirstNote
+
+        Do While Not note Is Nothing
+            Dim renderedText As String
+            renderedText = NormalizeDiameterSyntax(note.GetText)
+
+            Dim allTokensPresent As Boolean
+            allTokensPresent = True
+
+            Dim tokenIndex As Long
+            For tokenIndex = LBound(requiredTokens) To UBound(requiredTokens)
+                If InStr(1, renderedText, CStr(requiredTokens(tokenIndex)), _
+                    vbTextCompare) = 0 Then
+
+                    allTokensPresent = False
+                    Exit For
+                End If
+            Next tokenIndex
+
+            If allTokensPresent Then
+                Dim annotation As SldWorks.Annotation
+                Set annotation = note.GetAnnotation
+
+                If Not annotation Is Nothing Then
+                    Dim attached As Variant
+                    attached = annotation.GetAttachedEntities3
+
+                    If annotation.GetLeaderCount > 0 And IsArray(attached) Then
+                        If Module8_RuntimeSupport.CountVariantItems(attached) > 0 Then
+                            AssociatedCalloutContainsTokens = True
+                            Exit Function
+                        End If
+                    End If
+                End If
+            End If
+
+            Set note = note.GetNext
+        Loop
+
+        Set swView = swView.GetNextView
+    Loop
+    Exit Function
+
+Failed:
+    AssociatedCalloutContainsTokens = False
+End Function
+
+Private Function NormalizeDiameterSyntax(ByVal text As String) As String
+    NormalizeDiameterSyntax = Replace$( _
+        text, "<MOD-DIAM>", "DIAMETER:", 1, -1, vbTextCompare)
+    NormalizeDiameterSyntax = Replace$( _
+        NormalizeDiameterSyntax, ChrW$(&H2300), "DIAMETER:")
+    NormalizeDiameterSyntax = Replace$( _
+        NormalizeDiameterSyntax, ChrW$(&HD8), "DIAMETER:")
+    NormalizeDiameterSyntax = Replace$(NormalizeDiameterSyntax, vbCr, vbNullString)
+    NormalizeDiameterSyntax = Replace$(NormalizeDiameterSyntax, vbLf, " ")
+    NormalizeDiameterSyntax = Trim$(NormalizeDiameterSyntax)
 End Function
 
 Private Function CountAnnotationsOfType( _

@@ -14,10 +14,15 @@ Private Const swModelRebuildStatus_FullyRebuilt As Long = 0
 Private Const swDrawingProjectedView As Long = 4
 Private Const swDrawingStandardView As Long = 6
 Private Const swDrawingNamedView As Long = 7
+Private Const swSketchLINE As Long = 0
 Private Const swZoneTopMargin As Long = 0
 Private Const swZoneBottomMargin As Long = 1
 Private Const swZoneRightMargin As Long = 2
 Private Const swZoneLeftMargin As Long = 3
+
+Private Const CONTROLLED_LEGACY_FORMAT_TOKEN As String = _
+    "veemap drawing.slddrt"
+Private Const TEMPLATE_GEOMETRY_TOLERANCE_M As Double = 0.00001
 
 Private mProvenOrdinateViews As Object
 
@@ -284,18 +289,30 @@ Public Function MeasureControlledSheetRegions( _
     Dim titleBlock As SldWorks.TitleBlock
     Set titleBlock = swSheet.TitleBlock
 
-    If titleBlock Is Nothing Then
-        evidence.AddFailure "Controlled sheet has no ITitleBlock definition."
-        evidence.MarkStageFailed "CONTROLLED_SHEET", _
-            "missing ITitleBlock"
-        Exit Function
-    End If
-
     Dim titleX1 As Double
     Dim titleY1 As Double
     Dim titleX2 As Double
     Dim titleY2 As Double
-    titleBlock.GetExtents titleX1, titleY1, titleX2, titleY2
+    Dim titleBoundsSource As String
+
+    If titleBlock Is Nothing Then
+        If Not TryMeasureLegacyControlledTitleBlock( _
+            swSheet, sheetWidth, sheetHeight, titleX1, titleY1, _
+            titleX2, titleY2, evidence) Then
+
+            evidence.AddFailure "Controlled sheet has neither an ITitleBlock " & _
+                "definition nor a proved legacy title-block rectangle."
+            evidence.MarkStageFailed "CONTROLLED_SHEET", _
+                "formal and legacy title-block proofs failed"
+            Exit Function
+        End If
+
+        titleBoundsSource = _
+            "ISheet.GetTemplateSketch/ISketch.GetSketchSegments"
+    Else
+        titleBlock.GetExtents titleX1, titleY1, titleX2, titleY2
+        titleBoundsSource = "ITitleBlock.GetExtents"
+    End If
 
     evidence.TitleBlockLeft = IIf(titleX1 < titleX2, titleX1, titleX2)
     evidence.TitleBlockRight = IIf(titleX1 > titleX2, titleX1, titleX2)
@@ -305,7 +322,7 @@ Public Function MeasureControlledSheetRegions( _
     If evidence.TitleBlockRight <= evidence.TitleBlockLeft Or _
        evidence.TitleBlockTop <= evidence.TitleBlockBottom Then
 
-        evidence.AddFailure "ITitleBlock.GetExtents returned invalid bounds."
+        evidence.AddFailure "Controlled title-block proof returned invalid bounds."
         evidence.MarkStageFailed "CONTROLLED_SHEET", _
             "invalid title-block extents"
         Exit Function
@@ -341,6 +358,20 @@ Public Function MeasureControlledSheetRegions( _
         Exit Function
     End If
 
+    evidence.ContentBorderLeft = leftMargin
+    evidence.ContentBorderBottom = bottomMargin
+    evidence.ContentBorderRight = evidence.SheetWidth - rightMargin
+    evidence.ContentBorderTop = evidence.SheetHeight - topMargin
+
+    If evidence.ContentBorderRight <= evidence.ContentBorderLeft Or _
+       evidence.ContentBorderTop <= evidence.ContentBorderBottom Then
+
+        evidence.AddFailure "Controlled zoned-border margins produce invalid content bounds."
+        evidence.MarkStageFailed "CONTROLLED_SHEET", _
+            "zone-margin content bounds are invalid"
+        Exit Function
+    End If
+
     evidence.UsableLeft = leftMargin + LAYOUT_MARGIN_M
     evidence.UsableRight = evidence.SheetWidth - rightMargin - LAYOUT_MARGIN_M
     evidence.UsableTop = evidence.SheetHeight - topMargin - LAYOUT_MARGIN_M
@@ -360,10 +391,18 @@ Public Function MeasureControlledSheetRegions( _
     End If
 
     evidence.LayoutBoundariesProven = True
-    evidence.AddInfo "Measured sheet/border/title-block regions from ISheet zone margins " & _
-        "and ITitleBlock.GetExtents."
+    evidence.AddInfo "CONTROLLED_REGIONS|content=" & _
+        Format$(evidence.ContentBorderLeft, "0.000000") & "," & _
+        Format$(evidence.ContentBorderBottom, "0.000000") & "," & _
+        Format$(evidence.ContentBorderRight, "0.000000") & "," & _
+        Format$(evidence.ContentBorderTop, "0.000000") & _
+        "|viewUsable=" & Format$(evidence.UsableLeft, "0.000000") & "," & _
+        Format$(evidence.UsableBottom, "0.000000") & "," & _
+        Format$(evidence.UsableRight, "0.000000") & "," & _
+        Format$(evidence.UsableTop, "0.000000") & _
+        "|titleSource=" & titleBoundsSource
     evidence.MarkStageProved "CONTROLLED_SHEET", _
-        "template, visible format, zone margins, title block, and usable bounds proved"
+        "template, format geometry, zone margins, title block, and usable bounds proved"
     MeasureControlledSheetRegions = True
     Exit Function
 
@@ -372,6 +411,179 @@ Failed:
         CStr(Err.Number) & ": " & Err.Description
     evidence.MarkStageFailed "CONTROLLED_SHEET", _
         "API error " & CStr(Err.Number) & ": " & Err.Description
+End Function
+
+Private Function TryMeasureLegacyControlledTitleBlock( _
+    ByRef swSheet As SldWorks.Sheet, _
+    ByVal sheetWidth As Double, _
+    ByVal sheetHeight As Double, _
+    ByRef titleLeft As Double, _
+    ByRef titleBottom As Double, _
+    ByRef titleRight As Double, _
+    ByRef titleTop As Double, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    On Error GoTo Failed
+
+    Dim templateName As String
+    templateName = LCase$(Trim$(swSheet.GetTemplateName))
+
+    If InStr(1, templateName, CONTROLLED_LEGACY_FORMAT_TOKEN, _
+        vbTextCompare) = 0 Then Exit Function
+
+    If Abs(sheetWidth - 0.42) > TEMPLATE_GEOMETRY_TOLERANCE_M Or _
+       Abs(sheetHeight - 0.297) > TEMPLATE_GEOMETRY_TOLERANCE_M Then
+
+        evidence.AddFailure "Legacy controlled-format proof rejected an " & _
+            "unexpected sheet size."
+        Exit Function
+    End If
+
+    Dim templateSketch As SldWorks.Sketch
+    Set templateSketch = swSheet.GetTemplateSketch
+    If templateSketch Is Nothing Then Exit Function
+
+    Dim segments As Variant
+    segments = templateSketch.GetSketchSegments
+    If IsEmpty(segments) Or Not IsArray(segments) Then Exit Function
+
+    Dim zoneLeft As Double
+    Dim zoneRight As Double
+    Dim zoneBottom As Double
+    Dim zoneTop As Double
+    zoneLeft = sheetWidth * 0.63
+    zoneRight = sheetWidth * 0.98
+    zoneBottom = sheetHeight * 0.03
+    zoneTop = sheetHeight * 0.27
+
+    titleLeft = sheetWidth
+    titleBottom = sheetHeight
+    titleRight = 0#
+    titleTop = 0#
+
+    Dim candidateCount As Long
+    Dim bottomBoundaryProved As Boolean
+    Dim topBoundaryProved As Boolean
+    Dim leftBoundaryProved As Boolean
+    Dim rightBoundaryProved As Boolean
+
+    Dim i As Long
+    For i = LBound(segments) To UBound(segments)
+        Dim segment As SldWorks.SketchSegment
+        Set segment = segments(i)
+
+        If Not segment Is Nothing Then
+            If segment.GetType = swSketchLINE Then
+                Dim sketchLine As SldWorks.SketchLine
+                Set sketchLine = segment
+
+                Dim startPoint As SldWorks.SketchPoint
+                Dim endPoint As SldWorks.SketchPoint
+                Set startPoint = sketchLine.GetStartPoint2
+                Set endPoint = sketchLine.GetEndPoint2
+
+                If Not startPoint Is Nothing And Not endPoint Is Nothing Then
+                    Dim x1 As Double
+                    Dim y1 As Double
+                    Dim x2 As Double
+                    Dim y2 As Double
+                    x1 = startPoint.X
+                    y1 = startPoint.Y
+                    x2 = endPoint.X
+                    y2 = endPoint.Y
+
+                    If x1 >= zoneLeft - TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                       x2 >= zoneLeft - TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                       x1 <= zoneRight + TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                       x2 <= zoneRight + TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                       y1 >= zoneBottom - TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                       y2 >= zoneBottom - TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                       y1 <= zoneTop + TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                       y2 <= zoneTop + TEMPLATE_GEOMETRY_TOLERANCE_M Then
+
+                        candidateCount = candidateCount + 1
+                        If x1 < titleLeft Then titleLeft = x1
+                        If x2 < titleLeft Then titleLeft = x2
+                        If x1 > titleRight Then titleRight = x1
+                        If x2 > titleRight Then titleRight = x2
+                        If y1 < titleBottom Then titleBottom = y1
+                        If y2 < titleBottom Then titleBottom = y2
+                        If y1 > titleTop Then titleTop = y1
+                        If y2 > titleTop Then titleTop = y2
+
+                        Dim lineLength As Double
+                        lineLength = Sqr((x2 - x1) * (x2 - x1) + _
+                                         (y2 - y1) * (y2 - y1))
+
+                        If Abs(y2 - y1) <= _
+                           TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                           lineLength >= 0.1 Then
+
+                            If y1 <= sheetHeight * 0.06 Then
+                                bottomBoundaryProved = True
+                            ElseIf y1 >= sheetHeight * 0.15 Then
+                                topBoundaryProved = True
+                            End If
+                        End If
+
+                        If Abs(x2 - x1) <= _
+                           TEMPLATE_GEOMETRY_TOLERANCE_M And _
+                           lineLength >= 0.04 Then
+
+                            If x1 <= sheetWidth * 0.75 Then
+                                leftBoundaryProved = True
+                            ElseIf x1 >= sheetWidth * 0.95 Then
+                                rightBoundaryProved = True
+                            End If
+                        End If
+                    End If
+                End If
+            End If
+        End If
+    Next i
+
+    Dim titleWidth As Double
+    Dim titleHeight As Double
+    titleWidth = titleRight - titleLeft
+    titleHeight = titleTop - titleBottom
+
+    If candidateCount < 10 Or _
+       Not bottomBoundaryProved Or Not topBoundaryProved Or _
+       Not leftBoundaryProved Or Not rightBoundaryProved Or _
+       titleWidth < 0.1 Or titleWidth > 0.18 Or _
+       titleHeight < 0.04 Or titleHeight > 0.09 Or _
+       titleLeft < zoneLeft Or titleRight < sheetWidth * 0.95 Or _
+       titleTop > zoneTop Then
+
+        evidence.AddFailure "Legacy title-block sketch geometry did not " & _
+            "satisfy the controlled lower-right rectangle contract."
+        evidence.AddInfo "TITLE_BOUNDS_REJECTED|segments=" & _
+            CStr(candidateCount) & _
+            "|left=" & Format$(titleLeft, "0.000000") & _
+            "|bottom=" & Format$(titleBottom, "0.000000") & _
+            "|right=" & Format$(titleRight, "0.000000") & _
+            "|top=" & Format$(titleTop, "0.000000") & _
+            "|bottomEdge=" & CStr(bottomBoundaryProved) & _
+            "|topEdge=" & CStr(topBoundaryProved) & _
+            "|leftEdge=" & CStr(leftBoundaryProved) & _
+            "|rightEdge=" & CStr(rightBoundaryProved)
+        Exit Function
+    End If
+
+    evidence.AddInfo "TITLE_BOUNDS|source=LegacyTemplateSketch" & _
+        "|segments=" & CStr(candidateCount) & _
+        "|left=" & Format$(titleLeft, "0.000000") & _
+        "|bottom=" & Format$(titleBottom, "0.000000") & _
+        "|right=" & Format$(titleRight, "0.000000") & _
+        "|top=" & Format$(titleTop, "0.000000") & _
+        "|structuralEdgesProved=True"
+
+    TryMeasureLegacyControlledTitleBlock = True
+    Exit Function
+
+Failed:
+    evidence.AddFailure "Legacy title-block measurement error " & _
+        CStr(Err.Number) & ": " & Err.Description
 End Function
 
 Public Sub FinalizeSelectionAndSheetState( _
@@ -687,12 +899,34 @@ Public Function TransformPointToView( _
     ByVal z As Double, _
     ByRef viewX As Double, _
     ByRef viewY As Double, _
-    ByRef viewZ As Double) As Boolean
+    ByRef viewZ As Double, _
+    ByRef coordinateFrameProof As String) As Boolean
 
     On Error GoTo Failed
 
+    coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=unknown" & _
+        "|reason=TransformNotAttempted"
+
+    If swApp Is Nothing Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=unknown" & _
+            "|reason=ApplicationUnavailable"
+        Exit Function
+    End If
+
+    If swView Is Nothing Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=unknown" & _
+            "|reason=ViewUnavailable"
+        Exit Function
+    End If
+
     Dim mathUtil As SldWorks.MathUtility
     Set mathUtil = swApp.GetMathUtility
+    If mathUtil Is Nothing Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & _
+            TransformTokenValue(GetViewName(swView)) & _
+            "|reason=MathUtilityUnavailable"
+        Exit Function
+    End If
 
     Dim pointData(0 To 2) As Double
     pointData(0) = x
@@ -701,19 +935,195 @@ Public Function TransformPointToView( _
 
     Dim mathPoint As SldWorks.MathPoint
     Set mathPoint = mathUtil.CreatePoint(pointData)
-    Set mathPoint = mathPoint.MultiplyTransform(swView.ModelToViewTransform)
+    If mathPoint Is Nothing Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & _
+            TransformTokenValue(GetViewName(swView)) & _
+            "|reason=MathPointUnavailable"
+        Exit Function
+    End If
+
+    Dim modelToView As SldWorks.MathTransform
+    Set modelToView = swView.ModelToViewTransform
+    If modelToView Is Nothing Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & _
+            TransformTokenValue(GetViewName(swView)) & _
+            "|reason=ModelToViewTransformUnavailable"
+        Exit Function
+    End If
+
+    Set mathPoint = mathPoint.MultiplyTransform(modelToView)
+    If mathPoint Is Nothing Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & _
+            TransformTokenValue(GetViewName(swView)) & _
+            "|reason=ModelToViewTransformReturnedNothing"
+        Exit Function
+    End If
 
     Dim result As Variant
     result = mathPoint.ArrayData
+    If Not IsArray(result) Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & _
+            TransformTokenValue(GetViewName(swView)) & _
+            "|reason=TransformArrayUnavailable"
+        Exit Function
+    End If
 
     viewX = CDbl(result(0))
     viewY = CDbl(result(1))
     viewZ = CDbl(result(2))
+
+    If Not ProvePageCoordinateAgainstViewOutline( _
+        swView, viewX, viewY, coordinateFrameProof) Then Exit Function
+
     TransformPointToView = True
     Exit Function
 
 Failed:
+    Dim transformErrorNumber As Long
+    transformErrorNumber = Err.Number
+    coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & _
+        TransformTokenValue(SafeTransformViewName(swView)) & _
+        "|reason=APIError:" & CStr(transformErrorNumber)
     TransformPointToView = False
+End Function
+
+Private Function ProvePageCoordinateAgainstViewOutline( _
+    ByRef swView As SldWorks.View, _
+    ByVal pageX As Double, _
+    ByVal pageY As Double, _
+    ByRef coordinateFrameProof As String) As Boolean
+
+    On Error GoTo Failed
+
+    Dim viewName As String
+    viewName = TransformTokenValue(SafeTransformViewName(swView))
+
+    Dim outline As Variant
+    outline = swView.GetOutline
+
+    If Not IsArray(outline) Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & viewName & _
+            "|reason=ViewOutlineUnavailable"
+        Exit Function
+    End If
+
+    Dim outlineLowerBound As Long
+    Dim outlineUpperBound As Long
+    outlineLowerBound = LBound(outline)
+    outlineUpperBound = UBound(outline)
+
+    If outlineUpperBound - outlineLowerBound < 3 Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & viewName & _
+            "|reason=ViewOutlineMalformed"
+        Exit Function
+    End If
+
+    Dim minimumX As Double
+    Dim minimumY As Double
+    Dim maximumX As Double
+    Dim maximumY As Double
+    minimumX = CDbl(outline(outlineLowerBound))
+    minimumY = CDbl(outline(outlineLowerBound + 1))
+    maximumX = CDbl(outline(outlineLowerBound + 2))
+    maximumY = CDbl(outline(outlineLowerBound + 3))
+
+    If minimumX <> minimumX Or minimumY <> minimumY Or _
+       maximumX <> maximumX Or maximumY <> maximumY Then
+
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & viewName & _
+            "|reason=ViewOutlineNotFinite"
+        Exit Function
+    End If
+
+    If maximumX <= minimumX Or maximumY <= minimumY Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & viewName & _
+            "|reason=ViewOutlineDegenerate" & _
+            "|outline=" & TransformOutlineToken( _
+                minimumX, minimumY, maximumX, maximumY)
+        Exit Function
+    End If
+
+    If pageX <> pageX Or pageY <> pageY Then
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & viewName & _
+            "|reason=TransformedCoordinateNotFinite"
+        Exit Function
+    End If
+
+    If pageX < minimumX - PROJECTED_TOLERANCE_M Or _
+       pageX > maximumX + PROJECTED_TOLERANCE_M Or _
+       pageY < minimumY - PROJECTED_TOLERANCE_M Or _
+       pageY > maximumY + PROJECTED_TOLERANCE_M Then
+
+        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & viewName & _
+            "|reason=OutsideCurrentViewOutline" & _
+            "|pageXY=" & TransformCoordinateToken(pageX) & "," & _
+                TransformCoordinateToken(pageY) & _
+            "|outline=" & TransformOutlineToken( _
+                minimumX, minimumY, maximumX, maximumY) & _
+            "|tolerance=" & TransformCoordinateToken(PROJECTED_TOLERANCE_M)
+        Exit Function
+    End If
+
+    coordinateFrameProof = "TRANSFORM_PAGE_PROOF|view=" & viewName & _
+        "|source=ModelToViewTransform" & _
+        "|frame=DrawingPage" & _
+        "|basis=IView.GetOutline" & _
+        "|pageXY=" & TransformCoordinateToken(pageX) & "," & _
+            TransformCoordinateToken(pageY) & _
+        "|outline=" & TransformOutlineToken( _
+            minimumX, minimumY, maximumX, maximumY) & _
+        "|tolerance=" & TransformCoordinateToken(PROJECTED_TOLERANCE_M)
+
+    ProvePageCoordinateAgainstViewOutline = True
+    Exit Function
+
+Failed:
+    Dim outlineErrorNumber As Long
+    outlineErrorNumber = Err.Number
+    coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & _
+        TransformTokenValue(SafeTransformViewName(swView)) & _
+        "|reason=OutlineProofError:" & CStr(outlineErrorNumber)
+End Function
+
+Private Function TransformOutlineToken( _
+    ByVal minimumX As Double, _
+    ByVal minimumY As Double, _
+    ByVal maximumX As Double, _
+    ByVal maximumY As Double) As String
+
+    TransformOutlineToken = _
+        TransformCoordinateToken(minimumX) & "," & _
+        TransformCoordinateToken(minimumY) & "," & _
+        TransformCoordinateToken(maximumX) & "," & _
+        TransformCoordinateToken(maximumY)
+End Function
+
+Private Function TransformCoordinateToken( _
+    ByVal coordinateValue As Double) As String
+
+    TransformCoordinateToken = Format$(coordinateValue, "0.000000000")
+End Function
+
+Private Function SafeTransformViewName( _
+    ByRef swView As SldWorks.View) As String
+
+    SafeTransformViewName = "unknown"
+    If swView Is Nothing Then Exit Function
+
+    On Error GoTo Failed
+    SafeTransformViewName = GetViewName(swView)
+    If Len(Trim$(SafeTransformViewName)) = 0 Then _
+        SafeTransformViewName = "unnamed"
+    Exit Function
+
+Failed:
+    SafeTransformViewName = "unknown"
+End Function
+
+Private Function TransformTokenValue(ByVal value As String) As String
+    TransformTokenValue = Replace$(Trim$(value), "|", "/")
+    TransformTokenValue = Replace$(TransformTokenValue, vbCr, " ")
+    TransformTokenValue = Replace$(TransformTokenValue, vbLf, " ")
 End Function
 
 Public Function TransformVectorToView( _
@@ -760,9 +1170,8 @@ Public Sub ViewToSheetCoordinates( _
     ByRef sheetX As Double, _
     ByRef sheetY As Double)
 
-    Dim position As Variant
-    position = swView.Position
-
-    sheetX = CDbl(position(0)) + viewX
-    sheetY = CDbl(position(1)) + viewY
+    ' ModelToViewTransform supplies page coordinates for drawing dimension and
+    ' annotation placement.  IView.Position must not be added a second time.
+    sheetX = viewX
+    sheetY = viewY
 End Sub

@@ -1,10 +1,10 @@
 SCHEMA=1
 EXPECTED_PROJECT=Fable
-EXPECTED_REVISION=target-spec-hybrid-v2-2026-07-18-r18
-INPUT_SWP=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260726_174549\candidate-input.swp
-OUTPUT_SWP=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260726_174549\candidate-output.swp
-RESULT_FILE=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260726_174549\deployment-result.txt
-COMPILE_RESULT_FILE=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260726_174549\compile-result.txt
+EXPECTED_REVISION=target-spec-hybrid-v2-2026-07-28-r20
+INPUT_SWP=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260728_142300\candidate-input.swp
+OUTPUT_SWP=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260728_142300\candidate-output.swp
+RESULT_FILE=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260728_142300\deployment-result.txt
+COMPILE_RESULT_FILE=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260728_142300\compile-result.txt
 COMPONENT=Module1_Main|StdModule|C:\Users\V.T\Documents\VBA 3D TO 2D\src\target-spec-hybrid-v2\Module1_Main.bas
 COMPONENT=Module2_DrawingPipeline|StdModule|C:\Users\V.T\Documents\VBA 3D TO 2D\src\target-spec-hybrid-v2\Module2_DrawingPipeline.bas
 COMPONENT=Module3_ModelAudit|StdModule|C:\Users\V.T\Documents\VBA 3D TO 2D\src\target-spec-hybrid-v2\Module3_ModelAudit.bas

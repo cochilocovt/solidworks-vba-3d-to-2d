@@ -152,7 +152,7 @@ Public Sub RunDrawingPipeline( _
     End If
 
     If Not Module9_LayoutEngine.ArrangeViewsInMeasuredGrid( _
-        swDrawModel, swDraw, evidence) Then
+        swDrawModel, swDraw, "Initial", evidence) Then
 
         If Not ContinueDiagnosticPipeline( _
             "initial layout", evidence) Then GoTo FinishRun
@@ -198,10 +198,17 @@ Public Sub RunDrawingPipeline( _
     End If
 
     If Not Module9_LayoutEngine.ArrangeViewsInMeasuredGrid( _
-        swDrawModel, swDraw, evidence) Then
+        swDrawModel, swDraw, "Final", evidence) Then
 
         If Not ContinueDiagnosticPipeline( _
             "final layout", evidence) Then GoTo FinishRun
+    End If
+
+    If Not Module7_TitleBlockEngine.AddRequiredManufacturingDefinitions( _
+        swDrawModel, swDraw, evidence) Then
+
+        If Not ContinueDiagnosticPipeline( _
+            "manufacturing definitions", evidence) Then GoTo FinishRun
     End If
 
     If Not Module8_RuntimeSupport.RebuildDocumentVerified( _
@@ -979,7 +986,9 @@ Private Function CreateOneDetail( _
     End If
     Set selectData.View = sourceView
 
-    If Not profileSegment.Select4(False, selectData) Then
+    Dim profileSelected As Boolean
+    profileSelected = CBool(profileSegment.Select4(False, selectData))
+    If profileSelected = False Then
         evidence.AddFailure "Detail " & detailLabel & _
             " profile Select4 returned False."
         GoTo SafeExit
@@ -1078,7 +1087,9 @@ Private Function CreateOneDetail( _
     If StrComp( _
         Trim$(detailCircle.GetLabel), detailLabel, vbTextCompare) <> 0 Then
 
-        If Not detailCircle.SetLabel(detailLabel) Then
+        Dim labelSet As Boolean
+        labelSet = CBool(detailCircle.SetLabel(detailLabel))
+        If labelSet = False Then
             evidence.AddFailure "IDetailCircle.SetLabel returned False for Detail " & _
                 detailLabel & "."
             GoTo SafeExit
@@ -1106,7 +1117,9 @@ Private Function CreateOneDetail( _
             " unexpectedly suppresses its detail-view outline."
         GoTo SafeExit
     End If
-    If Not detailCircle.HasFullOutline Then
+    Dim hasFullOutline As Boolean
+    hasFullOutline = CBool(detailCircle.HasFullOutline)
+    If hasFullOutline = False Then
         evidence.AddFailure "Detail " & detailLabel & _
             " did not read back with a full outline."
         GoTo SafeExit
@@ -1287,7 +1300,9 @@ Private Function ValidateCircularSketchProfile( _
         evidence.AddFailure contextName & " has no underlying curve."
         Exit Function
     End If
-    If Not profileCurve.IsCircle Then
+    Dim profileIsCircular As Boolean
+    profileIsCircular = CBool(profileCurve.IsCircle)
+    If profileIsCircular = False Then
         evidence.AddFailure contextName & " is not circular."
         Exit Function
     End If
@@ -1584,6 +1599,7 @@ Private Function CreatePrimarySection( _
 
     Dim segmentIndex As Long
     Dim sectionSegment As SldWorks.SketchSegment
+    Dim sectionSegmentSelected As Boolean
     For segmentIndex = 1 To sectionSegments.Count
         Set sectionSegment = sectionSegments(segmentIndex)
 
@@ -1595,7 +1611,9 @@ Private Function CreatePrimarySection( _
 
         sectionStep = "Select4.Before.Index=" & CStr(segmentIndex)
         evidence.AddInfo "SECTION_STEP|step=" & sectionStep
-        If Not sectionSegment.Select4(segmentIndex > 1, selectData) Then
+        sectionSegmentSelected = CBool( _
+            sectionSegment.Select4(segmentIndex > 1, selectData))
+        If sectionSegmentSelected = False Then
             sectionStep = "Select4.After.Index=" & CStr(segmentIndex) & _
                 ".False"
             evidence.AddInfo "SECTION_STEP|step=" & sectionStep

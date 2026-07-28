@@ -2,10 +2,13 @@ Option Explicit
 
 Private Const swDrawingSectionView As Long = 2
 Private Const swDrawingDetailView As Long = 3
+Private Const VIEW_GAP_M As Double = 0.012
+Private Const LAYOUT_COMPARISON_TOLERANCE_M As Double = 0.000001
 
 Public Function ArrangeViewsInMeasuredGrid( _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
     ByRef swDraw As SldWorks.DrawingDoc, _
+    ByVal layoutPass As String, _
     ByRef evidence As CRunEvidence) As Boolean
 
     On Error GoTo Failed
@@ -47,6 +50,10 @@ Public Function ArrangeViewsInMeasuredGrid( _
         evidence.UsableRight = sheetWidth - Module8_RuntimeSupport.LAYOUT_MARGIN_M
         evidence.UsableBottom = Module8_RuntimeSupport.LAYOUT_MARGIN_M
         evidence.UsableTop = sheetHeight - Module8_RuntimeSupport.LAYOUT_MARGIN_M
+        evidence.ContentBorderLeft = 0#
+        evidence.ContentBorderBottom = 0#
+        evidence.ContentBorderRight = sheetWidth
+        evidence.ContentBorderTop = sheetHeight
         evidence.TitleBlockLeft = sheetWidth * 0.68
         evidence.TitleBlockRight = sheetWidth
         evidence.TitleBlockBottom = 0#
@@ -92,7 +99,8 @@ Public Function ArrangeViewsInMeasuredGrid( _
 
     ArrangeViewsInMeasuredGrid = ArrangeZoneAwareViews( _
         swDrawModel, swDraw, views, leftBoundary, bottomBoundary, _
-        rightBoundary, topBoundary, "MeasuredZoneAware", evidence)
+        rightBoundary, topBoundary, _
+        "MeasuredZoneAware." & layoutPass, evidence)
 
     If ArrangeViewsInMeasuredGrid And Not usedDiagnosticBounds Then
         evidence.MarkStageProved "LAYOUT", _
@@ -153,8 +161,6 @@ Private Function ArrangeZoneAwareViews( _
     ByVal topBoundary As Double, _
     ByVal layoutMode As String, _
     ByRef evidence As CRunEvidence) As Boolean
-
-    Const VIEW_GAP_M As Double = 0.006
 
     On Error GoTo Failed
 
@@ -284,7 +290,8 @@ Private Function ArrangeZoneAwareViews( _
         swDrawModel, layoutMode, evidence) Then Exit Function
 
     ArrangeZoneAwareViews = ValidateLayout( _
-        swDraw, views, leftBoundary, zoneBottom, rightBoundary, topBoundary, evidence)
+        swDraw, views, leftBoundary, zoneBottom, rightBoundary, topBoundary, _
+        layoutMode, evidence)
 
     If ArrangeZoneAwareViews Then
         evidence.AddInfo "LAYOUT_RESULT|mode=" & layoutMode & _
@@ -307,8 +314,6 @@ Private Function ArrangeP0251ReferenceZones( _
     ByVal topBoundary As Double, _
     ByVal layoutMode As String, _
     ByRef evidence As CRunEvidence) As Boolean
-
-    Const VIEW_GAP_M As Double = 0.006
 
     On Error GoTo Failed
 
@@ -435,7 +440,16 @@ Private Function ArrangeP0251ReferenceZones( _
     Dim rowCursor As Double
     Dim rowCenterY As Double
     rowCursor = leftBoundary + (leftZoneWidth - rowWidth) / 2#
-    rowCenterY = zoneBottom + leftZoneHeight / 2#
+    ' Bias the P-0251 source row upward.  The J-J cut line belongs to the
+    ' primary view and its lower marker otherwise intrudes into the controlled
+    ' part-identification band even when the model-view outline itself fits.
+    rowCenterY = topBoundary - rowHeight / 2# - VIEW_GAP_M / 2#
+
+    If rowCenterY - rowHeight / 2# < zoneBottom Then
+        evidence.AddFailure "P-0251 upward-biased row cannot clear the lower " & _
+            "controlled content while remaining inside the measured border."
+        Exit Function
+    End If
 
     MoveViewOutlineCenter primaryView, _
         rowCursor + primaryWidth / 2#, rowCenterY, evidence
@@ -457,7 +471,8 @@ Private Function ArrangeP0251ReferenceZones( _
     End If
 
     ArrangeP0251ReferenceZones = ValidateLayout( _
-        swDraw, views, leftBoundary, zoneBottom, rightBoundary, topBoundary, evidence)
+        swDraw, views, leftBoundary, zoneBottom, rightBoundary, topBoundary, _
+        layoutMode, evidence)
 
     If ArrangeP0251ReferenceZones Then
         evidence.AddInfo "LAYOUT_RESULT|mode=" & layoutMode & _
@@ -498,6 +513,17 @@ Private Sub MoveViewOutlineCenter( _
         Module8_RuntimeSupport.GetViewName(swView)
     swView.Position = targetPosition
     evidence.LayoutMoves = evidence.LayoutMoves + 1
+
+    Dim readbackOutline As Variant
+    readbackOutline = swView.GetOutline
+    evidence.AddInfo "LAYOUT_MOVE|view=" & _
+        Module8_RuntimeSupport.GetViewName(swView) & _
+        "|requestedCenter=" & Format$(targetCenterX, "0.000000") & "," & _
+        Format$(targetCenterY, "0.000000") & _
+        "|readbackOutline=" & Format$(CDbl(readbackOutline(0)), "0.000000") & _
+        "," & Format$(CDbl(readbackOutline(1)), "0.000000") & "," & _
+        Format$(CDbl(readbackOutline(2)), "0.000000") & "," & _
+        Format$(CDbl(readbackOutline(3)), "0.000000")
 End Sub
 
 Private Function OutlineWidth(ByVal outline As Variant) As Double
@@ -593,6 +619,7 @@ Private Function ValidateLayout( _
     ByVal bottomBoundary As Double, _
     ByVal rightBoundary As Double, _
     ByVal topBoundary As Double, _
+    ByVal layoutMode As String, _
     ByRef evidence As CRunEvidence) As Boolean
 
     Dim valid As Boolean
@@ -605,6 +632,13 @@ Private Function ValidateLayout( _
 
         Dim firstOutline As Variant
         firstOutline = firstView.GetOutline
+
+        evidence.AddInfo "LAYOUT_READBACK|mode=" & layoutMode & _
+            "|view=" & Module8_RuntimeSupport.GetViewName(firstView) & _
+            "|outline=" & Format$(CDbl(firstOutline(0)), "0.000000") & "," & _
+            Format$(CDbl(firstOutline(1)), "0.000000") & "," & _
+            Format$(CDbl(firstOutline(2)), "0.000000") & "," & _
+            Format$(CDbl(firstOutline(3)), "0.000000")
 
         If firstView.Type = swDrawingDetailView Then
             If firstView.UseSheetScale <> 0 Or _
@@ -654,8 +688,22 @@ Private Function ValidateLayout( _
             Dim secondOutline As Variant
             secondOutline = secondView.GetOutline
 
+            evidence.AddInfo "LAYOUT_PAIR_CLEARANCE|mode=" & layoutMode & _
+                "|first=" & Module8_RuntimeSupport.GetViewName(firstView) & _
+                "|second=" & Module8_RuntimeSupport.GetViewName(secondView) & _
+                "|horizontalGap=" & Format$( _
+                    AxisGap(CDbl(firstOutline(0)), CDbl(firstOutline(2)), _
+                            CDbl(secondOutline(0)), CDbl(secondOutline(2))), _
+                    "0.000000") & _
+                "|verticalGap=" & Format$( _
+                    AxisGap(CDbl(firstOutline(1)), CDbl(firstOutline(3)), _
+                            CDbl(secondOutline(1)), CDbl(secondOutline(3))), _
+                    "0.000000") & _
+                "|requiredClearance=" & Format$( _
+                    Module8_RuntimeSupport.LAYOUT_MARGIN_M / 2#, "0.000000")
+
             If OutlinesOverlap(firstOutline, secondOutline) Then
-                evidence.AddFailure "View collision: '" & _
+                evidence.AddFailure "View collision [" & layoutMode & "]: '" & _
                     Module8_RuntimeSupport.GetViewName(firstView) & _
                     "' and '" & _
                     Module8_RuntimeSupport.GetViewName(secondView) & "'."
@@ -696,6 +744,18 @@ Private Function ViewClearsAllNotes( _
         Set note = ownerView.GetFirstNote
 
         Do While Not note Is Nothing
+            Dim renderedNoteText As String
+            If Not TryReadRenderedNoteText(note, renderedNoteText) Then
+                evidence.AddFailure "Layout cannot read note text; refusing " & _
+                    "to classify its visible extent."
+                Exit Function
+            End If
+
+            If Len(renderedNoteText) = 0 Then
+                evidence.AddInfo "NON_RENDERED_NOTE_SKIPPED|context=Layout"
+                GoTo NextNote
+            End If
+
             Dim noteExtent As Variant
             noteExtent = note.GetExtent
             If Not IsArray(noteExtent) Or _
@@ -764,6 +824,23 @@ Failed:
         CStr(Err.Number) & ": " & Err.Description
 End Function
 
+Private Function TryReadRenderedNoteText( _
+    ByRef note As SldWorks.Note, _
+    ByRef renderedText As String) As Boolean
+
+    On Error GoTo Failed
+
+    renderedText = note.GetText
+    renderedText = Replace$(renderedText, vbCr, vbNullString)
+    renderedText = Replace$(renderedText, vbLf, vbNullString)
+    renderedText = Trim$(renderedText)
+    TryReadRenderedNoteText = True
+    Exit Function
+
+Failed:
+    renderedText = vbNullString
+End Function
+
 Private Function OutlineIntersectsRectangle( _
     ByVal viewOutline As Variant, _
     ByVal rectLeft As Double, _
@@ -806,6 +883,24 @@ Failed:
     IsIsometricView = False
 End Function
 
+Private Function AxisGap( _
+    ByVal firstMinimum As Double, _
+    ByVal firstMaximum As Double, _
+    ByVal secondMinimum As Double, _
+    ByVal secondMaximum As Double) As Double
+
+    Dim secondAfterFirst As Double
+    Dim firstAfterSecond As Double
+    secondAfterFirst = secondMinimum - firstMaximum
+    firstAfterSecond = firstMinimum - secondMaximum
+
+    If secondAfterFirst > firstAfterSecond Then
+        AxisGap = secondAfterFirst
+    Else
+        AxisGap = firstAfterSecond
+    End If
+End Function
+
 Private Function OutlinesOverlap( _
     ByVal firstOutline As Variant, _
     ByVal secondOutline As Variant) As Boolean
@@ -814,8 +909,12 @@ Private Function OutlinesOverlap( _
     clearance = Module8_RuntimeSupport.LAYOUT_MARGIN_M / 2#
 
     OutlinesOverlap = Not ( _
-        CDbl(firstOutline(2)) + clearance <= CDbl(secondOutline(0)) Or _
-        CDbl(secondOutline(2)) + clearance <= CDbl(firstOutline(0)) Or _
-        CDbl(firstOutline(3)) + clearance <= CDbl(secondOutline(1)) Or _
-        CDbl(secondOutline(3)) + clearance <= CDbl(firstOutline(1)))
+        CDbl(firstOutline(2)) + clearance <= _
+            CDbl(secondOutline(0)) + LAYOUT_COMPARISON_TOLERANCE_M Or _
+        CDbl(secondOutline(2)) + clearance <= _
+            CDbl(firstOutline(0)) + LAYOUT_COMPARISON_TOLERANCE_M Or _
+        CDbl(firstOutline(3)) + clearance <= _
+            CDbl(secondOutline(1)) + LAYOUT_COMPARISON_TOLERANCE_M Or _
+        CDbl(secondOutline(3)) + clearance <= _
+            CDbl(firstOutline(1)) + LAYOUT_COMPARISON_TOLERANCE_M)
 End Function

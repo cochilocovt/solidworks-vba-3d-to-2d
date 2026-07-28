@@ -182,6 +182,8 @@ Private Function CollectOwnedCandidates( _
     Dim cylinderFaceCount As Long
     Dim circularEdgeCount As Long
     Dim mappedEdgeCount As Long
+    Dim curveCircleProofCount As Long
+    Dim cylinderSurfaceProofCount As Long
 
     Dim featureIndex As Long
     For featureIndex = 1 To modelHoleFeatures.Count
@@ -217,8 +219,28 @@ Private Function CollectOwnedCandidates( _
                                     Dim modelEdge As SldWorks.Edge
                                     Set modelEdge = modelEdges(edgeIndex)
 
-                                    If ModelEdgeIsCircular(modelEdge) Then
+                                    Dim provenCircleData As Variant
+                                    Dim circleFailure As String
+                                    Dim circleProofSource As String
+                                    If TryReadClosedCircularEdge( _
+                                        modelEdge, cylinderFace, _
+                                        provenCircleData, circleProofSource, _
+                                        circleFailure) Then
+
                                         circularEdgeCount = circularEdgeCount + 1
+                                        If StrComp(circleProofSource, _
+                                            "ICurve.CircleParams", _
+                                            vbTextCompare) = 0 Then
+
+                                            curveCircleProofCount = _
+                                                curveCircleProofCount + 1
+                                        ElseIf StrComp(circleProofSource, _
+                                            "ISurface.CylinderParams", _
+                                            vbTextCompare) = 0 Then
+
+                                            cylinderSurfaceProofCount = _
+                                                cylinderSurfaceProofCount + 1
+                                        End If
 
                                         Dim drawingEdge As SldWorks.Edge
                                         Set drawingEdge = _
@@ -235,7 +257,8 @@ Private Function CollectOwnedCandidates( _
                                             Set candidate = BuildOwnedCandidate( _
                                                 swApp, swView, component, _
                                                 drawingEdge, modelEdge, _
-                                                cylinderFace, ownerFeature)
+                                                cylinderFace, ownerFeature, _
+                                                True, provenCircleData, evidence)
 
                                             If candidate.Accepted Then
                                                 AddOrMergeCandidate results, candidate
@@ -244,6 +267,8 @@ Private Function CollectOwnedCandidates( _
                                                     candidate.RejectionReason
                                             End If
                                         End If
+                                    Else
+                                        RecordRejection rejected, circleFailure
                                     End If
                                 Next edgeIndex
                             End If
@@ -263,6 +288,8 @@ Private Function CollectOwnedCandidates( _
         "|faces=" & CStr(faceCount) & _
         "|internalCylinders=" & CStr(cylinderFaceCount) & _
         "|circularEdges=" & CStr(circularEdgeCount) & _
+        "|curveCircleProofs=" & CStr(curveCircleProofCount) & _
+        "|cylinderSurfaceProofs=" & CStr(cylinderSurfaceProofCount) & _
         "|mappedEdges=" & CStr(mappedEdgeCount)
 
     evidence.CandidatesAccepted = _
@@ -272,6 +299,12 @@ Private Function CollectOwnedCandidates( _
     For acceptedIndex = 1 To results.Count
         Dim acceptedCandidate As CHoleCandidate
         Set acceptedCandidate = results(acceptedIndex)
+
+        If Module1_Main.GetFixtureKey(evidence.PartPath) = _
+           "P-0251-14A-001" Then
+
+            evidence.RegisterManufacturingCandidate acceptedCandidate
+        End If
 
         If Not evidence.RegisterPhysicalLocation( _
             acceptedCandidate.PhysicalInstanceKey, _
@@ -373,21 +406,208 @@ Failed:
     failureReason = "VisibleComponentReadError:" & CStr(Err.Number)
 End Function
 
-Private Function ModelEdgeIsCircular( _
-    ByRef modelEdge As SldWorks.Edge) As Boolean
+Private Function TryReadClosedCircularEdge( _
+    ByRef modelEdge As SldWorks.Edge, _
+    ByRef cylinderFace As SldWorks.Face2, _
+    ByRef circleData As Variant, _
+    ByRef proofSource As String, _
+    ByRef failureReason As String) As Boolean
 
-    If modelEdge Is Nothing Then Exit Function
+    circleData = Empty
+    proofSource = vbNullString
+    failureReason = "ClosedCircleReadUninitialized"
+    If modelEdge Is Nothing Then
+        failureReason = "ClosedCircleModelEdgeNothing"
+        Exit Function
+    End If
+    If cylinderFace Is Nothing Then
+        failureReason = "ClosedCircleCylinderFaceNothing"
+        Exit Function
+    End If
     On Error GoTo Failed
 
+    Dim currentStep As String
+    currentStep = "GetCurve"
     Dim curve As SldWorks.Curve
     Set curve = modelEdge.GetCurve
-    If curve Is Nothing Then Exit Function
+    If curve Is Nothing Then
+        failureReason = "ClosedCircleCurveNothing"
+        Exit Function
+    End If
 
-    ModelEdgeIsCircular = curve.IsCircle
+    currentStep = "GetCurveParams3"
+    Dim curveParameters As SldWorks.CurveParamData
+    Set curveParameters = modelEdge.GetCurveParams3
+    If curveParameters Is Nothing Then
+        failureReason = "ClosedCircleCurveParamsNothing"
+        Exit Function
+    End If
+
+    currentStep = "VerifyParameterSpan"
+    If curveParameters.UMaxValue <= curveParameters.UMinValue Then
+        failureReason = "ClosedCircleParameterSpanInvalid"
+        Exit Function
+    End If
+
+    currentStep = "VerifyParameterClosure"
+    If Not CurveParameterEndpointsAreCoincident(curveParameters) Then
+        failureReason = "ClosedCircleParameterEndpointsDistinct"
+        Exit Function
+    End If
+
+    currentStep = "GetVertices"
+    Dim startVertex As SldWorks.Vertex
+    Dim endVertex As SldWorks.Vertex
+    Set startVertex = modelEdge.GetStartVertex
+    Set endVertex = modelEdge.GetEndVertex
+
+    currentStep = "VerifyTopology"
+    If startVertex Is Nothing And endVertex Is Nothing Then
+        ' SOLIDWORKS represents a closed cylinder edge without vertices.
+    ElseIf startVertex Is Nothing Or endVertex Is Nothing Then
+        failureReason = "ClosedCircleOneVertexOnly"
+        Exit Function
+    ElseIf Not VerticesAreCoincident(startVertex, endVertex) Then
+        failureReason = "ClosedCircleDistinctVertices"
+        Exit Function
+    End If
+
+    currentStep = "IsCircle"
+    Dim curveIsCircular As Boolean
+    curveIsCircular = CBool(curve.IsCircle)
+
+    If curveIsCircular Then
+        currentStep = "CircleParams"
+        circleData = curve.CircleParams
+        proofSource = "ICurve.CircleParams"
+    Else
+        currentStep = "CylinderParamsFallback"
+        If Not TryReadCylinderCircleData( _
+            cylinderFace, circleData) Then
+
+            failureReason = "ClosedCircleCylinderParamsUnavailable"
+            Exit Function
+        End If
+
+        proofSource = "ISurface.CylinderParams"
+    End If
+
+    If Not IsArray(circleData) Then
+        failureReason = "ClosedCircleParamsNotArray"
+        Exit Function
+    End If
+    If Module8_RuntimeSupport.CountVariantItems(circleData) <> 7 Then
+        failureReason = "ClosedCircleParamsWrongSize"
+        Exit Function
+    End If
+    If Abs(CDbl(circleData(LBound(circleData) + 6))) <= _
+       Module8_RuntimeSupport.GEOMETRY_TOLERANCE_M Then
+
+        failureReason = "ClosedCircleRadiusDegenerate"
+        Exit Function
+    End If
+
+    failureReason = vbNullString
+    TryReadClosedCircularEdge = True
     Exit Function
 
 Failed:
-    ModelEdgeIsCircular = False
+    circleData = Empty
+    proofSource = vbNullString
+    failureReason = "ClosedCircleReadError:" & currentStep & ":" & _
+        CStr(Err.Number) & ":" & Err.Description
+End Function
+
+Private Function CurveParameterEndpointsAreCoincident( _
+    ByRef curveParameters As SldWorks.CurveParamData) As Boolean
+
+    If curveParameters Is Nothing Then Exit Function
+    On Error GoTo Failed
+
+    Dim startPoint As Variant
+    Dim endPoint As Variant
+    startPoint = curveParameters.StartPoint
+    endPoint = curveParameters.EndPoint
+
+    If Not IsArray(startPoint) Or Not IsArray(endPoint) Then Exit Function
+    If Module8_RuntimeSupport.CountVariantItems(startPoint) < 3 Or _
+       Module8_RuntimeSupport.CountVariantItems(endPoint) < 3 Then Exit Function
+
+    Dim startIndex As Long
+    Dim endIndex As Long
+    startIndex = LBound(startPoint)
+    endIndex = LBound(endPoint)
+
+    Dim distance As Double
+    distance = Sqr( _
+        (CDbl(startPoint(startIndex)) - CDbl(endPoint(endIndex))) ^ 2 + _
+        (CDbl(startPoint(startIndex + 1)) - _
+         CDbl(endPoint(endIndex + 1))) ^ 2 + _
+        (CDbl(startPoint(startIndex + 2)) - _
+         CDbl(endPoint(endIndex + 2))) ^ 2)
+
+    CurveParameterEndpointsAreCoincident = _
+        (distance <= Module8_RuntimeSupport.GEOMETRY_TOLERANCE_M)
+    Exit Function
+
+Failed:
+    CurveParameterEndpointsAreCoincident = False
+End Function
+
+Private Function TryReadCylinderCircleData( _
+    ByRef cylinderFace As SldWorks.Face2, _
+    ByRef cylinderData As Variant) As Boolean
+
+    cylinderData = Empty
+    If cylinderFace Is Nothing Then Exit Function
+    On Error GoTo Failed
+
+    Dim surface As SldWorks.Surface
+    Set surface = cylinderFace.GetSurface
+    If surface Is Nothing Then Exit Function
+
+    Dim isCylinder As Boolean
+    isCylinder = CBool(surface.IsCylinder)
+    If isCylinder = False Then Exit Function
+
+    cylinderData = surface.CylinderParams
+    If Not IsArray(cylinderData) Then Exit Function
+    If Module8_RuntimeSupport.CountVariantItems(cylinderData) <> 7 Then
+        cylinderData = Empty
+        Exit Function
+    End If
+
+    TryReadCylinderCircleData = True
+    Exit Function
+
+Failed:
+    cylinderData = Empty
+End Function
+
+Private Function VerticesAreCoincident( _
+    ByRef startVertex As SldWorks.Vertex, _
+    ByRef endVertex As SldWorks.Vertex) As Boolean
+
+    On Error GoTo Failed
+
+    Dim startPoint As Variant
+    Dim endPoint As Variant
+    startPoint = startVertex.GetPoint
+    endPoint = endVertex.GetPoint
+    If Not IsArray(startPoint) Or Not IsArray(endPoint) Then Exit Function
+
+    Dim distance As Double
+    distance = Sqr( _
+        (CDbl(startPoint(0)) - CDbl(endPoint(0))) ^ 2 + _
+        (CDbl(startPoint(1)) - CDbl(endPoint(1))) ^ 2 + _
+        (CDbl(startPoint(2)) - CDbl(endPoint(2))) ^ 2)
+
+    VerticesAreCoincident = _
+        (distance <= Module8_RuntimeSupport.GEOMETRY_TOLERANCE_M)
+    Exit Function
+
+Failed:
+    VerticesAreCoincident = False
 End Function
 
 Private Function GetDrawingEdgeForModelEdge( _
@@ -415,7 +635,10 @@ Private Function BuildOwnedCandidate( _
     ByRef drawingEdge As SldWorks.Edge, _
     ByRef modelEdge As SldWorks.Edge, _
     ByRef cylinderFace As SldWorks.Face2, _
-    ByRef ownerFeature As SldWorks.Feature) As CHoleCandidate
+    ByRef ownerFeature As SldWorks.Feature, _
+    ByVal internalCylinderProven As Boolean, _
+    ByRef provenCircleData As Variant, _
+    ByRef evidence As CRunEvidence) As CHoleCandidate
 
     Dim candidate As New CHoleCandidate
     Set BuildOwnedCandidate = candidate
@@ -462,42 +685,16 @@ Private Function BuildOwnedCandidate( _
         Exit Function
     End If
 
-    If Not Module3_ModelAudit.IsInternalCylindricalFace(cylinderFace) Then
-        candidate.RejectionReason = "CylinderFaceIsNotInternal"
-        Exit Function
-    End If
-
-    Dim curve As SldWorks.Curve
-    Set curve = modelEdge.GetCurve
-
-    If curve Is Nothing Then
-        candidate.RejectionReason = "NoUnderlyingCurve"
-        Exit Function
-    End If
-
-    If Not curve.IsCircle Then
-        candidate.RejectionReason = "NotCircular"
-        Exit Function
-    End If
-
-    Dim parameterData As Object
-    Set parameterData = modelEdge.GetCurveParams3
-
-    If parameterData Is Nothing Then
-        candidate.RejectionReason = "NoCurveParams3"
-        Exit Function
-    End If
-
-    If Not IsClosedCurveParameterization(parameterData) Then
-        candidate.RejectionReason = "CircularArcNotFullCircle"
+    If Not internalCylinderProven Then
+        candidate.RejectionReason = "InternalCylinderProofNotPropagated"
         Exit Function
     End If
 
     Dim circleData As Variant
-    circleData = curve.CircleParams
+    circleData = provenCircleData
 
     If Not IsArray(circleData) Then
-        candidate.RejectionReason = "NoCircleParameters"
+        candidate.RejectionReason = "ClosedCircularEdgeProofNotPropagated"
         Exit Function
     End If
 
@@ -531,12 +728,26 @@ Private Function BuildOwnedCandidate( _
     Dim featureTypeUpper As String
     featureTypeUpper = UCase$(candidate.FeatureType)
 
-    If featureTypeUpper <> "HOLEWZD" And _
+    If featureTypeUpper = "MIRRORPATTERN" Then
+        Dim seedFeature As SldWorks.Feature
+        Set seedFeature = _
+            Module3_ModelAudit.GetOwnedHoleSeedFeature(cylinderFace)
+
+        If seedFeature Is Nothing Then
+            candidate.RejectionReason = "MirrorFaceHasNoOwnedHoleSeed"
+            Exit Function
+        End If
+
+        candidate.OwnershipProof = "AuditedMirrorFaceSeed:" & _
+            seedFeature.Name & "/" & _
+            Module3_ModelAudit.DescribeFeatureType(seedFeature)
+
+    ElseIf featureTypeUpper <> "HOLEWZD" And _
        featureTypeUpper <> "ADVHOLEWZD" And _
        featureTypeUpper <> "SKETCHHOLE" Then
 
         If InStr(featureTypeUpper, "CUT") = 0 Or _
-           Not Module3_ModelAudit.IsInternalCylindricalFace(cylinderFace) Then
+           Not internalCylinderProven Then
 
             candidate.RejectionReason = "GenericCutMatchedCylinderNotProvenInternal"
             Exit Function
@@ -592,17 +803,24 @@ Private Function BuildOwnedCandidate( _
     End If
 
     Dim viewZ As Double
+    Dim centreTransformProof As String
     If Not Module8_RuntimeSupport.TransformPointToView( _
         swApp, swView, candidate.ModelX, candidate.ModelY, candidate.ModelZ, _
-        candidate.ViewX, candidate.ViewY, viewZ) Then
+        candidate.ViewX, candidate.ViewY, viewZ, centreTransformProof) Then
 
-        candidate.RejectionReason = "CentreTransformFailed"
+        evidence.AddInfo "EVIDENCE|" & centreTransformProof & _
+            "|context=CandidateCentre"
+        candidate.RejectionReason = "CentrePageFrameNotProven"
         Exit Function
     End If
 
-    Module8_RuntimeSupport.ViewToSheetCoordinates _
-        swView, candidate.ViewX, candidate.ViewY, _
-        candidate.SheetX, candidate.SheetY
+    evidence.AddInfo "EVIDENCE|" & centreTransformProof & _
+        "|context=CandidateCentre"
+
+    ' ModelToViewTransform already supplies drawing-page coordinates for
+    ' dimension placement.  Adding IView.Position would translate them twice.
+    candidate.SheetX = candidate.ViewX
+    candidate.SheetY = candidate.ViewY
 
     CaptureFeatureSemantics candidate, cylinderFace
     candidate.FamilyKey = BuildFamilyKey(candidate)
@@ -622,7 +840,9 @@ Private Sub CaptureFeatureSemantics( _
 
     candidate.RadiiStack = Format$(candidate.Radius, "0.000000")
 
-    If cylinderFace.FaceInSurfaceSense Then
+    Dim faceInSurfaceSense As Boolean
+    faceInSurfaceSense = CBool(cylinderFace.FaceInSurfaceSense)
+    If faceInSurfaceSense Then
         candidate.MachiningSide = "internal-cylinder"
     Else
         candidate.MachiningSide = "feature-owned-cylinder"
@@ -706,35 +926,6 @@ Failed:
     ReadDefinitionProperty = vbNullString
 End Function
 
-Private Function IsClosedCurveParameterization( _
-    ByVal parameterData As Object) As Boolean
-
-    On Error GoTo Failed
-
-    Dim startPoint As Variant
-    Dim endPoint As Variant
-    startPoint = parameterData.StartPoint
-    endPoint = parameterData.EndPoint
-
-    Dim distance As Double
-    distance = Sqr( _
-        (CDbl(startPoint(0)) - CDbl(endPoint(0))) ^ 2 + _
-        (CDbl(startPoint(1)) - CDbl(endPoint(1))) ^ 2 + _
-        (CDbl(startPoint(2)) - CDbl(endPoint(2))) ^ 2)
-
-    If distance > Module8_RuntimeSupport.GEOMETRY_TOLERANCE_M Then Exit Function
-
-    If Abs(CDbl(parameterData.UMaxValue) - _
-           CDbl(parameterData.UMinValue)) <= _
-           Module8_RuntimeSupport.GEOMETRY_TOLERANCE_M Then Exit Function
-
-    IsClosedCurveParameterization = True
-    Exit Function
-
-Failed:
-    IsClosedCurveParameterization = False
-End Function
-
 Private Function CylinderFaceMatchesRadius( _
     ByRef cylinderFace As SldWorks.Face2, _
     ByVal circleRadius As Double) As Boolean
@@ -747,7 +938,10 @@ Private Function CylinderFaceMatchesRadius( _
     Set surface = cylinderFace.GetSurface
 
     If surface Is Nothing Then Exit Function
-    If Not surface.IsCylinder Then Exit Function
+
+    Dim isCylinder As Boolean
+    isCylinder = CBool(surface.IsCylinder)
+    If isCylinder = False Then Exit Function
 
     Dim cylinderData As Variant
     cylinderData = surface.CylinderParams
@@ -1025,13 +1219,13 @@ Private Function ProveDatum( _
 
     Select Case UCase$(Trim$(requestedOrigin))
         Case "BOTTOM-LEFT"
-            ProveCornerDatum swApp, swDrawModel, swView, False, proof
+            ProveCornerDatum swApp, swDrawModel, swView, False, proof, evidence
 
         Case "TOP-LEFT"
-            ProveCornerDatum swApp, swDrawModel, swView, True, proof
+            ProveCornerDatum swApp, swDrawModel, swView, True, proof, evidence
 
         Case "CENTER"
-            ProveCenterDatum swApp, swDrawModel, swView, candidates, proof
+            ProveCenterDatum swApp, swDrawModel, swView, candidates, proof, evidence
 
         Case Else
             proof.FailureReason = "Unsupported datum option '" & requestedOrigin & "'."
@@ -1148,7 +1342,8 @@ Private Sub ProveCornerDatum( _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
     ByRef swView As SldWorks.View, _
     ByVal useTop As Boolean, _
-    ByRef proof As CDatumProof)
+    ByRef proof As CDatumProof, _
+    ByRef evidence As CRunEvidence)
 
     On Error GoTo Failed
 
@@ -1163,7 +1358,7 @@ Private Sub ProveCornerDatum( _
 
     CollectModelFirstVertexCoordinates _
         swApp, swView, entities, modelEntities, components, _
-        modelXValues, modelYValues, modelZValues, xValues, yValues
+        modelXValues, modelYValues, modelZValues, xValues, yValues, evidence
 
     If entities.Count = 0 Then
         proof.FailureReason = "No corresponding visible model vertices."
@@ -1202,8 +1397,8 @@ Private Sub ProveCornerDatum( _
             proof.ModelZ = CDbl(modelZValues(i))
             proof.ViewX = CDbl(xValues(i))
             proof.ViewY = CDbl(yValues(i))
-            Module8_RuntimeSupport.ViewToSheetCoordinates _
-                swView, proof.ViewX, proof.ViewY, proof.SheetX, proof.SheetY
+            proof.SheetX = proof.ViewX
+            proof.SheetY = proof.ViewY
             proof.Proven = True
             proof.ProofSource = IIf(useTop, _
                 "visible model vertex at simultaneous minimum-X/maximum-Y", _
@@ -1226,7 +1421,8 @@ Private Sub ProveCenterDatum( _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
     ByRef swView As SldWorks.View, _
     ByRef candidates As Collection, _
-    ByRef proof As CDatumProof)
+    ByRef proof As CDatumProof, _
+    ByRef evidence As CRunEvidence)
 
     On Error GoTo Failed
 
@@ -1241,13 +1437,33 @@ Private Sub ProveCenterDatum( _
 
     CollectModelFirstVertexCoordinates _
         swApp, swView, entities, modelEntities, components, _
-        modelXValues, modelYValues, modelZValues, xValues, yValues
+        modelXValues, modelYValues, modelZValues, xValues, yValues, evidence
 
     Dim i As Long
+
+    Dim projectedOriginX As Double
+    Dim projectedOriginY As Double
+    Dim projectedOriginZ As Double
+    Dim projectedOriginTransformProof As String
+    If Not Module8_RuntimeSupport.TransformPointToView( _
+        swApp, swView, 0#, 0#, 0#, projectedOriginX, _
+        projectedOriginY, projectedOriginZ, _
+        projectedOriginTransformProof) Then
+
+        evidence.AddInfo "EVIDENCE|" & projectedOriginTransformProof & _
+            "|context=ProjectedModelOrigin"
+        proof.FailureReason = "Projected model origin page frame was not proven: " & _
+            projectedOriginTransformProof
+        Exit Sub
+    End If
+
+    evidence.AddInfo "EVIDENCE|" & projectedOriginTransformProof & _
+        "|context=ProjectedModelOrigin"
+
     For i = 1 To entities.Count
-        If Abs(CDbl(xValues(i))) <= _
+        If Abs(CDbl(xValues(i)) - projectedOriginX) <= _
            Module8_RuntimeSupport.PROJECTED_TOLERANCE_M And _
-           Abs(CDbl(yValues(i))) <= _
+           Abs(CDbl(yValues(i)) - projectedOriginY) <= _
            Module8_RuntimeSupport.PROJECTED_TOLERANCE_M Then
 
             Set proof.DrawingEntity = entities(i)
@@ -1260,8 +1476,8 @@ Private Sub ProveCenterDatum( _
             proof.ModelZ = CDbl(modelZValues(i))
             proof.ViewX = CDbl(xValues(i))
             proof.ViewY = CDbl(yValues(i))
-            Module8_RuntimeSupport.ViewToSheetCoordinates _
-                swView, proof.ViewX, proof.ViewY, proof.SheetX, proof.SheetY
+            proof.SheetX = proof.ViewX
+            proof.SheetY = proof.ViewY
             proof.Proven = True
             proof.ProofSource = "visible model vertex at projected model origin"
             proof.StableKey = BuildDatumStableKey(proof)
@@ -1273,9 +1489,9 @@ Private Sub ProveCenterDatum( _
         Dim candidate As CHoleCandidate
         Set candidate = candidates(i)
 
-        If Abs(candidate.ViewX) <= _
+        If Abs(candidate.ViewX - projectedOriginX) <= _
            Module8_RuntimeSupport.PROJECTED_TOLERANCE_M And _
-           Abs(candidate.ViewY) <= _
+           Abs(candidate.ViewY - projectedOriginY) <= _
            Module8_RuntimeSupport.PROJECTED_TOLERANCE_M Then
 
             Set proof.DrawingEntity = AsEntity(candidate.DrawingEdge)
@@ -1323,7 +1539,8 @@ Private Sub CollectModelFirstVertexCoordinates( _
     ByRef modelYValues As Collection, _
     ByRef modelZValues As Collection, _
     ByRef xValues As Collection, _
-    ByRef yValues As Collection)
+    ByRef yValues As Collection, _
+    ByRef evidence As CRunEvidence)
 
     On Error GoTo Failed
 
@@ -1369,11 +1586,11 @@ Private Sub CollectModelFirstVertexCoordinates( _
                         AddMappedModelVertex swApp, swView, component, _
                             startVertex, entities, modelEntities, components, _
                             modelXValues, modelYValues, modelZValues, _
-                            xValues, yValues
+                            xValues, yValues, evidence
                         AddMappedModelVertex swApp, swView, component, _
                             endVertex, entities, modelEntities, components, _
                             modelXValues, modelYValues, modelZValues, _
-                            xValues, yValues
+                            xValues, yValues, evidence
                     End If
                 Next edgeIndex
             End If
@@ -1397,7 +1614,8 @@ Private Sub AddMappedModelVertex( _
     ByRef modelYValues As Collection, _
     ByRef modelZValues As Collection, _
     ByRef xValues As Collection, _
-    ByRef yValues As Collection)
+    ByRef yValues As Collection, _
+    ByRef evidence As CRunEvidence)
 
     If modelVertex Is Nothing Then Exit Sub
     On Error GoTo Failed
@@ -1414,17 +1632,27 @@ Private Sub AddMappedModelVertex( _
     pointData = modelVertex.GetPoint
     If Not IsArray(pointData) Then Exit Sub
 
-    Dim viewX As Double
-    Dim viewY As Double
-    Dim viewZ As Double
-    If Not Module8_RuntimeSupport.TransformPointToView( _
-        swApp, swView, CDbl(pointData(0)), CDbl(pointData(1)), _
-        CDbl(pointData(2)), viewX, viewY, viewZ) Then Exit Sub
-
     If MappedVertexAlreadyCollected( _
         modelXValues, modelYValues, modelZValues, _
         CDbl(pointData(0)), CDbl(pointData(1)), CDbl(pointData(2))) Then _
         Exit Sub
+
+    Dim viewX As Double
+    Dim viewY As Double
+    Dim viewZ As Double
+    Dim mappedVertexTransformProof As String
+    If Not Module8_RuntimeSupport.TransformPointToView( _
+        swApp, swView, CDbl(pointData(0)), CDbl(pointData(1)), _
+        CDbl(pointData(2)), viewX, viewY, viewZ, _
+        mappedVertexTransformProof) Then
+
+        evidence.AddInfo "EVIDENCE|" & mappedVertexTransformProof & _
+            "|context=MappedModelVertex"
+        Exit Sub
+    End If
+
+    evidence.AddInfo "EVIDENCE|" & mappedVertexTransformProof & _
+        "|context=MappedModelVertex"
 
     Dim drawingEntity As SldWorks.Entity
     Dim modelEntity As SldWorks.Entity

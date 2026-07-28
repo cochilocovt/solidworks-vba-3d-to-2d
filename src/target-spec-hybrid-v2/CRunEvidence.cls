@@ -12,6 +12,7 @@ Private mProjectionLocations As Object
 Private mPhysicalLocationRecords As Collection
 Private mProjectionLocationRecords As Collection
 Private mTitlePropertyRecords As Collection
+Private mManufacturingCandidates As Collection
 
 Public RunId As String
 Public PartPath As String
@@ -36,10 +37,19 @@ Public UsableLeft As Double
 Public UsableBottom As Double
 Public UsableRight As Double
 Public UsableTop As Double
+Public ContentBorderLeft As Double
+Public ContentBorderBottom As Double
+Public ContentBorderRight As Double
+Public ContentBorderTop As Double
 Public TitleBlockLeft As Double
 Public TitleBlockBottom As Double
 Public TitleBlockRight As Double
 Public TitleBlockTop As Double
+Public PartIdentificationLeft As Double
+Public PartIdentificationBottom As Double
+Public PartIdentificationRight As Double
+Public PartIdentificationTop As Double
+Public PartIdentificationBoundsProven As Boolean
 Public LayoutBoundariesProven As Boolean
 Public FinalSelectionCount As Long
 Public SheetContextRestored As Boolean
@@ -76,6 +86,7 @@ Private Sub Class_Initialize()
     Set mPhysicalLocationRecords = New Collection
     Set mProjectionLocationRecords = New Collection
     Set mTitlePropertyRecords = New Collection
+    Set mManufacturingCandidates = New Collection
 End Sub
 
 Public Sub RequireStage(ByVal stageName As String)
@@ -275,6 +286,38 @@ Public Property Get ProjectionLocationRecordCount() As Long
     ProjectionLocationRecordCount = mProjectionLocations.Count
 End Property
 
+Public Sub RegisterManufacturingCandidate( _
+    ByRef candidate As CHoleCandidate)
+
+    If candidate Is Nothing Then Exit Sub
+    If Not candidate.Accepted Then Exit Sub
+
+    Dim i As Long
+    For i = 1 To mManufacturingCandidates.Count
+        Dim existing As CHoleCandidate
+        Set existing = mManufacturingCandidates(i)
+
+        If StrComp(existing.ViewName, candidate.ViewName, vbTextCompare) = 0 And _
+           StrComp(existing.PhysicalInstanceKey, candidate.PhysicalInstanceKey, _
+                   vbTextCompare) = 0 Then Exit Sub
+    Next i
+
+    mManufacturingCandidates.Add candidate
+End Sub
+
+Public Property Get ManufacturingCandidateCount() As Long
+    ManufacturingCandidateCount = mManufacturingCandidates.Count
+End Property
+
+Public Function ManufacturingCandidateAt( _
+    ByVal candidateIndex As Long) As CHoleCandidate
+
+    If candidateIndex < 1 Or _
+       candidateIndex > mManufacturingCandidates.Count Then Exit Function
+
+    Set ManufacturingCandidateAt = mManufacturingCandidates(candidateIndex)
+End Function
+
 Public Sub AddTitlePropertyEvidence( _
     ByVal propertyName As String, _
     ByVal sourceDescription As String, _
@@ -367,10 +410,23 @@ Public Function BuildText() As String
            "," & Format$(UsableBottom, "0.000000") & " to " & _
            Format$(UsableRight, "0.000000") & "," & _
            Format$(UsableTop, "0.000000") & vbCrLf & _
+           "Content border bounds m: " & _
+           Format$(ContentBorderLeft, "0.000000") & _
+           "," & Format$(ContentBorderBottom, "0.000000") & " to " & _
+           Format$(ContentBorderRight, "0.000000") & "," & _
+           Format$(ContentBorderTop, "0.000000") & vbCrLf
+
+    text = text & _
            "Title block bounds m: " & Format$(TitleBlockLeft, "0.000000") & _
            "," & Format$(TitleBlockBottom, "0.000000") & " to " & _
            Format$(TitleBlockRight, "0.000000") & "," & _
            Format$(TitleBlockTop, "0.000000") & vbCrLf & _
+           "Part identification bounds m: " & _
+           Format$(PartIdentificationLeft, "0.000000") & _
+           "," & Format$(PartIdentificationBottom, "0.000000") & " to " & _
+           Format$(PartIdentificationRight, "0.000000") & "," & _
+           Format$(PartIdentificationTop, "0.000000") & _
+           "; proved=" & CStr(PartIdentificationBoundsProven) & vbCrLf & _
            "Measured layout boundaries: " & CStr(LayoutBoundariesProven) & vbCrLf & _
            "Final selection count: " & CStr(FinalSelectionCount) & vbCrLf & _
            "Sheet context restored: " & CStr(SheetContextRestored) & vbCrLf & _
@@ -394,7 +450,9 @@ Public Function BuildText() As String
            "Vertical ordinate groups: " & CStr(VerticalOrdinateGroups) & vbCrLf & _
            "Ordinate feature selections: " & CStr(OrdinateEntitiesSelected) & vbCrLf & _
            "Layout moves: " & CStr(LayoutMoves) & vbCrLf & _
-           "Title properties written: " & CStr(TitlePropertiesWritten) & vbCrLf
+           "Title properties written: " & CStr(TitlePropertiesWritten) & vbCrLf & _
+           "Manufacturing candidates retained: " & _
+           CStr(ManufacturingCandidateCount) & vbCrLf
 
     text = text & BuildStageText()
     text = text & BuildCollectionText("PHYSICAL LOCATIONS", mPhysicalLocationRecords)

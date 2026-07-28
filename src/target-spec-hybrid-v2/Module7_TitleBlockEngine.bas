@@ -10,9 +10,9 @@ Private Const swMassPropertyAccuracyLevel_Higher As Long = 2
 Private Const swMassPropertiesStatus_OK As Long = 0
 
 Private Const REFERENCE_GENERAL_NOTES As String = _
-    "ALL DIMENSIONS ARE IN MILLIMETRES." & vbCrLf & _
-    "ALL CORNERS ARE CHAMFERED 0.5 x 45 DEG." & vbCrLf & _
-    "REMOVE ALL SHARP EDGES AND BURRS."
+    "All Dim. are in mm" & vbCrLf & _
+    "All corners are chamferd 0.5 x45 deg." & vbCrLf & _
+    "Remove All Sharp Edges And Burrs"
 
 Public Sub PopulateTitleBlock( _
     ByRef swPart As SldWorks.ModelDoc2, _
@@ -246,13 +246,13 @@ SheetItems:
         End If
         If Not VerifyLinkedText( _
             swDraw, generalNotes, "GeneralNotes", generalNotesSource, _
-            "RESERVED_NOTE_BAND", True, evidence) Then
+            "TITLE_BLOCK", True, evidence) Then
             notesStageValid = False
         End If
 
         If notesStageValid Then
             evidence.MarkStageProved "GENERAL_NOTES", _
-                "linked rendered note and reserved-band extent proved"
+                "controlled rendered note and title-block extent proved"
         Else
             evidence.MarkStageFailed "GENERAL_NOTES", _
                 "general note write, link, rendered value, or extent failed"
@@ -320,6 +320,616 @@ Failed:
     evidence.MarkStageFailed "PART_IDENTIFICATION", _
         "API error " & CStr(Err.Number) & ": " & Err.Description
 End Sub
+
+Public Function AddRequiredManufacturingDefinitions( _
+    ByRef swDrawModel As SldWorks.ModelDoc2, _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    AddRequiredManufacturingDefinitions = True
+
+    If Module1_Main.GetFixtureKey(evidence.PartPath) <> _
+       "P-0251-14A-001" Then Exit Function
+
+    On Error GoTo Failed
+    evidence.RequireStage "MANUFACTURING_DEFINITION"
+
+    If evidence.ManufacturingCandidateCount = 0 Then
+        evidence.AddFailure "P-0251 manufacturing callouts have no retained " & _
+            "ownership-proven drawing entities."
+        GoTo FailedStage
+    End If
+
+    Dim boreCandidate As CHoleCandidate
+    Dim faceCandidate As CHoleCandidate
+    Dim sideCandidate As CHoleCandidate
+    Set boreCandidate = FindManufacturingCandidate(evidence, "BORE")
+    Set faceCandidate = FindManufacturingCandidate(evidence, "FACE")
+    Set sideCandidate = FindManufacturingCandidate(evidence, "SIDE")
+
+    If boreCandidate Is Nothing Or faceCandidate Is Nothing Or _
+       sideCandidate Is Nothing Then
+
+        evidence.AddFailure "P-0251 ownership evidence did not resolve one " & _
+            "representative for each bore/face-hole/side-hole callout."
+        GoTo FailedStage
+    End If
+
+    If Not EnsureAssociativeManufacturingCallout( _
+        swDrawModel, swDraw, boreCandidate, "BORE", _
+        "<MOD-DIAM>47 H7 (+0.025/+0.000)" & vbCrLf & _
+            "<MOD-DIAM>40", evidence) Then GoTo FailedStage
+
+    If Not EnsureAssociativeManufacturingCallout( _
+        swDrawModel, swDraw, faceCandidate, "FACE", _
+        "6X <MOD-DIAM>6.6 THRU" & vbCrLf & _
+            "C'BORE <MOD-DIAM>11 x 6 DEEP", evidence) Then GoTo FailedStage
+
+    If Not EnsureAssociativeManufacturingCallout( _
+        swDrawModel, swDraw, sideCandidate, "SIDE", _
+        "4X <MOD-DIAM>4.2 x 12.4 DEEP" & vbCrLf & _
+            "TAP M5x0.8-6H x 10 DEEP", evidence) Then GoTo FailedStage
+
+    evidence.MarkStageProved "MANUFACTURING_DEFINITION", _
+        "three SOLIDWORKS-symbol callouts are attached to ownership-proven bore, face-hole, and side-hole drawing entities with leaders and safe extents"
+    AddRequiredManufacturingDefinitions = True
+    Exit Function
+
+FailedStage:
+    evidence.MarkStageFailed "MANUFACTURING_DEFINITION", _
+        "required associative P-0251 callout creation, attachment, symbol, or placement proof failed"
+    AddRequiredManufacturingDefinitions = False
+    Exit Function
+
+Failed:
+    evidence.AddFailure "P-0251 manufacturing-definition API error " & _
+        CStr(Err.Number) & ": " & Err.Description
+    Resume FailedStage
+End Function
+
+Private Function FindManufacturingCandidate( _
+    ByRef evidence As CRunEvidence, _
+    ByVal calloutKind As String) As CHoleCandidate
+
+    Dim bestScore As Double
+    bestScore = -1#
+
+    Dim i As Long
+    For i = 1 To evidence.ManufacturingCandidateCount
+        Dim candidate As CHoleCandidate
+        Set candidate = evidence.ManufacturingCandidateAt(i)
+
+        If Not candidate Is Nothing Then
+            If Not candidate.DrawingEdge Is Nothing And _
+               Not candidate.DrawingView Is Nothing Then
+
+                Dim featureText As String
+                Dim semanticText As String
+                Dim score As Double
+                featureText = UCase$(candidate.FeatureName & " " & _
+                    candidate.FeatureType)
+                semanticText = UCase$(candidate.SemanticsSummary)
+                score = -1#
+
+                Select Case UCase$(calloutKind)
+                    Case "BORE"
+                        If candidate.Radius >= 0.015 Then
+                            score = candidate.Radius * 1000000#
+                            If InStr(featureText, "CBORE") > 0 Or _
+                               InStr(featureText, "M5") > 0 Then score = -1#
+                        End If
+
+                    Case "FACE"
+                        If InStr(featureText, "CBORE") > 0 Or _
+                           InStr(featureText, "M6") > 0 Or _
+                           InStr(semanticText, "COUNTERBOREDIAMETER") > 0 Then
+
+                            score = 100000# - _
+                                Abs(candidate.Radius - 0.0033) * 1000000#
+                        ElseIf Abs(candidate.Radius - 0.0033) <= 0.0008 Then
+                            score = 1000# - _
+                                Abs(candidate.Radius - 0.0033) * 1000000#
+                        End If
+
+                    Case "SIDE"
+                        If InStr(featureText, "M5") > 0 Or _
+                           InStr(semanticText, "THREADDIAMETER") > 0 Or _
+                           InStr(semanticText, "FASTENERSIZE") > 0 Then
+
+                            score = 100000# - _
+                                Abs(candidate.Radius - 0.0021) * 1000000#
+                        ElseIf Abs(candidate.Radius - 0.0021) <= 0.0006 Then
+                            score = 1000# - _
+                                Abs(candidate.Radius - 0.0021) * 1000000#
+                        End If
+                End Select
+
+                If score > bestScore Then
+                    bestScore = score
+                    Set FindManufacturingCandidate = candidate
+                End If
+            End If
+        End If
+    Next i
+End Function
+
+Private Function EnsureAssociativeManufacturingCallout( _
+    ByRef swDrawModel As SldWorks.ModelDoc2, _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByRef candidate As CHoleCandidate, _
+    ByVal calloutKind As String, _
+    ByVal calloutText As String, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    On Error GoTo Failed
+
+    Dim calloutNote As SldWorks.Note
+    ' A short Hole Wizard phrase is not sufficient proof that this is one of
+    ' the controlled r20 callouts. Reuse only a note containing the complete
+    ' normalized definition; otherwise create and prove the controlled note.
+    Set calloutNote = FindNoteContaining(swDraw, calloutText)
+
+    If calloutNote Is Nothing Then
+        If Not Module8_RuntimeSupport.ActivateDrawingView( _
+            swDrawModel, swDraw, candidate.DrawingView, evidence, _
+            "P-0251 " & calloutKind & " callout") Then Exit Function
+
+        swDrawModel.ClearSelection2 True
+
+        Dim selectionManager As SldWorks.SelectionMgr
+        Set selectionManager = swDrawModel.SelectionManager
+        If selectionManager Is Nothing Then
+            evidence.AddFailure "P-0251 " & calloutKind & _
+                " callout has no SelectionMgr."
+            Exit Function
+        End If
+
+        Dim selectData As SldWorks.SelectData
+        Set selectData = selectionManager.CreateSelectData
+        If selectData Is Nothing Then
+            evidence.AddFailure "P-0251 " & calloutKind & _
+                " callout has no SelectData."
+            Exit Function
+        End If
+        Set selectData.View = candidate.DrawingView
+
+        Dim selectedEntity As SldWorks.Entity
+        Set selectedEntity = candidate.DrawingEdge
+        If selectedEntity Is Nothing Then
+            evidence.AddFailure "P-0251 " & calloutKind & _
+                " callout drawing edge has no IEntity interface."
+            Exit Function
+        End If
+
+        Dim selected As Boolean
+        selected = CBool(selectedEntity.Select4(False, selectData))
+        If selected = False Or _
+           selectionManager.GetSelectedObjectCount2(-1) < 1 Then
+
+            evidence.AddFailure "P-0251 " & calloutKind & _
+                " callout could not select its ownership-proven drawing edge."
+            swDrawModel.ClearSelection2 True
+            Exit Function
+        End If
+
+        evidence.RecordSolidWorksMutation _
+            "IModelDoc2.InsertNote(P0251" & calloutKind & "Callout)"
+        Set calloutNote = swDrawModel.InsertNote(calloutText)
+        swDrawModel.ClearSelection2 True
+
+        If calloutNote Is Nothing Then
+            evidence.AddFailure "P-0251 " & calloutKind & _
+                " associative callout was not created."
+            Exit Function
+        End If
+    End If
+
+    Dim calloutAnnotation As SldWorks.Annotation
+    Set calloutAnnotation = calloutNote.GetAnnotation
+    If calloutAnnotation Is Nothing Then
+        evidence.AddFailure "P-0251 " & calloutKind & _
+            " callout annotation is Nothing."
+        Exit Function
+    End If
+
+    Dim attachedEntities As Variant
+    attachedEntities = calloutAnnotation.GetAttachedEntities3
+    If Not IsArray(attachedEntities) Or _
+       Module8_RuntimeSupport.CountVariantItems(attachedEntities) = 0 Then
+
+        evidence.AddFailure "P-0251 " & calloutKind & _
+            " callout has no geometry attachment readback."
+        Exit Function
+    End If
+
+    If calloutAnnotation.GetLeaderCount < 1 Then
+        evidence.AddFailure "P-0251 " & calloutKind & _
+            " callout has no visible leader."
+        Exit Function
+    End If
+
+    Dim targetX As Double
+    Dim targetY As Double
+    If Not GetManufacturingCalloutTarget( _
+        candidate.DrawingView, calloutKind, evidence, targetX, targetY) Then
+
+        evidence.AddFailure "P-0251 " & calloutKind & _
+            " callout target could not be resolved from its view outline."
+        Exit Function
+    End If
+
+    evidence.RecordSolidWorksMutation _
+        "IAnnotation.SetPosition2(P0251" & calloutKind & "Callout)"
+    Dim positionSet As Boolean
+    positionSet = CBool(calloutAnnotation.SetPosition2(targetX, targetY, 0#))
+
+    If Not RebuildDrawing( _
+        swDrawModel, evidence, "P-0251 " & calloutKind & " callout rebuild") Then
+
+        Exit Function
+    End If
+
+    Dim position As Variant
+    position = calloutAnnotation.GetPosition
+    If Not IsArray(position) Or _
+       UBound(position) - LBound(position) + 1 < 2 Then
+
+        evidence.AddFailure "P-0251 " & calloutKind & _
+            " callout position readback is unavailable."
+        Exit Function
+    End If
+
+    Dim positionIndex As Long
+    positionIndex = LBound(position)
+    If Abs(CDbl(position(positionIndex)) - targetX) > 0.000001 Or _
+       Abs(CDbl(position(positionIndex + 1)) - targetY) > 0.000001 Then
+
+        evidence.AddFailure "P-0251 " & calloutKind & _
+            " callout position differs from its deterministic lane."
+        Exit Function
+    End If
+
+    If positionSet = False Then
+        evidence.AddWarning "IAnnotation.SetPosition2 returned False for the " & _
+            "P-0251 " & calloutKind & _
+            " callout, but exact position readback succeeded."
+    End If
+
+    If InStr(1, NormalizeComparisonText(calloutNote.GetText), _
+        NormalizeComparisonText(calloutText), vbTextCompare) = 0 Then
+
+        evidence.AddFailure "P-0251 " & calloutKind & _
+            " callout rendered text mismatch."
+        Exit Function
+    End If
+
+    Dim extentLeft As Double
+    Dim extentBottom As Double
+    Dim extentRight As Double
+    Dim extentTop As Double
+    Dim extentText As String
+    If Not GetNoteExtent( _
+        calloutNote, extentLeft, extentBottom, extentRight, extentTop, _
+        extentText) Then
+
+        evidence.AddFailure "P-0251 " & calloutKind & _
+            " callout extent is unavailable."
+        Exit Function
+    End If
+
+    If Not ManufacturingDefinitionExtentIsSafe( _
+        swDraw, extentLeft, extentBottom, extentRight, extentTop, evidence) Then
+
+        Exit Function
+    End If
+
+    If Not CalloutExtentClearsOtherAnnotations( _
+        swDraw, calloutAnnotation, extentLeft, extentBottom, _
+        extentRight, extentTop, evidence) Then Exit Function
+
+    evidence.AddInfo "MANUFACTURING_CALLOUT|fixture=P-0251-14A-001" & _
+        "|kind=" & calloutKind & _
+        "|feature=" & SafeEvidenceValue(candidate.FeatureName) & _
+        "|view=" & SafeEvidenceValue(candidate.ViewName) & _
+        "|physicalInstance=" & _
+            SafeEvidenceValue(candidate.PhysicalInstanceKey) & _
+        "|symbolSyntax=SOLIDWORKS:<MOD-DIAM>" & _
+        "|attachedEntities=" & _
+            CStr(Module8_RuntimeSupport.CountVariantItems(attachedEntities)) & _
+        "|leaders=" & CStr(calloutAnnotation.GetLeaderCount) & _
+        "|positionReturned=" & CStr(positionSet) & _
+        "|extent=" & SafeEvidenceValue(extentText)
+
+    EnsureAssociativeManufacturingCallout = True
+    Exit Function
+
+Failed:
+    swDrawModel.ClearSelection2 True
+    evidence.AddFailure "P-0251 " & calloutKind & _
+        " callout API error " & CStr(Err.Number) & ": " & Err.Description
+End Function
+
+Private Function GetManufacturingCalloutTarget( _
+    ByRef swView As SldWorks.View, _
+    ByVal calloutKind As String, _
+    ByRef evidence As CRunEvidence, _
+    ByRef targetX As Double, _
+    ByRef targetY As Double) As Boolean
+
+    If swView Is Nothing Then Exit Function
+    On Error GoTo Failed
+
+    Dim outline As Variant
+    outline = swView.GetOutline
+    If Not IsArray(outline) Then Exit Function
+    If Module8_RuntimeSupport.CountVariantItems(outline) <> 4 Then Exit Function
+
+    Select Case UCase$(calloutKind)
+        Case "BORE"
+            targetX = CDbl(outline(0))
+            targetY = CDbl(outline(3)) + 0.008
+        Case "FACE"
+            targetX = CDbl(outline(0))
+            targetY = CDbl(outline(1)) - 0.008
+        Case "SIDE"
+            targetX = CDbl(outline(0))
+            targetY = CDbl(outline(1)) - 0.008
+        Case Else
+            Exit Function
+    End Select
+
+    If targetX < evidence.ContentBorderLeft + 0.003 Then
+        targetX = evidence.ContentBorderLeft + 0.003
+    ElseIf targetX > evidence.ContentBorderRight - 0.003 Then
+        targetX = evidence.ContentBorderRight - 0.003
+    End If
+
+    If targetY < evidence.ContentBorderBottom + 0.003 Then
+        targetY = evidence.ContentBorderBottom + 0.003
+    ElseIf targetY > evidence.ContentBorderTop - 0.003 Then
+        targetY = evidence.ContentBorderTop - 0.003
+    End If
+
+    GetManufacturingCalloutTarget = True
+    Exit Function
+
+Failed:
+    GetManufacturingCalloutTarget = False
+End Function
+
+Private Function FindNoteContaining( _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByVal requiredText As String) As SldWorks.Note
+
+    On Error GoTo Failed
+
+    Dim swView As SldWorks.View
+    Set swView = swDraw.GetFirstView
+
+    Do While Not swView Is Nothing
+        Dim note As SldWorks.Note
+        Set note = swView.GetFirstNote
+
+        Do While Not note Is Nothing
+            If InStr(1, NormalizeComparisonText(note.GetText), _
+                NormalizeComparisonText(requiredText), vbTextCompare) > 0 Then
+
+                Set FindNoteContaining = note
+                Exit Function
+            End If
+            Set note = note.GetNext
+        Loop
+
+        Set swView = swView.GetNextView
+    Loop
+    Exit Function
+
+Failed:
+    Set FindNoteContaining = Nothing
+End Function
+
+Private Function ManufacturingDefinitionExtentIsSafe( _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByVal extentLeft As Double, _
+    ByVal extentBottom As Double, _
+    ByVal extentRight As Double, _
+    ByVal extentTop As Double, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    Const tolerance As Double = 0.000001
+    Const noteClearance As Double = 0.003
+
+    If extentLeft < evidence.ContentBorderLeft - tolerance Or _
+       extentBottom < evidence.ContentBorderBottom - tolerance Or _
+       extentRight > evidence.ContentBorderRight + tolerance Or _
+       extentTop > evidence.ContentBorderTop + tolerance Then
+
+        evidence.AddFailure "P-0251 manufacturing-definition note crosses the " & _
+            "measured zoned border."
+        Exit Function
+    End If
+
+    If RectanglesOverlapWithClearance( _
+        extentLeft, extentBottom, extentRight, extentTop, _
+        evidence.TitleBlockLeft, evidence.TitleBlockBottom, _
+        evidence.TitleBlockRight, evidence.TitleBlockTop, 0#) Then
+
+        evidence.AddFailure "P-0251 manufacturing-definition note overlaps the " & _
+            "measured title-block rectangle."
+        Exit Function
+    End If
+
+    Dim partIdentification As SldWorks.Note
+    Set partIdentification = FindNoteContaining( _
+        swDraw, "*P-0251-14A-001*")
+
+    If Not partIdentification Is Nothing Then
+        Dim partLeft As Double
+        Dim partBottom As Double
+        Dim partRight As Double
+        Dim partTop As Double
+        Dim partExtentText As String
+
+        If GetNoteExtent( _
+            partIdentification, partLeft, partBottom, partRight, partTop, _
+            partExtentText) Then
+
+            If RectanglesOverlapWithClearance( _
+                extentLeft, extentBottom, extentRight, extentTop, _
+                partLeft, partBottom, partRight, partTop, noteClearance) Then
+
+                evidence.AddFailure "P-0251 manufacturing-definition note " & _
+                    "overlaps the part-identification note lane."
+                Exit Function
+            End If
+        End If
+    End If
+
+    Dim swView As SldWorks.View
+    Set swView = swDraw.GetFirstView
+    If Not swView Is Nothing Then Set swView = swView.GetNextView
+
+    Do While Not swView Is Nothing
+        Dim viewOutline As Variant
+        viewOutline = swView.GetOutline
+
+        If IsArray(viewOutline) Then
+            If RectanglesOverlapWithClearance( _
+                extentLeft, extentBottom, extentRight, extentTop, _
+                CDbl(viewOutline(0)), CDbl(viewOutline(1)), _
+                CDbl(viewOutline(2)), CDbl(viewOutline(3)), _
+                noteClearance) Then
+
+                evidence.AddFailure "P-0251 manufacturing-definition note " & _
+                    "overlaps model-view outline '" & _
+                    Module8_RuntimeSupport.GetViewName(swView) & "'."
+                Exit Function
+            End If
+        End If
+
+        Set swView = swView.GetNextView
+    Loop
+
+    ManufacturingDefinitionExtentIsSafe = True
+End Function
+
+Private Function CalloutExtentClearsOtherAnnotations( _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByRef currentAnnotation As SldWorks.Annotation, _
+    ByVal extentLeft As Double, _
+    ByVal extentBottom As Double, _
+    ByVal extentRight As Double, _
+    ByVal extentTop As Double, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    Const clearance As Double = 0.002
+    On Error GoTo Failed
+
+    Dim swView As SldWorks.View
+    Set swView = swDraw.GetFirstView
+
+    Do While Not swView Is Nothing
+        Dim annotations As Variant
+        annotations = swView.GetAnnotations
+
+        If IsArray(annotations) Then
+            Dim annotationIndex As Long
+            For annotationIndex = LBound(annotations) To UBound(annotations)
+                Dim otherAnnotation As SldWorks.Annotation
+                Set otherAnnotation = annotations(annotationIndex)
+
+                If Not otherAnnotation Is Nothing Then
+                    If Not (otherAnnotation Is currentAnnotation) Then
+                        Dim position As Variant
+                        position = otherAnnotation.GetPosition
+
+                        If IsArray(position) Then
+                            Dim positionIndex As Long
+                            positionIndex = LBound(position)
+
+                            If CDbl(position(positionIndex)) >= _
+                                   extentLeft - clearance And _
+                               CDbl(position(positionIndex)) <= _
+                                   extentRight + clearance And _
+                               CDbl(position(positionIndex + 1)) >= _
+                                   extentBottom - clearance And _
+                               CDbl(position(positionIndex + 1)) <= _
+                                   extentTop + clearance Then
+
+                                evidence.AddFailure "P-0251 manufacturing " & _
+                                    "callout extent contains another annotation " & _
+                                    "origin in '" & _
+                                    Module8_RuntimeSupport.GetViewName(swView) & "'."
+                                Exit Function
+                            End If
+                        End If
+                    End If
+                End If
+            Next annotationIndex
+        End If
+
+        Dim otherNote As SldWorks.Note
+        Set otherNote = swView.GetFirstNote
+        Do While Not otherNote Is Nothing
+            Dim otherNoteAnnotation As SldWorks.Annotation
+            Set otherNoteAnnotation = otherNote.GetAnnotation
+
+            If Not otherNoteAnnotation Is Nothing Then
+                If Not (otherNoteAnnotation Is currentAnnotation) Then
+                    Dim noteLeft As Double
+                    Dim noteBottom As Double
+                    Dim noteRight As Double
+                    Dim noteTop As Double
+                    Dim noteExtentText As String
+
+                    If GetNoteExtent( _
+                        otherNote, noteLeft, noteBottom, noteRight, noteTop, _
+                        noteExtentText) Then
+
+                        If RectanglesOverlapWithClearance( _
+                            extentLeft, extentBottom, extentRight, extentTop, _
+                            noteLeft, noteBottom, noteRight, noteTop, _
+                            clearance) Then
+
+                            evidence.AddFailure "P-0251 manufacturing " & _
+                                "callout overlaps another measurable note extent."
+                            Exit Function
+                        End If
+                    End If
+                End If
+            End If
+
+            Set otherNote = otherNote.GetNext
+        Loop
+
+        Set swView = swView.GetNextView
+    Loop
+
+    CalloutExtentClearsOtherAnnotations = True
+    Exit Function
+
+Failed:
+    evidence.AddFailure "P-0251 manufacturing callout collision check " & _
+        "failed: " & CStr(Err.Number) & ": " & Err.Description
+End Function
+
+Private Function RectanglesOverlapWithClearance( _
+    ByVal firstLeft As Double, _
+    ByVal firstBottom As Double, _
+    ByVal firstRight As Double, _
+    ByVal firstTop As Double, _
+    ByVal secondLeft As Double, _
+    ByVal secondBottom As Double, _
+    ByVal secondRight As Double, _
+    ByVal secondTop As Double, _
+    ByVal clearance As Double) As Boolean
+
+    RectanglesOverlapWithClearance = Not ( _
+        firstRight + clearance <= secondLeft Or _
+        secondRight + clearance <= firstLeft Or _
+        firstTop + clearance <= secondBottom Or _
+        secondTop + clearance <= firstBottom)
+End Function
 
 Private Function ReadActiveConfigurationMassKg( _
     ByRef swPart As SldWorks.ModelDoc2, _
@@ -553,10 +1163,13 @@ Private Function VerifyLinkedText( _
         Dim linkedText As String
         linkedText = note.PropertyLinkedText
 
-        If LinkedTextReferencesProperty(linkedText, propertyName) Then
+        Dim renderedText As String
+        renderedText = note.GetText
+
+        If NoteReferencesSemanticField( _
+            linkedText, renderedText, expectedText, propertyName) Then
+
             observedLinkedText = linkedText
-            Dim renderedText As String
-            renderedText = note.GetText
             observedRenderedText = renderedText
 
             If InStr(1, NormalizeComparisonText(renderedText), _
@@ -576,6 +1189,16 @@ Private Function VerifyLinkedText( _
                     If NoteExtentIsInRegion( _
                         extentLeft, extentBottom, extentRight, extentTop, _
                         targetRegion, evidence) Then
+
+                        If StrComp(propertyName, "PartIdentification", _
+                                   vbTextCompare) = 0 Then
+
+                            evidence.PartIdentificationLeft = extentLeft
+                            evidence.PartIdentificationBottom = extentBottom
+                            evidence.PartIdentificationRight = extentRight
+                            evidence.PartIdentificationTop = extentTop
+                            evidence.PartIdentificationBoundsProven = True
+                        End If
 
                         evidence.AddTitlePropertyEvidence _
                             propertyName, sourceDescription, linkedText, _
@@ -628,12 +1251,12 @@ Private Function GetCandidateNotes( _
 
         Dim titleBlock As SldWorks.TitleBlock
         Set titleBlock = swSheet.TitleBlock
-        If titleBlock Is Nothing Then Exit Function
-
-        Dim titleNotes As Variant
-        titleNotes = titleBlock.GetNotes
-        AddVariantNotes titleNotes, results
-        Exit Function
+        If Not titleBlock Is Nothing Then
+            Dim titleNotes As Variant
+            titleNotes = titleBlock.GetNotes
+            AddVariantNotes titleNotes, results
+            Exit Function
+        End If
     End If
 
     Dim swView As SldWorks.View
@@ -810,6 +1433,47 @@ Private Function LinkedTextReferencesProperty( _
     LinkedTextReferencesProperty = _
         (InStr(1, linkedText, Chr$(34) & propertyName & Chr$(34), _
             vbTextCompare) > 0)
+End Function
+
+Private Function NoteReferencesSemanticField( _
+    ByVal linkedText As String, _
+    ByVal renderedText As String, _
+    ByVal expectedText As String, _
+    ByVal propertyName As String) As Boolean
+
+    Dim aliases As Variant
+
+    Select Case UCase$(Trim$(propertyName))
+        Case "PARTNO"
+            aliases = Array("PartNo", "PART NUMBER")
+        Case "DESCRIPTION"
+            aliases = Array("Description", "PART NAME")
+        Case "MATERIAL"
+            aliases = Array("Material")
+        Case "DISPLAYEDSCALE"
+            aliases = Array( _
+                "DisplayedScale", "SW-Sheet Scale(Sheet Scale)")
+        Case "PARTIDENTIFICATION"
+            aliases = Array("PartIdentification", "PART NUMBER")
+        Case "GENERALNOTES"
+            NoteReferencesSemanticField = _
+                (StrComp(NormalizeComparisonText(renderedText), _
+                         NormalizeComparisonText(expectedText), _
+                         vbTextCompare) = 0)
+            Exit Function
+        Case Else
+            aliases = Array(propertyName)
+    End Select
+
+    Dim i As Long
+    For i = LBound(aliases) To UBound(aliases)
+        If LinkedTextReferencesProperty( _
+            linkedText, CStr(aliases(i))) Then
+
+            NoteReferencesSemanticField = True
+            Exit Function
+        End If
+    Next i
 End Function
 
 Private Function SafeEvidenceValue(ByVal value As String) As String

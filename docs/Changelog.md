@@ -1,5 +1,139 @@
 # Changelog
 
+## 2026-07-28 - R20 GetSectionLineCount2 compile hotfix
+
+- A user-run full-project VBA compile stopped in
+  `Module6_QAEngine.CheckSectionLineClearance` with `Argument not optional`.
+- The project `solidworks-api` MCP and installed SOLIDWORKS 2025 interop both
+  confirm `IView.GetSectionLineCount2(ByRef Size As Long) As Long`. R20 had
+  omitted that mandatory output argument in Module6 even though Module2 already
+  used the correct signature.
+- Added `sectionLineInfoSize`, passed it to `GetSectionLineCount2`, and made the
+  section-clearance gate reject nonzero counts with invalid sizes or
+  `GetSectionLineInfo2` arrays whose item count does not match the API-provided
+  size.
+- Added a regression assertion that rejects any parameterless Module6 call.
+  The complete project-local suite remains 74/74 passing.
+- Corrected the deployment evidence interpretation:
+  `COMPILE_PROBE|status=SUCCESS` only proves that the bootstrap procedure could
+  execute. It does not invoke VBA Editor **Compile Project**, and therefore is
+  not E5 full-project compilation.
+- The first automatic deployment attempt correctly stopped because `Fable.swp`
+  was open/locked. After the user closed it, deployment
+  `20260728_142300` completed with a 15/15 managed-source match and exact r20
+  revision. Its new `compile-probe-scope.txt` records that manual VBA Editor
+  **Compile Project** remains mandatory.
+
+## 2026-07-28 - R20 r19 functional-failure repair
+
+### Diagnosed
+
+- Reviewed the synchronized r19 P-0251 evidence at
+  `test_assets/iteration_evidence/macro_qa/20260728_091302_P-0251-14A-001/`.
+  R19 created four views and ten imported display dimensions, but reported zero
+  circular edges, zero ownership candidates, zero canonical physical
+  locations, and zero ordinate groups.
+- Every audited internal-cylinder boundary stopped at
+  `ClosedCircleIsCircleFalse`. SOLIDWORKS can expose a complete trimmed
+  cylinder-boundary edge whose underlying `ICurve.IsCircle` predicate is
+  false. Therefore that predicate cannot be the sole circular-boundary gate.
+- `ModelToViewTransform` already supplies drawing-page coordinates for
+  dimension placement. Adding `IView.Position` translated candidate and datum
+  evidence twice and would have broken the newly activated center-datum path.
+- The P-0251 side and section views were placed with a 6 mm requested gap while
+  collision validation also required 6 mm. API readback drift therefore
+  classified the threshold placement as a collision.
+- Annotation QA used `UsableBottom`, the view-placement boundary above the
+  title block, as a full-width lower-sheet exclusion. That rejected legal
+  lower-left dimensions and section content even though the title block is only
+  a lower-right rectangle.
+- `AlignDimensions` was called without view-scoped `ISelectData`, per-annotation
+  selection results, or selected-count readback. A one-dimension side view was
+  also treated as an arrange failure although no multi-dimension arrangement
+  was possible.
+- R19 still lacked the controlled P-0251 stepped-bore, six-hole counterbore,
+  and four-hole tapped manufacturing definitions required by the target
+  specification.
+
+### Fixed
+
+- `TryReadClosedCircularEdge` now calls `IEdge.GetCurve` followed by
+  `IEdge.GetCurveParams3`, requires a nondegenerate parameter span and
+  coincident parameter endpoints, and retains the topology closure check.
+  `ICurve.CircleParams` is used when available; otherwise the already
+  ownership-proven internal face supplies center, axis, and radius through
+  `ISurface.CylinderParams`.
+- Normalized audited SOLIDWORKS Boolean returns with typed `Boolean` variables
+  before applying negation or compound logic, including circle/cylinder
+  predicates, `Select4`, `Select3`, detail label/outline setters, and
+  `AlignDimensions`.
+- Removed the second view-position translation. Candidate/datum sheet
+  coordinates now equal the page coordinates returned by
+  `ModelToViewTransform`; center-datum selection compares entities with the
+  transformed model origin rather than numeric page origin `(0,0)`. Candidate
+  centres, the projected origin, and mapped vertices now also require a runtime
+  `IView.GetOutline` page-frame invariant and emit `TRANSFORM_PAGE_PROOF` or
+  `TRANSFORM_PAGE_REJECT`.
+- Increased the shared requested inter-view gap to 12 mm, added a 1 micrometre
+  comparison tolerance, raised the P-0251 primary/side/section row to clear the
+  lower J-J marker, and added requested-center, outline, and pair-clearance
+  readback records with `Initial`/`Final` layout attribution.
+- Added zoned content-border bounds from `ISheet.GetZoneMargin` to
+  `CRunEvidence`. Annotation origins, leader points, and measurable note extents
+  now use the actual border plus the measured title-block rectangle; the
+  lower-left region is no longer rejected wholesale. The part-identification
+  note extent is retained, and P-0251 section segments, arrows, and both label
+  positions are parsed from `GetSectionLineInfo2` and checked against it.
+- Dimension arrangement now uses `ISelectData.View`, checks every `Select3`
+  return, verifies selected-count readback, and skips fewer-than-two selections
+  without a false warning. `DIMENSION_ARRANGE` is required; when
+  `AlignDimensions` returns `False`, positionable dimensions use deterministic
+  6 mm lanes with exact readback and border proof, while unsupported
+  radial/diametric positions must already be safe.
+- Replaced the free-standing manufacturing summary with three associative
+  P-0251 callouts. Each selects a retained ownership-proven drawing edge,
+  creates its note with a leader, uses documented `<MOD-DIAM>` symbol syntax,
+  proves nonzero attachment/leader readback, and checks note extents against
+  borders, title block, part ID, model views, other measurable notes, and other
+  annotation origins. Reuse now requires the complete normalized controlled
+  definition rather than a short phrase that an imported Hole Wizard note
+  could also contain.
+- Advanced the source identity to
+  `target-spec-hybrid-v2-2026-07-28-r20`.
+
+### API and CodeStack evidence
+
+- The project `solidworks-api` MCP verified the SW2025 contracts for
+  `IEdge.GetCurveParams3`, `ICurveParamData`, `ICurve.IsCircle`,
+  `ISurface.CylinderParams`, `IView.GetCorrespondingEntity`,
+  `IAnnotation.GetPosition`, `IAnnotation.Select3`,
+  `IAnnotation.GetAttachedEntities3`, `IAnnotation.GetLeaderCount`,
+  `IModelDoc2.InsertNote`, `IView.GetSectionLineInfo2`,
+  `IModelDocExtension.AlignDimensions`, `ISheet.GetZoneMargin`,
+  `IModelDocExtension.AddOrdinateDimension`, and the section-view transaction.
+- The CodeStack drawing examples established the page-coordinate placement
+  pattern, real-component requirement for `GetVisibleEntities2`, direct
+  selection of drawing-context entities, and view-scoped selection-data
+  pattern. The macro retains stricter ownership, cleanup, and truthful QA gates
+  than the examples.
+
+### Verification
+
+- The complete project-local suite passes **74 tests and 13,608 structural
+  subtests**.
+- Guarded deployment evidence is retained under
+  `test_assets/iteration_evidence/swp_deployment/20260728_113559/`.
+  `COMPILE_PROBE|status=SUCCESS`, candidate and promoted readbacks match all
+  15 managed components, and both report embedded revision
+  `target-spec-hybrid-v2-2026-07-28-r20`.
+- `Fable.swp` is synchronized. The latest deployment folder retains the
+  immediately preceding macro; the first r20 deployment evidence at
+  `20260728_105950/` retains the pre-r20 binary.
+- The macro has not yet been executed on P-0251 after this repair. Nonzero
+  candidate/ordinate behavior, associative callout attachment/placement,
+  deterministic arrangement, J-J clearance, and designer-level
+  visual/manufacturing acceptance remain E6/E7 user-run gates.
+
 ## 2026-07-26 - R18 model-first ownership and truthful view QA
 
 ### Diagnosed

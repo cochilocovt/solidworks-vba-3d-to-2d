@@ -54,11 +54,36 @@ Public Function IsOwnedHoleFeature( _
         Case "HOLEWZD", "ADVHOLEWZD", "SKETCHHOLE"
             IsOwnedHoleFeature = True
 
+        Case "MIRRORPATTERN"
+            IsOwnedHoleFeature = HasOwnedHoleSeedFace(swFeature)
+
         Case Else
             If InStr(featureType, "CUT") > 0 Then
                 IsOwnedHoleFeature = HasInternalCylindricalFace(swFeature)
             End If
     End Select
+End Function
+
+Public Function GetOwnedHoleSeedFeature( _
+    ByRef patternedFace As SldWorks.Face2) As SldWorks.Feature
+
+    If patternedFace Is Nothing Then Exit Function
+
+    On Error Resume Next
+
+    Dim seedFeature As SldWorks.Feature
+    Set seedFeature = patternedFace.GetSeedFeature
+
+    If seedFeature Is Nothing Then
+        Set seedFeature = patternedFace.GetPatternSeedFeature
+    End If
+
+    On Error GoTo 0
+
+    If seedFeature Is Nothing Then Exit Function
+    If Not IsDirectHoleFeature(seedFeature) Then Exit Function
+
+    Set GetOwnedHoleSeedFeature = seedFeature
 End Function
 
 Public Function FeatureContainsFace( _
@@ -103,8 +128,13 @@ Public Function IsInternalCylindricalFace( _
     Set swSurface = swFace.GetSurface
 
     If swSurface Is Nothing Then Exit Function
-    IsInternalCylindricalFace = _
-        swSurface.IsCylinder And swFace.FaceInSurfaceSense
+
+    Dim isCylinder As Boolean
+    Dim faceInSurfaceSense As Boolean
+    isCylinder = CBool(swSurface.IsCylinder)
+    faceInSurfaceSense = CBool(swFace.FaceInSurfaceSense)
+
+    IsInternalCylindricalFace = isCylinder And faceInSurfaceSense
     Exit Function
 
 Failed:
@@ -157,6 +187,17 @@ Private Function ResolveFeatureType( _
     On Error GoTo 0
 End Function
 
+Private Function IsDirectHoleFeature( _
+    ByRef swFeature As SldWorks.Feature) As Boolean
+
+    If swFeature Is Nothing Then Exit Function
+
+    Select Case UCase$(ResolveFeatureType(swFeature))
+        Case "HOLEWZD", "ADVHOLEWZD", "SKETCHHOLE"
+            IsDirectHoleFeature = True
+    End Select
+End Function
+
 Private Function IsFeatureSuppressed( _
     ByRef swFeature As SldWorks.Feature) As Boolean
 
@@ -206,4 +247,39 @@ Private Function HasInternalCylindricalFace( _
 
 Failed:
     HasInternalCylindricalFace = False
+End Function
+
+Private Function HasOwnedHoleSeedFace( _
+    ByRef swFeature As SldWorks.Feature) As Boolean
+
+    If swFeature Is Nothing Then Exit Function
+
+    On Error GoTo Failed
+
+    Dim faces As Variant
+    faces = swFeature.GetFaces
+
+    If IsEmpty(faces) Or Not IsArray(faces) Then Exit Function
+
+    Dim i As Long
+    For i = LBound(faces) To UBound(faces)
+        Dim swFace As SldWorks.Face2
+        Set swFace = faces(i)
+
+        If Not swFace Is Nothing Then
+            If IsInternalCylindricalFace(swFace) Then
+                Dim seedFeature As SldWorks.Feature
+                Set seedFeature = GetOwnedHoleSeedFeature(swFace)
+
+                If Not seedFeature Is Nothing Then
+                    HasOwnedHoleSeedFace = True
+                    Exit Function
+                End If
+            End If
+        End If
+    Next i
+    Exit Function
+
+Failed:
+    HasOwnedHoleSeedFace = False
 End Function

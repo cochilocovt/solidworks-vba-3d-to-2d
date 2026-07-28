@@ -36,7 +36,47 @@ This authorization has strict boundaries:
 - Make a recoverable backup of `active_ordinate.swp` before the first material binary/VBA-project change in an iteration.
 - API success, nonzero dimensions, or a macro that finishes without error is not proof of a correct manufacturing drawing.
 
-Within these boundaries, proceed autonomously through the edit–compile–run–inspect–iterate loop instead of repeatedly requesting permission.
+Within these boundaries, proceed autonomously through offline analysis, source
+preparation, API research, evidence review, and other non-live work. Live
+SOLIDWORKS and Computer Use work is governed by the collaboration rule below;
+the standing authorization does not waive that required user choice.
+
+## Computer Use and Live SOLIDWORKS Collaboration
+
+Before every distinct task that would require Computer Use, controlling the
+SOLIDWORKS application, interacting with the SOLIDWORKS VBA editor, or querying
+a live SOLIDWORKS session, the agent must first ask the user whether that task
+should be performed by the user or by the agent.
+
+- State the exact proposed live task and ask whether the user wants to perform
+  it and share the result, or wants the agent to use Computer Use.
+- Do not open, control, inspect, or interact with live SOLIDWORKS until the user
+  explicitly chooses the agent for that specific task.
+- Standing authorization for the three fixtures defines the permitted scope; it
+  is not permission to choose Computer Use without asking.
+- A user choice applies only to the stated task. Ask again before a materially
+  different live SOLIDWORKS task.
+- If the user chooses to perform the task, provide exact concise steps, wait for
+  the returned output, and analyze that evidence without using Computer Use.
+- If the user chooses the agent, use Computer Use only for the agreed task,
+  remain within the three authorized fixtures, preserve the models, and report
+  what was inspected or changed.
+- If the user says not to use Computer Use, do not use it again until the user
+  explicitly authorizes a later specific task.
+
+By default, the user performs changes inside the SOLIDWORKS VBA editor,
+compiles the VBA project, deploys or runs the macro, and shares the resulting
+logs, QA reports, and screenshots. The agent prepares and reviews exported
+workspace source, diagnoses failures, compares drawings with the references,
+and performs API/documentation and offline verification work.
+
+When the user explicitly assigns a live SOLIDWORKS task to the agent, the
+agent's primary live role is to assess part features, inspect the generated 2D
+drawing, perform verification-level checks, and capture evidence. It must not
+modify or save the design of an authorized part.
+
+Using the local `solidworks-api` MCP to read API documentation is not live
+SOLIDWORKS access and does not require this operator-choice question.
 
 ## Source Layout and Authority
 
@@ -53,6 +93,14 @@ Within these boundaries, proceed autonomously through the edit–compile–run�
 - The updated `solidworks-api` MCP, official SOLIDWORKS 2025 API documentation, and the installed 2025 type library are authoritative
 - Validate uncertain COM/VBA binding behavior in the installed build
 - Never guess enum values or copy older wrapper constants and calls without 2025 verification
+
+## Required Project Skill: SOLIDWORKS API Lookup
+
+Before writing, changing, or reviewing VBA that touches a SOLIDWORKS API call, an `sw*` constant or enum, drawing/view/dimension/annotation/selection behavior, or any file under `src/`, read and use `skills/solidworks-api-lookup/SKILL.md`.
+
+- Use the local `solidworks-api` MCP to establish exact signatures, return codes, enum values, and behavioural contracts; search results alone are only a locator, so confirm the relevant member lookup and read its Remarks.
+- Treat values from the MCP compatibility snapshot as evidence, not confirmed SOLIDWORKS 2025 facts. Verify load-bearing members and numeric values against the installed 2025 type library/Object Browser or a narrow live probe.
+- Keep MCP evidence, local verification, compilation, execution, and visual acceptance distinct in reports. Record material findings in `docs/SOLIDWORKS_API_VALIDATION.md` and check current source before relying on older evidence.
 
 ## Core Product Requirement
 
@@ -105,27 +153,6 @@ Do not claim VBA success from static tests or a Python probe alone. The embedded
 - Prefer narrow, testable corrections over speculative rewrites.
 - Add diagnostics that identify the view, operation, return code, and VBA error.
 
-## Model-Annotation Rules
-
-- Use `InsertModelAnnotations4` with a verified 2025 mask.
-- Import only intended drawing annotations.
-- The Hole Wizard checkbox must genuinely change the mask.
-- Apply duplicate elimination according to the verified `DuplicateDims` contract.
-- Establish valid active drawing-view context.
-- Preserve whole-drawing import with selected-view retry after a zero result.
-- Count returned annotations and confirm visible dimensions.
-
-## Ordinate Rules
-
-- Ordinates locate qualified features; they do not replace size dimensions.
-- Operate only on supported orthographic views. Skip sheet, isometric, section, detail, and unproven roles unless deliberately supported.
-- Never pass `Nothing` to `GetVisibleEntities2`; supply the required `Component2`. For validated part drawings, use components returned by `GetVisibleComponents`.
-- Require model/feature evidence before calling a circular edge a hole.
-- Deduplicate projected centres and suppress repeated X/Y coordinates.
-- Select the proven datum first, append remaining entities, and validate `MultiSelect2` plus final selection count.
-- Capture and decode `AddOrdinateDimension` return codes.
-- End each group with `SetPickMode` and cleanup.
-- Record rejected bosses, arcs, fillets, counterbores, unrelated circles, unsupported features, and unresolved ownership.
 
 ## Drawing-Quality Rules
 
@@ -188,8 +215,6 @@ When modifying code:
 
 - Do not redesign the whole macro while debugging one defect.
 - Do not turn Python into a second production drawing engine.
-- Do not implement genuine multi-section generation without approved redesign.
 - Do not remove title-block, QA, barcode, notes, or view generation to simplify debugging.
 - Do not alter the protected baseline to make snapshots match.
-- Do not invent fits, tolerances, GD&T, datums, or manufacturing intent absent from the model, reference, or user instruction.
 - Do not run the macro on models other than the three authorized fixtures.

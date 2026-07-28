@@ -1,8 +1,88 @@
 # Current Status
 
-Date: 2026-07-26
+Date: 2026-07-28
 
-## R18 model-first drawing-output repair
+## R20 compile hotfix is synchronized and awaiting full-project VBA compilation
+
+The authoritative managed source and embedded macro now identify as
+`target-spec-hybrid-v2-2026-07-28-r20`.
+
+The user's full-project VBA compile exposed `Argument not optional` at
+`Module6_QAEngine.CheckSectionLineClearance` because the r20 source called
+`IView.GetSectionLineCount2` without its mandatory `ByRef Size As Long`
+argument. The project `solidworks-api` MCP and the installed SOLIDWORKS 2025
+interop both confirm the exact signature
+`GetSectionLineCount2(ByRef Size As Long) As Long`; `GetSectionLineInfo2`
+remains parameterless. The exported source now supplies the size argument,
+rejects invalid/nonmatching array sizes, and has a regression assertion against
+the zero-argument call.
+
+After the user closed the locked VBA project, the guarded deployment completed
+under `test_assets/iteration_evidence/swp_deployment/20260728_142300/`.
+Candidate and promoted readbacks match all 15 managed components and the exact
+r20 revision. `compile-probe-scope.txt` explicitly records that the automated
+probe covers bootstrap execution only.
+
+R20 is based on the r19 P-0251 evidence at:
+
+- `test_assets/iteration_evidence/macro_qa/20260728_091302_P-0251-14A-001/QA_REPORT.txt`
+
+R19 preserved four created views, ten imported display dimensions, a clean
+isometric, the J-J structure, metric mass `1.30`, title properties, general
+notes, part identification, and complete QA output. It nevertheless failed
+because all 32 complete internal-cylinder boundary edges in each supported view
+stopped at `ClosedCircleIsCircleFalse`, leaving zero mapped circular edges,
+ownership candidates, canonical physical locations, or ordinate groups. The
+side/section gap sat exactly on the collision threshold; the lower J-J marker
+entered the part-identification band; annotation QA incorrectly excluded the
+entire lower sheet below the view-placement boundary; and auto-arrange did not
+prove any view-scoped selection.
+
+R20 repairs those source defects:
+
+- complete boundary edges are proved with `IEdge.GetCurveParams3`; when a
+  trimmed edge does not identify as an `ICurve` circle, its already
+  ownership-proven internal face supplies the cylinder center, axis, and radius
+  through `ISurface.CylinderParams`;
+- used SOLIDWORKS Boolean results are normalized before negation/compound logic;
+- `ModelToViewTransform` page coordinates are no longer translated by
+  `IView.Position` a second time, and the center datum compares against the
+  transformed model origin. Every candidate centre, projected origin, and
+  mapped vertex now fails closed unless the transformed point lies within the
+  current `IView.GetOutline`, with explicit page-frame evidence;
+- the common view gap is 12 mm, layout comparison has a numeric tolerance,
+  P-0251's orthographic/section row is biased upward, and all requested centers,
+  actual outlines, and pair clearances are logged separately for initial and
+  final layout;
+- annotation QA records annotation type/name/position and validates against the
+  real zoned border and rectangular title block. `UsableBottom` remains a view
+  placement boundary only. The measured part-ID extent is retained and
+  `GetSectionLineInfo2` segment, arrow, and J-label geometry must clear it;
+- auto-arrange uses `ISelectData.View`, checks `IAnnotation.Select3`, verifies
+  selection count, and logs the `AlignDimensions` result. It is now a required
+  stage; `False` invokes deterministic 6 mm `SetPosition2` lanes with exact
+  readback and content-border proof; and
+- three controlled P-0251 callouts now define the stepped bore, six
+  counterbored face holes, and four tapped side holes. Each callout uses the
+  documented `<MOD-DIAM>` syntax, selects an ownership-proven drawing edge
+  before `InsertNote`, and must read back nonzero attachments, a visible leader,
+  safe extent, and clearance from other note extents/annotation origins.
+  Existing-note reuse requires the complete normalized controlled definition,
+  so a shorter imported Hole Wizard phrase cannot falsely prove the stage.
+
+The project-local suite passes **74 tests and 13,608 structural subtests**.
+The current guarded deployment proves a 15/15 managed-source match and exact
+r20 revision. Its `COMPILE_PROBE|status=SUCCESS` record proves only that the
+deployment bootstrap could execute; it does not perform VBA Editor **Compile
+Project** and must not be cited as full-project compilation.
+
+The required next sequence is: open `Fable.swp`, run VBA Editor **Debug >
+Compile Project**, and—only if compilation succeeds—run P-0251. Runtime evidence
+remains the new `QA_REPORT.txt`, complete Immediate Window output, and one
+uncropped full-sheet screenshot. Computer Use was not used and remains
+disallowed unless the user explicitly requests it.
+
+## Historical R18 model-first drawing-output repair
 
 The guarded r17 deployment compiled, synchronized all 15 managed components,
 and executed on authorized fixture P-0251. Its retained evidence is:
@@ -174,21 +254,28 @@ regression and limits recovery to a named `DRAWINGVIEW` selection plus one
 
 ## Remaining gates
 
-1. Deploy and compile r18, then run the synchronized macro on P-0251 and retain
-   its complete runtime and drawing evidence (E5/E6).
-2. Confirm nonzero model-to-view mapped edges, ten canonical P-0251 physical
-   locations, and the required X/Y ordinate coverage.
-3. Prove the model-first center and bottom-left datum entities are selectable in
-   the intended drawing views and that all ordinate transactions clean up.
-4. Confirm exact per-view dimension counts remain `9, 1, 0, 0` before new
-   ordinates and the isometric stays undimensioned.
-5. Confirm the unique mass-note link reads `$PRP:"Mass"` and visibly renders
+1. Run synchronized r20 on P-0251 and retain its complete E6 runtime and drawing
+   evidence.
+2. Confirm nonzero complete circular boundaries/mapped edges, ten canonical
+   P-0251 physical locations, and the required X/Y ordinate coverage.
+3. Prove the model-first Center-X and Bottom-Y datum entities are selectable in
+   the intended drawing views and that every ordinate transaction cleans up.
+4. Confirm imported dimension counts remain `9, 1, 0, 0` before new ordinates,
+   the isometric stays undimensioned, and the front-view multi-dimension
+   arrange stage proves either `AlignDimensions` or its deterministic lane
+   fallback with exact position readback.
+5. Confirm all three manufacturing callouts render the required tokens and
+   SOLIDWORKS diameter symbols, remain attached to the intended bore/face/side
+   geometry with leaders, and avoid other annotations, view outlines, part ID,
+   and title block. Confirm parsed J-J segment/arrow/label geometry clears the
+   measured part-ID extent.
+6. Confirm annotation-origin diagnostics no longer reject legal lower-left
+   content and identify any genuine remaining border/title/leader violation by
+   type, name, and coordinates.
+7. Confirm the unique mass-note link reads `$PRP:"Mass"` and visibly renders
    `1.30`.
-6. Resolve the authoritative template, sheet-format, structural `ITitleBlock`,
-   property-name, and title/note/part-ID cell contract (D-04).
-7. Resolve grouped hole-callout and stepped-bore definition without modal
-   automation or invented manufacturing intent.
-8. Run only the three authorized fixtures and retain complete E6 evidence.
+8. Run only the three authorized fixtures and retain the complete E6 regression
+   matrix.
 9. Compare every output with its manual reference and pass E7 manufacturing,
    coverage, and layout acceptance.
 
@@ -209,17 +296,20 @@ D-04 candidate, not evidence that the controlled title contract is settled.
 
 ## Collaboration operating mode
 
-The user owns VBA import/editing, compilation, saving, and macro execution by
-default. Codex owns offline source work, API validation, output diagnosis,
-reference comparison, test design, and evidence review.
+Codex owns offline source work, API validation, output diagnosis, reference
+comparison, tests, and automatic synchronization through the guarded
+PowerShell deployer. The user owns the actual SOLIDWORKS macro run and shares
+the resulting QA output and screenshot.
 
-Before every distinct live SOLIDWORKS task, Codex must ask whether the user or
-Codex will perform it.
+Computer Use must not be used for SOLIDWORKS unless the user explicitly asks
+for it. A newly written revision is deployed automatically through
+`tools/swp-deploy/Deploy-TargetSpecHybrid.ps1`, after which the user is asked to
+run the macro.
 
 ## Exact handoff point
 
-The coherent r18 managed source passes the focused source-contract gates but is
-not yet embedded. The next task is to deploy r18 into `Fable.swp`, compile it,
-and run the same
-focused P-0251 settings. The user has already chosen to perform SOLIDWORKS runs
-and share the resulting QA report and screenshots; no Computer Use is required.
+The coherent r20 managed source is embedded in `Fable.swp`, compile-probed, and
+verified 15/15 against exported source. The user should now run r20 on
+`P-0251-14A-001.SLDPRT` with the same acceptance-profile settings and share the
+new QA report, complete Immediate Window output, and one uncropped full-sheet
+screenshot. No Computer Use is required.

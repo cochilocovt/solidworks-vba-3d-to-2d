@@ -13,7 +13,8 @@ The deployment is fail-safe:
    its metadata-free source into the candidate project;
 6. save the already-named candidate through the VBE Save command, then copy it
    to a second candidate file;
-7. load the candidate through `ISldWorks.RunMacro2` as a compile probe;
+7. load the candidate through `ISldWorks.RunMacro2` as a bootstrap execution
+   probe;
 8. extract all managed VBA source and verify it against the repository; and
 9. atomically replace `Fable.swp` only after every prior gate passes.
 
@@ -71,6 +72,12 @@ test_assets/iteration_evidence/swp_deployment/<timestamp>/
 
 If any import, save, compile, read-back, revision, or file-lock check fails, the
 original `Fable.swp` is not replaced.
+
+`COMPILE_PROBE|status=SUCCESS` is the historical output name of the bootstrap
+execution probe. It proves that `Module0_SourceDeployment.CompileProbe` could
+run, but it does **not** execute VBA Editor **Compile Project** and can miss a
+compile error in an unexecuted managed module. A manual full-project compile
+remains mandatory after every deployment.
 
 ## Managed scope
 

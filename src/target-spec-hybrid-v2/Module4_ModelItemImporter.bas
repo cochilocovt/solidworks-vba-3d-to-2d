@@ -12,10 +12,17 @@ Private Const swInsertHoleCallout As Long = 1048576
 
 Private Const swAlignDimensionType_AutoArrange As Long = 0
 
+' Verified against the installed SOLIDWORKS 2025 interop type library.
 Private Const swDimensionType_HorOrdinate As Long = 7
 Private Const swDimensionType_VertOrdinate As Long = 8
 Private Const swDimensionType_HorLinear As Long = 11
 Private Const swDimensionType_VertLinear As Long = 12
+Private Const swDimensionType_Radial As Long = 5
+Private Const swDimensionType_Diameter As Long = 6
+Private Const DIMENSION_ARRANGE_STAGE As String = "DIMENSION_ARRANGE"
+Private Const DIMENSION_ARRANGE_SPACING_M As Double = 0.006
+Private Const DIMENSION_ARRANGE_BORDER_INSET_M As Double = 0.001
+Private Const DIMENSION_ARRANGE_READBACK_TOLERANCE_M As Double = 0.000001
 
 Public Function ImportModelItemsAcrossDrawing( _
     ByRef swApp As SldWorks.SldWorks, _
@@ -698,67 +705,851 @@ Public Sub AutoArrangeAllDrawingDimensions( _
     ByRef swDraw As SldWorks.DrawingDoc, _
     ByRef evidence As CRunEvidence)
 
+    On Error GoTo Failed
+    evidence.RequireStage DIMENSION_ARRANGE_STAGE
+
+    Dim allViewsProved As Boolean
+    allViewsProved = True
+
+    Dim inspectedViews As Long
+    Dim apiArrangedViews As Long
+    Dim fallbackArrangedViews As Long
+    Dim noActionViews As Long
+
     Dim swView As SldWorks.View
     Set swView = swDraw.GetFirstView
 
     If Not swView Is Nothing Then Set swView = swView.GetNextView
 
     Do While Not swView Is Nothing
-        AutoArrangeDimensionsInView swDrawModel, swDraw, swView, evidence
+        inspectedViews = inspectedViews + 1
+
+        Dim arrangeOutcome As String
+        arrangeOutcome = vbNullString
+
+        If AutoArrangeDimensionsInView( _
+            swDrawModel, swDraw, swView, evidence, arrangeOutcome) Then
+
+            Select Case arrangeOutcome
+                Case "API"
+                    apiArrangedViews = apiArrangedViews + 1
+                Case "FALLBACK"
+                    fallbackArrangedViews = fallbackArrangedViews + 1
+                Case Else
+                    noActionViews = noActionViews + 1
+            End Select
+        Else
+            allViewsProved = False
+        End If
+
         Set swView = swView.GetNextView
     Loop
+
+    If inspectedViews = 0 Then
+        allViewsProved = False
+        evidence.AddFailure _
+            "Dimension arrange could not inspect any real drawing views."
+    End If
+
+    Dim stageDetail As String
+    stageDetail = "views=" & CStr(inspectedViews) & _
+        ", api=" & CStr(apiArrangedViews) & _
+        ", fallback=" & CStr(fallbackArrangedViews) & _
+        ", noAction=" & CStr(noActionViews)
+
+    If allViewsProved Then
+        evidence.MarkStageProved DIMENSION_ARRANGE_STAGE, _
+            "selection, API/fallback result, position readback, and " & _
+            "content-border origin checks proved; " & stageDetail
+    Else
+        evidence.MarkStageFailed DIMENSION_ARRANGE_STAGE, _
+            "one or more view-level arrange transactions failed; " & _
+            stageDetail
+    End If
+    Exit Sub
+
+Failed:
+    evidence.AddFailure "Dimension arrange traversal API error " & _
+        CStr(Err.Number) & ": " & Err.Description
+    evidence.MarkStageFailed DIMENSION_ARRANGE_STAGE, _
+        "drawing-view traversal API error " & CStr(Err.Number) & _
+        ": " & Err.Description
 End Sub
 
-Private Sub AutoArrangeDimensionsInView( _
+Private Function AutoArrangeDimensionsInView( _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
     ByRef swDraw As SldWorks.DrawingDoc, _
     ByRef swView As SldWorks.View, _
-    ByRef evidence As CRunEvidence)
+    ByRef evidence As CRunEvidence, _
+    ByRef arrangeOutcome As String) As Boolean
 
     On Error GoTo Failed
 
+    Dim viewName As String
+    viewName = Module8_RuntimeSupport.GetViewName(swView)
+
     If Not Module8_RuntimeSupport.ActivateDrawingView( _
         swDrawModel, swDraw, swView, evidence, _
-        "Dimension arrange") Then Exit Sub
+        "Dimension arrange") Then
+
+        evidence.AddFailure "Dimension arrange could not prove active view '" & _
+            viewName & "'."
+        arrangeOutcome = "FAILED_ACTIVATION"
+        Exit Function
+    End If
 
     Dim dimensions As Variant
     dimensions = swView.GetDisplayDimensions
 
-    If IsEmpty(dimensions) Or Not IsArray(dimensions) Then GoTo SafeExit
+    If IsEmpty(dimensions) Then
+        arrangeOutcome = "NO_DIMENSIONS"
+        AutoArrangeDimensionsInView = True
+        GoTo SafeExit
+    End If
+
+    If Not IsArray(dimensions) Then
+        evidence.AddFailure "Dimension arrange could not enumerate display " & _
+            "dimensions in '" & viewName & "'."
+        arrangeOutcome = "FAILED_ENUMERATION"
+        GoTo SafeExit
+    End If
 
     swDrawModel.ClearSelection2 True
+
+    Dim selectionManager As SldWorks.SelectionMgr
+    Set selectionManager = swDrawModel.SelectionManager
+    If selectionManager Is Nothing Then
+        evidence.AddFailure "Dimension arrange selection manager is Nothing in '" & _
+            viewName & "'."
+        arrangeOutcome = "FAILED_SELECTION_MANAGER"
+        GoTo SafeExit
+    End If
+
+    Dim selectData As SldWorks.SelectData
+    Set selectData = selectionManager.CreateSelectData
+    If selectData Is Nothing Then
+        evidence.AddFailure "Dimension arrange SelectData is Nothing in '" & _
+            viewName & "'."
+        arrangeOutcome = "FAILED_SELECT_DATA"
+        GoTo SafeExit
+    End If
+    Set selectData.View = swView
+
+    Dim i As Long
+    Dim attemptedCount As Long
+    Dim selectedCount As Long
+    For i = LBound(dimensions) To UBound(dimensions)
+        Dim displayDimension As SldWorks.DisplayDimension
+        Set displayDimension = dimensions(i)
+
+        If displayDimension Is Nothing Then
+            evidence.AddFailure "Dimension arrange received a Nothing display " & _
+                "dimension in '" & viewName & "' at array index " & CStr(i) & "."
+            arrangeOutcome = "FAILED_DIMENSION_OBJECT"
+            GoTo SafeExit
+        End If
+
+        Dim annotation As SldWorks.Annotation
+        Set annotation = displayDimension.GetAnnotation
+
+        If annotation Is Nothing Then
+            evidence.AddFailure "Dimension arrange received a display dimension " & _
+                "without an annotation in '" & viewName & "' at array index " & _
+                CStr(i) & "."
+            arrangeOutcome = "FAILED_ANNOTATION_OBJECT"
+            GoTo SafeExit
+        End If
+
+        attemptedCount = attemptedCount + 1
+
+        Dim annotationSelected As Boolean
+        annotationSelected = CBool( _
+            annotation.Select3(selectedCount > 0, selectData))
+
+        If annotationSelected Then
+            selectedCount = selectedCount + 1
+        Else
+            evidence.AddFailure "Dimension Select3 returned False in '" & _
+                viewName & "' at array index " & CStr(i) & "."
+            arrangeOutcome = "FAILED_SELECT3"
+            GoTo SafeExit
+        End If
+    Next i
+
+    Dim readbackCount As Long
+    readbackCount = selectionManager.GetSelectedObjectCount2(-1)
+
+    evidence.AddInfo "DIMENSION_ARRANGE_SELECTION|view=" & _
+        EvidenceValue(viewName) & _
+        "|attempted=" & CStr(attemptedCount) & _
+        "|selected=" & CStr(selectedCount) & _
+        "|readback=" & CStr(readbackCount)
+
+    If selectedCount <> attemptedCount Or readbackCount <> selectedCount Then
+        evidence.AddFailure "Dimension arrange selection proof failed in '" & _
+            viewName & "': attempted=" & CStr(attemptedCount) & _
+            ", selected=" & _
+            CStr(selectedCount) & ", readback=" & CStr(readbackCount) & "."
+        arrangeOutcome = "FAILED_SELECTION_READBACK"
+        GoTo SafeExit
+    End If
+
+    If selectedCount < 2 Then
+        If Not ValidateDimensionAnnotationOrigins( _
+            dimensions, evidence, viewName, "NoAction") Then
+
+            arrangeOutcome = "FAILED_NO_ACTION_BOUNDS"
+            GoTo SafeExit
+        End If
+
+        evidence.AddInfo "DIMENSION_ARRANGE_SKIPPED|view=" & _
+            EvidenceValue(viewName) & _
+            "|reason=FewerThanTwoSelectedDimensions"
+        arrangeOutcome = "NO_ACTION"
+        AutoArrangeDimensionsInView = True
+        GoTo SafeExit
+    End If
+
+    Dim arrangeSucceeded As Boolean
+    evidence.RecordSolidWorksMutation _
+        "IModelDocExtension.AlignDimensions(DimensionArrange)"
+    arrangeSucceeded = CBool(swDrawModel.Extension.AlignDimensions( _
+        swAlignDimensionType_AutoArrange, DIMENSION_ARRANGE_SPACING_M))
+
+    evidence.AddInfo "DIMENSION_ARRANGE_RESULT|view=" & _
+        EvidenceValue(viewName) & _
+        "|selected=" & CStr(selectedCount) & _
+        "|spacingM=0.006000|returned=" & CStr(arrangeSucceeded)
+
+    If arrangeSucceeded Then
+        If Not ValidateDimensionAnnotationOrigins( _
+            dimensions, evidence, viewName, "AlignDimensions") Then
+
+            arrangeOutcome = "FAILED_API_BOUNDS"
+            GoTo SafeExit
+        End If
+
+        arrangeOutcome = "API"
+        AutoArrangeDimensionsInView = True
+    Else
+        swDrawModel.ClearSelection2 True
+
+        Dim fallbackMoved As Long
+        If TryArrangeWithDeterministicLanes( _
+            swDrawModel, swView, dimensions, evidence, fallbackMoved) Then
+
+            evidence.AddInfo "DIMENSION_ARRANGE_FALLBACK_RESULT|view=" & _
+                EvidenceValue(viewName) & _
+                "|moved=" & CStr(fallbackMoved) & _
+                "|status=PROVED"
+            arrangeOutcome = "FALLBACK"
+            AutoArrangeDimensionsInView = True
+        Else
+            evidence.AddFailure "AlignDimensions returned False and the " & _
+                "deterministic lane fallback was not proved in '" & _
+                viewName & "'."
+            arrangeOutcome = "FAILED_API_AND_FALLBACK"
+        End If
+    End If
+
+SafeExit:
+    swDrawModel.ClearSelection2 True
+    Exit Function
+
+Failed:
+    evidence.AddFailure "Dimension arrange API error in '" & _
+        Module8_RuntimeSupport.GetViewName(swView) & "': " & _
+        CStr(Err.Number) & ": " & Err.Description
+    arrangeOutcome = "FAILED_API_ERROR"
+    Resume SafeExit
+End Function
+
+Private Function TryArrangeWithDeterministicLanes( _
+    ByRef swDrawModel As SldWorks.ModelDoc2, _
+    ByRef swView As SldWorks.View, _
+    ByVal dimensions As Variant, _
+    ByRef evidence As CRunEvidence, _
+    ByRef movedCount As Long) As Boolean
+
+    On Error GoTo Failed
+
+    Dim viewName As String
+    viewName = Module8_RuntimeSupport.GetViewName(swView)
+
+    Dim outline As Variant
+    outline = swView.GetOutline
+
+    Dim viewLeft As Double
+    Dim viewBottom As Double
+    Dim viewRight As Double
+    Dim viewTop As Double
+
+    If Not TryReadViewOutline( _
+        outline, viewLeft, viewBottom, viewRight, viewTop) Then
+
+        evidence.AddFailure "Dimension lane fallback could not read a valid " & _
+            "view outline for '" & viewName & "'."
+        Exit Function
+    End If
+
+    If Not ContentBorderIsValid(evidence) Then
+        evidence.AddFailure "Dimension lane fallback has no proved content " & _
+            "border for '" & viewName & "'."
+        Exit Function
+    End If
+
+    Dim leftLaneCount As Long
+    Dim rightLaneCount As Long
+    Dim bottomLaneCount As Long
+    Dim topLaneCount As Long
+    Dim retainedUnsupportedCount As Long
 
     Dim i As Long
     For i = LBound(dimensions) To UBound(dimensions)
         Dim displayDimension As SldWorks.DisplayDimension
         Set displayDimension = dimensions(i)
+        If displayDimension Is Nothing Then Exit Function
 
-        If Not displayDimension Is Nothing Then
-            Dim annotation As SldWorks.Annotation
-            Set annotation = displayDimension.GetAnnotation
+        Dim annotation As SldWorks.Annotation
+        Set annotation = displayDimension.GetAnnotation
+        If annotation Is Nothing Then Exit Function
 
-            If Not annotation Is Nothing Then
-                annotation.Select3 True, Nothing
+        Dim originalX As Double
+        Dim originalY As Double
+        If Not TryReadAnnotationPosition( _
+            annotation, originalX, originalY) Then
+
+            evidence.AddFailure "Dimension lane fallback could not read the " & _
+                "annotation position in '" & viewName & "' at array index " & _
+                CStr(i) & "."
+            Exit Function
+        End If
+
+        Dim dimensionType As Long
+        dimensionType = displayDimension.Type2
+
+        If DimensionPositionIsUnsupported(dimensionType) Then
+            If Not PositionIsInsideContentBorder( _
+                originalX, originalY, evidence) Then
+
+                evidence.AddFailure "Unmovable radial or diametric dimension " & _
+                    "origin is outside the content border in '" & viewName & _
+                    "' at array index " & CStr(i) & "."
+                Exit Function
             End If
+
+            retainedUnsupportedCount = retainedUnsupportedCount + 1
+            evidence.AddInfo "DIMENSION_ARRANGE_FALLBACK_ITEM|view=" & _
+                EvidenceValue(viewName) & _
+                "|index=" & CStr(i) & _
+                "|type=" & CStr(dimensionType) & _
+                "|mode=RetainedUnsupported" & _
+                "|x=" & Format$(originalX, "0.000000") & _
+                "|y=" & Format$(originalY, "0.000000")
+        Else
+            Dim targetX As Double
+            Dim targetY As Double
+            Dim laneName As String
+
+            If Not TryChooseDimensionLane( _
+                dimensionType, originalX, originalY, _
+                viewLeft, viewBottom, viewRight, viewTop, evidence, _
+                leftLaneCount, rightLaneCount, _
+                bottomLaneCount, topLaneCount, _
+                targetX, targetY, laneName) Then
+
+                evidence.AddFailure "Dimension lane fallback could not allocate " & _
+                    "a border-safe lane in '" & viewName & "' at array index " & _
+                    CStr(i) & "."
+                Exit Function
+            End If
+
+            Dim positionSet As Boolean
+            evidence.RecordSolidWorksMutation _
+                "IAnnotation.SetPosition2(DimensionArrangeFallback)"
+            positionSet = CBool(annotation.SetPosition2(targetX, targetY, 0#))
+            If Not positionSet Then
+                evidence.AddFailure "IAnnotation.SetPosition2 returned False " & _
+                    "for dimension lane fallback in '" & viewName & _
+                    "' at array index " & CStr(i) & "."
+                Exit Function
+            End If
+
+            Dim readbackX As Double
+            Dim readbackY As Double
+            If Not TryReadAnnotationPosition( _
+                annotation, readbackX, readbackY) Then
+
+                evidence.AddFailure "Dimension lane fallback position readback " & _
+                    "failed in '" & viewName & "' at array index " & _
+                    CStr(i) & "."
+                Exit Function
+            End If
+
+            If Abs(readbackX - targetX) > _
+                   DIMENSION_ARRANGE_READBACK_TOLERANCE_M Or _
+               Abs(readbackY - targetY) > _
+                   DIMENSION_ARRANGE_READBACK_TOLERANCE_M Then
+
+                evidence.AddFailure "Dimension lane fallback position readback " & _
+                    "mismatch in '" & viewName & "' at array index " & _
+                    CStr(i) & "."
+                Exit Function
+            End If
+
+            If Not PositionIsInsideContentBorder( _
+                readbackX, readbackY, evidence) Then
+
+                evidence.AddFailure "Dimension lane fallback readback is outside " & _
+                    "the content border in '" & viewName & "' at array index " & _
+                    CStr(i) & "."
+                Exit Function
+            End If
+
+            movedCount = movedCount + 1
+            evidence.AddInfo "DIMENSION_ARRANGE_FALLBACK_ITEM|view=" & _
+                EvidenceValue(viewName) & _
+                "|index=" & CStr(i) & _
+                "|type=" & CStr(dimensionType) & _
+                "|mode=SetPosition2" & _
+                "|lane=" & laneName & _
+                "|target=" & Format$(targetX, "0.000000") & "," & _
+                Format$(targetY, "0.000000") & _
+                "|readback=" & Format$(readbackX, "0.000000") & "," & _
+                Format$(readbackY, "0.000000")
         End If
     Next i
 
-    If Not swDrawModel.Extension.AlignDimensions( _
-        swAlignDimensionType_AutoArrange, 0.006) Then
-
-        evidence.AddWarning "AlignDimensions returned False in '" & _
-            Module8_RuntimeSupport.GetViewName(swView) & "'."
+    If movedCount = 0 Then
+        evidence.AddFailure "Dimension lane fallback could not move any of the " & _
+            "selected dimensions in '" & viewName & "'; retained unsupported=" & _
+            CStr(retainedUnsupportedCount) & "."
+        Exit Function
     End If
 
-SafeExit:
-    swDrawModel.ClearSelection2 True
-    Exit Sub
+    TryArrangeWithDeterministicLanes = ValidateDimensionAnnotationOrigins( _
+        dimensions, evidence, viewName, "DeterministicLaneFallback")
+    Exit Function
 
 Failed:
-    evidence.AddWarning "Dimension arrange error in '" & _
-        Module8_RuntimeSupport.GetViewName(swView) & "': " & Err.Description
-    Resume SafeExit
-End Sub
+    evidence.AddFailure "Dimension lane fallback API error in '" & viewName & _
+        "': " & CStr(Err.Number) & ": " & Err.Description
+End Function
+
+Private Function TryChooseDimensionLane( _
+    ByVal dimensionType As Long, _
+    ByVal originalX As Double, _
+    ByVal originalY As Double, _
+    ByVal viewLeft As Double, _
+    ByVal viewBottom As Double, _
+    ByVal viewRight As Double, _
+    ByVal viewTop As Double, _
+    ByRef evidence As CRunEvidence, _
+    ByRef leftLaneCount As Long, _
+    ByRef rightLaneCount As Long, _
+    ByRef bottomLaneCount As Long, _
+    ByRef topLaneCount As Long, _
+    ByRef targetX As Double, _
+    ByRef targetY As Double, _
+    ByRef laneName As String) As Boolean
+
+    Dim preferPositiveSide As Boolean
+
+    Select Case dimensionType
+        Case swDimensionType_HorOrdinate, swDimensionType_HorLinear
+            preferPositiveSide = (originalY >= (viewBottom + viewTop) / 2#)
+            TryChooseDimensionLane = TryAllocateHorizontalLane( _
+                preferPositiveSide, originalX, _
+                viewBottom, viewTop, evidence, _
+                bottomLaneCount, topLaneCount, _
+                targetX, targetY, laneName)
+
+        Case swDimensionType_VertOrdinate, swDimensionType_VertLinear
+            preferPositiveSide = (originalX >= (viewLeft + viewRight) / 2#)
+            TryChooseDimensionLane = TryAllocateVerticalLane( _
+                preferPositiveSide, originalY, _
+                viewLeft, viewRight, evidence, _
+                leftLaneCount, rightLaneCount, _
+                targetX, targetY, laneName)
+
+        Case Else
+            If NearestViewSideIsHorizontal( _
+                originalX, originalY, _
+                viewLeft, viewBottom, viewRight, viewTop) Then
+
+                preferPositiveSide = (originalY >= (viewBottom + viewTop) / 2#)
+                TryChooseDimensionLane = TryAllocateHorizontalLane( _
+                    preferPositiveSide, originalX, _
+                    viewBottom, viewTop, evidence, _
+                    bottomLaneCount, topLaneCount, _
+                    targetX, targetY, laneName)
+            Else
+                preferPositiveSide = (originalX >= (viewLeft + viewRight) / 2#)
+                TryChooseDimensionLane = TryAllocateVerticalLane( _
+                    preferPositiveSide, originalY, _
+                    viewLeft, viewRight, evidence, _
+                    leftLaneCount, rightLaneCount, _
+                    targetX, targetY, laneName)
+            End If
+    End Select
+End Function
+
+Private Function TryAllocateHorizontalLane( _
+    ByVal preferTop As Boolean, _
+    ByVal originalX As Double, _
+    ByVal viewBottom As Double, _
+    ByVal viewTop As Double, _
+    ByRef evidence As CRunEvidence, _
+    ByRef bottomLaneCount As Long, _
+    ByRef topLaneCount As Long, _
+    ByRef targetX As Double, _
+    ByRef targetY As Double, _
+    ByRef laneName As String) As Boolean
+
+    targetX = ClampToContentBorderX(originalX, evidence)
+
+    If preferTop Then
+        If TryTopLane(viewTop, evidence, topLaneCount, targetY) Then
+            laneName = "TOP-" & CStr(topLaneCount)
+        ElseIf TryBottomLane( _
+            viewBottom, evidence, bottomLaneCount, targetY) Then
+
+            laneName = "BOTTOM-" & CStr(bottomLaneCount)
+        Else
+            Exit Function
+        End If
+    Else
+        If TryBottomLane( _
+            viewBottom, evidence, bottomLaneCount, targetY) Then
+
+            laneName = "BOTTOM-" & CStr(bottomLaneCount)
+        ElseIf TryTopLane(viewTop, evidence, topLaneCount, targetY) Then
+            laneName = "TOP-" & CStr(topLaneCount)
+        Else
+            Exit Function
+        End If
+    End If
+
+    TryAllocateHorizontalLane = PositionIsInsideContentBorder( _
+        targetX, targetY, evidence)
+End Function
+
+Private Function TryAllocateVerticalLane( _
+    ByVal preferRight As Boolean, _
+    ByVal originalY As Double, _
+    ByVal viewLeft As Double, _
+    ByVal viewRight As Double, _
+    ByRef evidence As CRunEvidence, _
+    ByRef leftLaneCount As Long, _
+    ByRef rightLaneCount As Long, _
+    ByRef targetX As Double, _
+    ByRef targetY As Double, _
+    ByRef laneName As String) As Boolean
+
+    targetY = ClampToContentBorderY(originalY, evidence)
+
+    If preferRight Then
+        If TryRightLane(viewRight, evidence, rightLaneCount, targetX) Then
+            laneName = "RIGHT-" & CStr(rightLaneCount)
+        ElseIf TryLeftLane(viewLeft, evidence, leftLaneCount, targetX) Then
+            laneName = "LEFT-" & CStr(leftLaneCount)
+        Else
+            Exit Function
+        End If
+    Else
+        If TryLeftLane(viewLeft, evidence, leftLaneCount, targetX) Then
+            laneName = "LEFT-" & CStr(leftLaneCount)
+        ElseIf TryRightLane(viewRight, evidence, rightLaneCount, targetX) Then
+            laneName = "RIGHT-" & CStr(rightLaneCount)
+        Else
+            Exit Function
+        End If
+    End If
+
+    TryAllocateVerticalLane = PositionIsInsideContentBorder( _
+        targetX, targetY, evidence)
+End Function
+
+Private Function TryBottomLane( _
+    ByVal viewBottom As Double, _
+    ByRef evidence As CRunEvidence, _
+    ByRef laneCount As Long, _
+    ByRef targetY As Double) As Boolean
+
+    Dim proposedLane As Long
+    proposedLane = laneCount + 1
+    targetY = viewBottom - _
+        DIMENSION_ARRANGE_SPACING_M * CDbl(proposedLane)
+
+    If targetY < evidence.ContentBorderBottom + _
+       DIMENSION_ARRANGE_BORDER_INSET_M Then Exit Function
+
+    laneCount = proposedLane
+    TryBottomLane = True
+End Function
+
+Private Function TryTopLane( _
+    ByVal viewTop As Double, _
+    ByRef evidence As CRunEvidence, _
+    ByRef laneCount As Long, _
+    ByRef targetY As Double) As Boolean
+
+    Dim proposedLane As Long
+    proposedLane = laneCount + 1
+    targetY = viewTop + _
+        DIMENSION_ARRANGE_SPACING_M * CDbl(proposedLane)
+
+    If targetY > evidence.ContentBorderTop - _
+       DIMENSION_ARRANGE_BORDER_INSET_M Then Exit Function
+
+    laneCount = proposedLane
+    TryTopLane = True
+End Function
+
+Private Function TryLeftLane( _
+    ByVal viewLeft As Double, _
+    ByRef evidence As CRunEvidence, _
+    ByRef laneCount As Long, _
+    ByRef targetX As Double) As Boolean
+
+    Dim proposedLane As Long
+    proposedLane = laneCount + 1
+    targetX = viewLeft - _
+        DIMENSION_ARRANGE_SPACING_M * CDbl(proposedLane)
+
+    If targetX < evidence.ContentBorderLeft + _
+       DIMENSION_ARRANGE_BORDER_INSET_M Then Exit Function
+
+    laneCount = proposedLane
+    TryLeftLane = True
+End Function
+
+Private Function TryRightLane( _
+    ByVal viewRight As Double, _
+    ByRef evidence As CRunEvidence, _
+    ByRef laneCount As Long, _
+    ByRef targetX As Double) As Boolean
+
+    Dim proposedLane As Long
+    proposedLane = laneCount + 1
+    targetX = viewRight + _
+        DIMENSION_ARRANGE_SPACING_M * CDbl(proposedLane)
+
+    If targetX > evidence.ContentBorderRight - _
+       DIMENSION_ARRANGE_BORDER_INSET_M Then Exit Function
+
+    laneCount = proposedLane
+    TryRightLane = True
+End Function
+
+Private Function NearestViewSideIsHorizontal( _
+    ByVal x As Double, _
+    ByVal y As Double, _
+    ByVal viewLeft As Double, _
+    ByVal viewBottom As Double, _
+    ByVal viewRight As Double, _
+    ByVal viewTop As Double) As Boolean
+
+    Dim horizontalDistance As Double
+    horizontalDistance = Abs(y - viewBottom)
+    If Abs(y - viewTop) < horizontalDistance Then
+        horizontalDistance = Abs(y - viewTop)
+    End If
+
+    Dim verticalDistance As Double
+    verticalDistance = Abs(x - viewLeft)
+    If Abs(x - viewRight) < verticalDistance Then
+        verticalDistance = Abs(x - viewRight)
+    End If
+
+    NearestViewSideIsHorizontal = _
+        (horizontalDistance <= verticalDistance)
+End Function
+
+Private Function DimensionPositionIsUnsupported( _
+    ByVal dimensionType As Long) As Boolean
+
+    DimensionPositionIsUnsupported = _
+        (dimensionType = swDimensionType_Radial Or _
+         dimensionType = swDimensionType_Diameter)
+End Function
+
+Private Function ValidateDimensionAnnotationOrigins( _
+    ByVal dimensions As Variant, _
+    ByRef evidence As CRunEvidence, _
+    ByVal viewName As String, _
+    ByVal validationMode As String) As Boolean
+
+    On Error GoTo Failed
+
+    If Not ContentBorderIsValid(evidence) Then
+        evidence.AddFailure "Dimension arrange has no proved content border " & _
+            "for '" & viewName & "'."
+        Exit Function
+    End If
+
+    Dim checkedCount As Long
+    Dim i As Long
+    For i = LBound(dimensions) To UBound(dimensions)
+        Dim displayDimension As SldWorks.DisplayDimension
+        Set displayDimension = dimensions(i)
+        If displayDimension Is Nothing Then Exit Function
+
+        Dim annotation As SldWorks.Annotation
+        Set annotation = displayDimension.GetAnnotation
+        If annotation Is Nothing Then Exit Function
+
+        Dim x As Double
+        Dim y As Double
+        If Not TryReadAnnotationPosition(annotation, x, y) Then
+            evidence.AddFailure "Dimension arrange could not read annotation " & _
+                "position in '" & viewName & "' at array index " & CStr(i) & "."
+            Exit Function
+        End If
+
+        If Not PositionIsInsideContentBorder(x, y, evidence) Then
+            evidence.AddFailure "Dimension annotation origin is outside the " & _
+                "content border after " & validationMode & " in '" & _
+                viewName & "' at array index " & CStr(i) & "."
+            Exit Function
+        End If
+
+        checkedCount = checkedCount + 1
+    Next i
+
+    evidence.AddInfo "DIMENSION_ARRANGE_BOUNDS|view=" & _
+        EvidenceValue(viewName) & _
+        "|mode=" & EvidenceValue(validationMode) & _
+        "|checked=" & CStr(checkedCount) & _
+        "|status=PROVED"
+
+    ValidateDimensionAnnotationOrigins = True
+    Exit Function
+
+Failed:
+    evidence.AddFailure "Dimension arrange position validation API error in '" & _
+        viewName & "': " & CStr(Err.Number) & ": " & Err.Description
+End Function
+
+Private Function TryReadAnnotationPosition( _
+    ByRef annotation As SldWorks.Annotation, _
+    ByRef x As Double, _
+    ByRef y As Double) As Boolean
+
+    On Error GoTo Failed
+
+    Dim position As Variant
+    position = annotation.GetPosition
+    If IsEmpty(position) Or Not IsArray(position) Then Exit Function
+    If UBound(position) - LBound(position) < 2 Then Exit Function
+
+    x = CDbl(position(LBound(position)))
+    y = CDbl(position(LBound(position) + 1))
+    TryReadAnnotationPosition = True
+    Exit Function
+
+Failed:
+    TryReadAnnotationPosition = False
+End Function
+
+Private Function TryReadViewOutline( _
+    ByVal outline As Variant, _
+    ByRef leftValue As Double, _
+    ByRef bottomValue As Double, _
+    ByRef rightValue As Double, _
+    ByRef topValue As Double) As Boolean
+
+    On Error GoTo Failed
+
+    If IsEmpty(outline) Or Not IsArray(outline) Then Exit Function
+    If UBound(outline) - LBound(outline) < 3 Then Exit Function
+
+    Dim baseIndex As Long
+    baseIndex = LBound(outline)
+
+    leftValue = CDbl(outline(baseIndex))
+    bottomValue = CDbl(outline(baseIndex + 1))
+    rightValue = CDbl(outline(baseIndex + 2))
+    topValue = CDbl(outline(baseIndex + 3))
+
+    If rightValue <= leftValue Or topValue <= bottomValue Then Exit Function
+
+    TryReadViewOutline = True
+    Exit Function
+
+Failed:
+    TryReadViewOutline = False
+End Function
+
+Private Function ContentBorderIsValid( _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    ContentBorderIsValid = _
+        (evidence.ContentBorderRight > evidence.ContentBorderLeft And _
+         evidence.ContentBorderTop > evidence.ContentBorderBottom And _
+         evidence.ContentBorderLeft >= 0# And _
+         evidence.ContentBorderBottom >= 0# And _
+         evidence.ContentBorderRight <= evidence.SheetWidth And _
+         evidence.ContentBorderTop <= evidence.SheetHeight)
+End Function
+
+Private Function PositionIsInsideContentBorder( _
+    ByVal x As Double, _
+    ByVal y As Double, _
+    ByRef evidence As CRunEvidence) As Boolean
+
+    PositionIsInsideContentBorder = _
+        (x >= evidence.ContentBorderLeft - _
+             DIMENSION_ARRANGE_READBACK_TOLERANCE_M And _
+         x <= evidence.ContentBorderRight + _
+             DIMENSION_ARRANGE_READBACK_TOLERANCE_M And _
+         y >= evidence.ContentBorderBottom - _
+             DIMENSION_ARRANGE_READBACK_TOLERANCE_M And _
+         y <= evidence.ContentBorderTop + _
+             DIMENSION_ARRANGE_READBACK_TOLERANCE_M)
+End Function
+
+Private Function ClampToContentBorderX( _
+    ByVal x As Double, _
+    ByRef evidence As CRunEvidence) As Double
+
+    Dim minimumX As Double
+    minimumX = evidence.ContentBorderLeft + _
+        DIMENSION_ARRANGE_BORDER_INSET_M
+
+    Dim maximumX As Double
+    maximumX = evidence.ContentBorderRight - _
+        DIMENSION_ARRANGE_BORDER_INSET_M
+
+    If x < minimumX Then
+        ClampToContentBorderX = minimumX
+    ElseIf x > maximumX Then
+        ClampToContentBorderX = maximumX
+    Else
+        ClampToContentBorderX = x
+    End If
+End Function
+
+Private Function ClampToContentBorderY( _
+    ByVal y As Double, _
+    ByRef evidence As CRunEvidence) As Double
+
+    Dim minimumY As Double
+    minimumY = evidence.ContentBorderBottom + _
+        DIMENSION_ARRANGE_BORDER_INSET_M
+
+    Dim maximumY As Double
+    maximumY = evidence.ContentBorderTop - _
+        DIMENSION_ARRANGE_BORDER_INSET_M
+
+    If y < minimumY Then
+        ClampToContentBorderY = minimumY
+    ElseIf y > maximumY Then
+        ClampToContentBorderY = maximumY
+    Else
+        ClampToContentBorderY = y
+    End If
+End Function
 
 Public Function GetFirstRealViewName( _
     ByRef swDraw As SldWorks.DrawingDoc) As String

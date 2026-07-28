@@ -296,8 +296,20 @@ try {
     Wait-ForFile -Path $compileResult -Timeout $TimeoutSeconds
     $compileText = Get-Content -LiteralPath $compileResult -Raw
     if ($compileText -notmatch 'COMPILE_PROBE\|status=SUCCESS') {
-        throw "The deployed project did not pass the compile probe. See $compileResult"
+        throw "The deployed project did not pass the bootstrap execution probe. See $compileResult"
     }
+
+    $probeScopeText = @(
+        'PROBE_SCOPE|name=COMPILE_PROBE|scope=BOOTSTRAP_EXECUTION_ONLY'
+        'PROBE_SCOPE|fullVbaProjectCompile=False'
+        'PROBE_SCOPE|requiredNextGate=VBE_DEBUG_COMPILE_PROJECT'
+    )
+    [IO.File]::WriteAllLines(
+        (Join-Path $evidenceDirectory 'compile-probe-scope.txt'),
+        $probeScopeText,
+        [Text.Encoding]::ASCII
+    )
+    Write-Warning "COMPILE_PROBE verifies bootstrap execution only; manually run VBA Editor Debug > Compile Project."
 }
 finally {
     if ($null -ne $solidWorks) {
