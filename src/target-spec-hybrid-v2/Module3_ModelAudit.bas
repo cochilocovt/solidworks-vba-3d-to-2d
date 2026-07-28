@@ -54,13 +54,33 @@ Public Function IsOwnedHoleFeature( _
         Case "HOLEWZD", "ADVHOLEWZD", "SKETCHHOLE"
             IsOwnedHoleFeature = True
 
-        Case "MIRRORPATTERN"
-            IsOwnedHoleFeature = HasOwnedHoleSeedFace(swFeature)
-
         Case Else
-            If InStr(featureType, "CUT") > 0 Then
+            ' IFace2::GetSeedFeature resolves patterned, mirrored, and copied
+            ' bodies alike, so every pattern family is routed through the same
+            ' seed proof.  Restricting this to MirrorPattern silently dropped
+            ' every instance of a linear or circular hole pattern.
+            If IsPatternFeatureType(featureType) Then
+                IsOwnedHoleFeature = HasOwnedHoleSeedFace(swFeature)
+            ElseIf InStr(featureType, "CUT") > 0 Then
                 IsOwnedHoleFeature = HasInternalCylindricalFace(swFeature)
             End If
+    End Select
+End Function
+
+' Feature type names reported by IFeature::GetTypeName2 for the pattern
+' families that can replicate a Hole Wizard or sketch-hole seed.
+Public Function IsPatternFeatureType( _
+    ByVal featureTypeUpper As String) As Boolean
+
+    Select Case featureTypeUpper
+        Case "MIRRORPATTERN", "MIRRORSOLID", _
+             "LPATTERN", "CIRPATTERN", "TABLEPATTERN", _
+             "CURVEPATTERN", "FILLPATTERN", _
+             "DERIVEDLPATTERN", "DERIVEDCIRPATTERN", _
+             "LOCALLPATTERN", "LOCALCIRPATTERN", "LOCALCURVEPATTERN", _
+             "CHAINPATTERN", "VARIABLEPATTERN"
+
+            IsPatternFeatureType = True
     End Select
 End Function
 

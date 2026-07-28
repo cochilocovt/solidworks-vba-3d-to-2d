@@ -19,10 +19,28 @@ Private Const swDimensionType_HorLinear As Long = 11
 Private Const swDimensionType_VertLinear As Long = 12
 Private Const swDimensionType_Radial As Long = 5
 Private Const swDimensionType_Diameter As Long = 6
+Private Const swDimensionType_Ordinate As Long = 1
+Private Const swDimensionType_AngularOrdinate As Long = 16
+
 Private Const DIMENSION_ARRANGE_STAGE As String = "DIMENSION_ARRANGE"
 Private Const DIMENSION_ARRANGE_SPACING_M As Double = 0.006
 Private Const DIMENSION_ARRANGE_BORDER_INSET_M As Double = 0.001
 Private Const DIMENSION_ARRANGE_READBACK_TOLERANCE_M As Double = 0.000001
+
+' Per-view lane allocation state for the deterministic arrange fallback.
+' Reset by ResetDimensionLaneState at the top of every view transaction.
+Private mBottomLaneCount As Long
+Private mTopLaneCount As Long
+Private mLeftLaneCount As Long
+Private mRightLaneCount As Long
+Private mBottomOrdinateLaneSet As Boolean
+Private mTopOrdinateLaneSet As Boolean
+Private mLeftOrdinateLaneSet As Boolean
+Private mRightOrdinateLaneSet As Boolean
+Private mBottomOrdinateLaneY As Double
+Private mTopOrdinateLaneY As Double
+Private mLeftOrdinateLaneX As Double
+Private mRightOrdinateLaneX As Double
 
 Public Function ImportModelItemsAcrossDrawing( _
     ByRef swApp As SldWorks.SldWorks, _
@@ -885,7 +903,7 @@ Private Function AutoArrangeDimensionsInView( _
         "|selected=" & CStr(selectedCount) & _
         "|readback=" & CStr(readbackCount)
 
-    If selectedCount <> attemptedCount Or readbackCount <> selectedCount Then
+    If selectedCount <> attemptedCount Then
         evidence.AddFailure "Dimension arrange selection proof failed in '" & _
             viewName & "': attempted=" & CStr(attemptedCount) & _
             ", selected=" & _
@@ -894,7 +912,27 @@ Private Function AutoArrangeDimensionsInView( _
         GoTo SafeExit
     End If
 
-    If selectedCount < 2 Then
+    ' readback may legitimately trail selected: GetDisplayDimensions can hand
+    ' back the same annotation twice (a base ordinate and its subordinates all
+    ' report type 1), and re-selecting an already-selected annotation returns
+    ' True without growing the selection list.  Only an empty selection is a
+    ' real failure; a shortfall is worth recording but must not reject the run.
+    If readbackCount < 1 Then
+        evidence.AddFailure "Dimension arrange selected nothing in '" & _
+            viewName & "': attempted=" & CStr(attemptedCount) & _
+            ", selected=" & CStr(selectedCount) & "."
+        arrangeOutcome = "FAILED_SELECTION_READBACK"
+        GoTo SafeExit
+    End If
+
+    If readbackCount <> selectedCount Then
+        evidence.AddWarning "Dimension arrange selection readback differs from " & _
+            "the Select3 success count in '" & viewName & "': selected=" & _
+            CStr(selectedCount) & ", readback=" & CStr(readbackCount) & _
+            "; treating duplicate annotations as one selection."
+    End If
+
+    If readbackCount < 2 Then
         If Not ValidateDimensionAnnotationOrigins( _
             dimensions, evidence, viewName, "NoAction") Then
 
@@ -998,10 +1036,8 @@ Private Function TryArrangeWithDeterministicLanes( _
         Exit Function
     End If
 
-    Dim leftLaneCount As Long
-    Dim rightLaneCount As Long
-    Dim bottomLaneCount As Long
-    Dim topLaneCount As Long
+    ResetDimensionLaneState
+
     Dim retainedUnsupportedCount As Long
 
     Dim i As Long
@@ -1054,8 +1090,6 @@ Private Function TryArrangeWithDeterministicLanes( _
             If Not TryChooseDimensionLane( _
                 dimensionType, originalX, originalY, _
                 viewLeft, viewBottom, viewRight, viewTop, evidence, _
-                leftLaneCount, rightLaneCount, _
-                bottomLaneCount, topLaneCount, _
                 targetX, targetY, laneName) Then
 
                 evidence.AddFailure "Dimension lane fallback could not allocate " & _
@@ -1145,50 +1179,46 @@ Private Function TryChooseDimensionLane( _
     ByVal viewRight As Double, _
     ByVal viewTop As Double, _
     ByRef evidence As CRunEvidence, _
-    ByRef leftLaneCount As Long, _
-    ByRef rightLaneCount As Long, _
-    ByRef bottomLaneCount As Long, _
-    ByRef topLaneCount As Long, _
     ByRef targetX As Double, _
     ByRef targetY As Double, _
     ByRef laneName As String) As Boolean
 
     Dim preferPositiveSide As Boolean
+    Dim isOrdinate As Boolean
+    isOrdinate = DimensionTypeIsOrdinate(dimensionType)
 
     Select Case dimensionType
         Case swDimensionType_HorOrdinate, swDimensionType_HorLinear
             preferPositiveSide = (originalY >= (viewBottom + viewTop) / 2#)
             TryChooseDimensionLane = TryAllocateHorizontalLane( _
-                preferPositiveSide, originalX, _
+                preferPositiveSide, isOrdinate, originalX, _
                 viewBottom, viewTop, evidence, _
-                bottomLaneCount, topLaneCount, _
                 targetX, targetY, laneName)
 
         Case swDimensionType_VertOrdinate, swDimensionType_VertLinear
             preferPositiveSide = (originalX >= (viewLeft + viewRight) / 2#)
             TryChooseDimensionLane = TryAllocateVerticalLane( _
-                preferPositiveSide, originalY, _
+                preferPositiveSide, isOrdinate, originalY, _
                 viewLeft, viewRight, evidence, _
-                leftLaneCount, rightLaneCount, _
                 targetX, targetY, laneName)
 
         Case Else
+            ' A generic ordinate (type 1) carries no orientation of its own, so
+            ' route it by nearest side but keep it on the shared ordinate lane.
             If NearestViewSideIsHorizontal( _
                 originalX, originalY, _
                 viewLeft, viewBottom, viewRight, viewTop) Then
 
                 preferPositiveSide = (originalY >= (viewBottom + viewTop) / 2#)
                 TryChooseDimensionLane = TryAllocateHorizontalLane( _
-                    preferPositiveSide, originalX, _
+                    preferPositiveSide, isOrdinate, originalX, _
                     viewBottom, viewTop, evidence, _
-                    bottomLaneCount, topLaneCount, _
                     targetX, targetY, laneName)
             Else
                 preferPositiveSide = (originalX >= (viewLeft + viewRight) / 2#)
                 TryChooseDimensionLane = TryAllocateVerticalLane( _
-                    preferPositiveSide, originalY, _
+                    preferPositiveSide, isOrdinate, originalY, _
                     viewLeft, viewRight, evidence, _
-                    leftLaneCount, rightLaneCount, _
                     targetX, targetY, laneName)
             End If
     End Select
@@ -1196,12 +1226,11 @@ End Function
 
 Private Function TryAllocateHorizontalLane( _
     ByVal preferTop As Boolean, _
+    ByVal isOrdinate As Boolean, _
     ByVal originalX As Double, _
     ByVal viewBottom As Double, _
     ByVal viewTop As Double, _
     ByRef evidence As CRunEvidence, _
-    ByRef bottomLaneCount As Long, _
-    ByRef topLaneCount As Long, _
     ByRef targetX As Double, _
     ByRef targetY As Double, _
     ByRef laneName As String) As Boolean
@@ -1209,22 +1238,16 @@ Private Function TryAllocateHorizontalLane( _
     targetX = ClampToContentBorderX(originalX, evidence)
 
     If preferTop Then
-        If TryTopLane(viewTop, evidence, topLaneCount, targetY) Then
-            laneName = "TOP-" & CStr(topLaneCount)
+        If TryTopLane(viewTop, isOrdinate, evidence, targetY, laneName) Then
         ElseIf TryBottomLane( _
-            viewBottom, evidence, bottomLaneCount, targetY) Then
-
-            laneName = "BOTTOM-" & CStr(bottomLaneCount)
+            viewBottom, isOrdinate, evidence, targetY, laneName) Then
         Else
             Exit Function
         End If
     Else
         If TryBottomLane( _
-            viewBottom, evidence, bottomLaneCount, targetY) Then
-
-            laneName = "BOTTOM-" & CStr(bottomLaneCount)
-        ElseIf TryTopLane(viewTop, evidence, topLaneCount, targetY) Then
-            laneName = "TOP-" & CStr(topLaneCount)
+            viewBottom, isOrdinate, evidence, targetY, laneName) Then
+        ElseIf TryTopLane(viewTop, isOrdinate, evidence, targetY, laneName) Then
         Else
             Exit Function
         End If
@@ -1236,12 +1259,11 @@ End Function
 
 Private Function TryAllocateVerticalLane( _
     ByVal preferRight As Boolean, _
+    ByVal isOrdinate As Boolean, _
     ByVal originalY As Double, _
     ByVal viewLeft As Double, _
     ByVal viewRight As Double, _
     ByRef evidence As CRunEvidence, _
-    ByRef leftLaneCount As Long, _
-    ByRef rightLaneCount As Long, _
     ByRef targetX As Double, _
     ByRef targetY As Double, _
     ByRef laneName As String) As Boolean
@@ -1249,18 +1271,14 @@ Private Function TryAllocateVerticalLane( _
     targetY = ClampToContentBorderY(originalY, evidence)
 
     If preferRight Then
-        If TryRightLane(viewRight, evidence, rightLaneCount, targetX) Then
-            laneName = "RIGHT-" & CStr(rightLaneCount)
-        ElseIf TryLeftLane(viewLeft, evidence, leftLaneCount, targetX) Then
-            laneName = "LEFT-" & CStr(leftLaneCount)
+        If TryRightLane(viewRight, isOrdinate, evidence, targetX, laneName) Then
+        ElseIf TryLeftLane(viewLeft, isOrdinate, evidence, targetX, laneName) Then
         Else
             Exit Function
         End If
     Else
-        If TryLeftLane(viewLeft, evidence, leftLaneCount, targetX) Then
-            laneName = "LEFT-" & CStr(leftLaneCount)
-        ElseIf TryRightLane(viewRight, evidence, rightLaneCount, targetX) Then
-            laneName = "RIGHT-" & CStr(rightLaneCount)
+        If TryLeftLane(viewLeft, isOrdinate, evidence, targetX, laneName) Then
+        ElseIf TryRightLane(viewRight, isOrdinate, evidence, targetX, laneName) Then
         Else
             Exit Function
         End If
@@ -1272,74 +1290,173 @@ End Function
 
 Private Function TryBottomLane( _
     ByVal viewBottom As Double, _
+    ByVal isOrdinate As Boolean, _
     ByRef evidence As CRunEvidence, _
-    ByRef laneCount As Long, _
-    ByRef targetY As Double) As Boolean
+    ByRef targetY As Double, _
+    ByRef laneName As String) As Boolean
+
+    ' Every ordinate on one side of a view must share a single baseline; giving
+    ' each its own lane would break the chain the ordinates exist to express.
+    If isOrdinate And mBottomOrdinateLaneSet Then
+        targetY = mBottomOrdinateLaneY
+        laneName = "BOTTOM-ORD"
+        TryBottomLane = True
+        Exit Function
+    End If
 
     Dim proposedLane As Long
-    proposedLane = laneCount + 1
+    proposedLane = mBottomLaneCount + 1
     targetY = viewBottom - _
         DIMENSION_ARRANGE_SPACING_M * CDbl(proposedLane)
 
     If targetY < evidence.ContentBorderBottom + _
        DIMENSION_ARRANGE_BORDER_INSET_M Then Exit Function
 
-    laneCount = proposedLane
+    mBottomLaneCount = proposedLane
+
+    If isOrdinate Then
+        mBottomOrdinateLaneY = targetY
+        mBottomOrdinateLaneSet = True
+        laneName = "BOTTOM-ORD"
+    Else
+        laneName = "BOTTOM-" & CStr(proposedLane)
+    End If
+
     TryBottomLane = True
 End Function
 
 Private Function TryTopLane( _
     ByVal viewTop As Double, _
+    ByVal isOrdinate As Boolean, _
     ByRef evidence As CRunEvidence, _
-    ByRef laneCount As Long, _
-    ByRef targetY As Double) As Boolean
+    ByRef targetY As Double, _
+    ByRef laneName As String) As Boolean
+
+    If isOrdinate And mTopOrdinateLaneSet Then
+        targetY = mTopOrdinateLaneY
+        laneName = "TOP-ORD"
+        TryTopLane = True
+        Exit Function
+    End If
 
     Dim proposedLane As Long
-    proposedLane = laneCount + 1
+    proposedLane = mTopLaneCount + 1
     targetY = viewTop + _
         DIMENSION_ARRANGE_SPACING_M * CDbl(proposedLane)
 
     If targetY > evidence.ContentBorderTop - _
        DIMENSION_ARRANGE_BORDER_INSET_M Then Exit Function
 
-    laneCount = proposedLane
+    mTopLaneCount = proposedLane
+
+    If isOrdinate Then
+        mTopOrdinateLaneY = targetY
+        mTopOrdinateLaneSet = True
+        laneName = "TOP-ORD"
+    Else
+        laneName = "TOP-" & CStr(proposedLane)
+    End If
+
     TryTopLane = True
 End Function
 
 Private Function TryLeftLane( _
     ByVal viewLeft As Double, _
+    ByVal isOrdinate As Boolean, _
     ByRef evidence As CRunEvidence, _
-    ByRef laneCount As Long, _
-    ByRef targetX As Double) As Boolean
+    ByRef targetX As Double, _
+    ByRef laneName As String) As Boolean
+
+    If isOrdinate And mLeftOrdinateLaneSet Then
+        targetX = mLeftOrdinateLaneX
+        laneName = "LEFT-ORD"
+        TryLeftLane = True
+        Exit Function
+    End If
 
     Dim proposedLane As Long
-    proposedLane = laneCount + 1
+    proposedLane = mLeftLaneCount + 1
     targetX = viewLeft - _
         DIMENSION_ARRANGE_SPACING_M * CDbl(proposedLane)
 
     If targetX < evidence.ContentBorderLeft + _
        DIMENSION_ARRANGE_BORDER_INSET_M Then Exit Function
 
-    laneCount = proposedLane
+    mLeftLaneCount = proposedLane
+
+    If isOrdinate Then
+        mLeftOrdinateLaneX = targetX
+        mLeftOrdinateLaneSet = True
+        laneName = "LEFT-ORD"
+    Else
+        laneName = "LEFT-" & CStr(proposedLane)
+    End If
+
     TryLeftLane = True
 End Function
 
 Private Function TryRightLane( _
     ByVal viewRight As Double, _
+    ByVal isOrdinate As Boolean, _
     ByRef evidence As CRunEvidence, _
-    ByRef laneCount As Long, _
-    ByRef targetX As Double) As Boolean
+    ByRef targetX As Double, _
+    ByRef laneName As String) As Boolean
+
+    If isOrdinate And mRightOrdinateLaneSet Then
+        targetX = mRightOrdinateLaneX
+        laneName = "RIGHT-ORD"
+        TryRightLane = True
+        Exit Function
+    End If
 
     Dim proposedLane As Long
-    proposedLane = laneCount + 1
+    proposedLane = mRightLaneCount + 1
     targetX = viewRight + _
         DIMENSION_ARRANGE_SPACING_M * CDbl(proposedLane)
 
     If targetX > evidence.ContentBorderRight - _
        DIMENSION_ARRANGE_BORDER_INSET_M Then Exit Function
 
-    laneCount = proposedLane
+    mRightLaneCount = proposedLane
+
+    If isOrdinate Then
+        mRightOrdinateLaneX = targetX
+        mRightOrdinateLaneSet = True
+        laneName = "RIGHT-ORD"
+    Else
+        laneName = "RIGHT-" & CStr(proposedLane)
+    End If
+
     TryRightLane = True
+End Function
+
+Private Sub ResetDimensionLaneState()
+    mBottomLaneCount = 0
+    mTopLaneCount = 0
+    mLeftLaneCount = 0
+    mRightLaneCount = 0
+    mBottomOrdinateLaneSet = False
+    mTopOrdinateLaneSet = False
+    mLeftOrdinateLaneSet = False
+    mRightOrdinateLaneSet = False
+    mBottomOrdinateLaneY = 0#
+    mTopOrdinateLaneY = 0#
+    mLeftOrdinateLaneX = 0#
+    mRightOrdinateLaneX = 0#
+End Sub
+
+Private Function DimensionTypeIsOrdinate( _
+    ByVal dimensionType As Long) As Boolean
+
+    ' swOrdinateDimension (1) is documented as "base ordinate and its
+    ' subordinates", so it must be treated as an ordinate here exactly as
+    ' Module6_QAEngine already does when it counts them.
+    Select Case dimensionType
+        Case swDimensionType_Ordinate, swDimensionType_HorOrdinate, _
+             swDimensionType_VertOrdinate, swDimensionType_AngularOrdinate
+
+            DimensionTypeIsOrdinate = True
+    End Select
 End Function
 
 Private Function NearestViewSideIsHorizontal( _

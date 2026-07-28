@@ -955,12 +955,19 @@ Private Function CheckSectionLineClearance( _
                 sectionInfoItemCount = _
                     Module8_RuntimeSupport.CountVariantItems(sectionInfo)
 
+                ' GetSectionLineCount2's Size out-param is documented only as
+                ' "size, which includes an extra double per section line
+                ' containing the layer ID"; whether it counts the leading
+                ' numSectionLines element is unspecified.  Asserting exact
+                ' equality would reject every drawing on a convention
+                ' difference, so record the pair and let the per-element cursor
+                ' guards below - which bound every read - do the real checking.
                 If sectionInfoItemCount <> sectionLineInfoSize Then
-                    evidence.AddFailure "P-0251 section-line data-size mismatch " & _
-                        "in '" & Module8_RuntimeSupport.GetViewName(swView) & _
-                        "': expected=" & CStr(sectionLineInfoSize) & _
-                        ", actual=" & CStr(sectionInfoItemCount) & "."
-                    GoTo ClearanceFailed
+                    evidence.AddInfo "SECTION_LINE_SIZE_VARIANCE|view=" & _
+                        EvidenceValue( _
+                            Module8_RuntimeSupport.GetViewName(swView)) & _
+                        "|reportedSize=" & CStr(sectionLineInfoSize) & _
+                        "|arrayItems=" & CStr(sectionInfoItemCount)
                 End If
 
                 evidence.AddInfo "SECTION_LINE_READBACK|view=" & _
@@ -1019,12 +1026,19 @@ Private Function ValidateSectionLineInfo( _
     Dim upperIndex As Long
     cursor = LBound(sectionInfo)
     upperIndex = UBound(sectionInfo)
-    If cursor > upperIndex Then Exit Function
+    If cursor > upperIndex Then
+        RecordSectionParseFailure swView, evidence, "EmptyArray", cursor
+        Exit Function
+    End If
 
     Dim lineCount As Long
     lineCount = CLng(sectionInfo(cursor))
     cursor = cursor + 1
-    If lineCount < 0 Then Exit Function
+    If lineCount < 0 Then
+        RecordSectionParseFailure swView, evidence, _
+            "NegativeLineCount:" & CStr(lineCount), cursor
+        Exit Function
+    End If
     If lineCount = 0 Then
         ValidateSectionLineInfo = True
         Exit Function
@@ -1032,7 +1046,11 @@ Private Function ValidateSectionLineInfo( _
 
     Dim lineIndex As Long
     For lineIndex = 1 To lineCount
-        If cursor + 1 > upperIndex Then Exit Function
+        If cursor + 1 > upperIndex Then
+            RecordSectionParseFailure swView, evidence, _
+                "TruncatedLineHeader", cursor
+            Exit Function
+        End If
 
         Dim layerValue As Double
         Dim segmentCount As Long
@@ -1040,11 +1058,19 @@ Private Function ValidateSectionLineInfo( _
         cursor = cursor + 1
         segmentCount = CLng(sectionInfo(cursor))
         cursor = cursor + 1
-        If segmentCount < 1 Then Exit Function
+        If segmentCount < 1 Then
+            RecordSectionParseFailure swView, evidence, _
+                "InvalidSegmentCount:" & CStr(segmentCount), cursor
+            Exit Function
+        End If
 
         Dim segmentIndex As Long
         For segmentIndex = 1 To segmentCount
-            If cursor + 6 > upperIndex Then Exit Function
+            If cursor + 6 > upperIndex Then
+                RecordSectionParseFailure swView, evidence, _
+                    "TruncatedSegment", cursor
+                Exit Function
+            End If
 
             Dim startX As Double
             Dim startY As Double
@@ -1066,7 +1092,11 @@ Private Function ValidateSectionLineInfo( _
             cursor = cursor + 7
         Next segmentIndex
 
-        If cursor + 24 > upperIndex Then Exit Function
+        If cursor + 24 > upperIndex Then
+            RecordSectionParseFailure swView, evidence, _
+                "TruncatedArrowOrLabelBlock", cursor
+            Exit Function
+        End If
 
         Dim arrow1StartX As Double
         Dim arrow1StartY As Double
@@ -1143,8 +1173,28 @@ Private Function ValidateSectionLineInfo( _
     Exit Function
 
 Failed:
+    RecordSectionParseFailure swView, evidence, _
+        "APIError:" & CStr(Err.Number) & ":" & Err.Description, cursor
     ValidateSectionLineInfo = False
 End Function
+
+' Without this, every malformed-array exit fell out of ValidateSectionLineInfo
+' silently and the caller reported the same generic stage failure it uses for a
+' genuine clearance violation, leaving no way to tell the two apart.
+Private Sub RecordSectionParseFailure( _
+    ByRef swView As SldWorks.View, _
+    ByRef evidence As CRunEvidence, _
+    ByVal reason As String, _
+    ByVal cursor As Long)
+
+    evidence.AddFailure "P-0251 section-line geometry could not be parsed in '" & _
+        Module8_RuntimeSupport.GetViewName(swView) & "': " & reason & _
+        " at array index " & CStr(cursor) & "."
+    evidence.AddInfo "SECTION_LINE_PARSE_FAILURE|view=" & _
+        EvidenceValue(Module8_RuntimeSupport.GetViewName(swView)) & _
+        "|reason=" & EvidenceValue(reason) & _
+        "|cursor=" & CStr(cursor)
+End Sub
 
 Private Function SectionSegmentTouchesPartIdentification( _
     ByVal startX As Double, _

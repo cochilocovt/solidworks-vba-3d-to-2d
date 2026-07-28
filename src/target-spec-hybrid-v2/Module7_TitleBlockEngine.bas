@@ -664,6 +664,10 @@ Private Function GetManufacturingCalloutTarget( _
     If Not IsArray(outline) Then Exit Function
     If Module8_RuntimeSupport.CountVariantItems(outline) <> 4 Then Exit Function
 
+    ' FACE and SIDE previously shared one target.  Nothing forces their
+    ' candidates into different views, so identical coordinates put the second
+    ' note on top of the first and the collision check then failed the stage.
+    ' Each kind now owns a distinct lane below (or above) the view outline.
     Select Case UCase$(calloutKind)
         Case "BORE"
             targetX = CDbl(outline(0))
@@ -673,7 +677,7 @@ Private Function GetManufacturingCalloutTarget( _
             targetY = CDbl(outline(1)) - 0.008
         Case "SIDE"
             targetX = CDbl(outline(0))
-            targetY = CDbl(outline(1)) - 0.008
+            targetY = CDbl(outline(1)) - 0.026
         Case Else
             Exit Function
     End Select
@@ -825,6 +829,13 @@ Private Function CalloutExtentClearsOtherAnnotations( _
     Const clearance As Double = 0.002
     On Error GoTo Failed
 
+    ' `Is` compares IUnknown pointers, and each GetAnnotation/GetAnnotations
+    ' call may hand back a fresh dispatch wrapper for the same annotation.
+    ' Matching on the annotation name as well keeps the callout from being
+    ' compared against its own extent, which would always "collide".
+    Dim currentAnnotationName As String
+    currentAnnotationName = SafeAnnotationName(currentAnnotation)
+
     Dim swView As SldWorks.View
     Set swView = swDraw.GetFirstView
 
@@ -839,7 +850,9 @@ Private Function CalloutExtentClearsOtherAnnotations( _
                 Set otherAnnotation = annotations(annotationIndex)
 
                 If Not otherAnnotation Is Nothing Then
-                    If Not (otherAnnotation Is currentAnnotation) Then
+                    If Not IsSameAnnotation( _
+                        otherAnnotation, currentAnnotation, _
+                        currentAnnotationName) Then
                         Dim position As Variant
                         position = otherAnnotation.GetPosition
 
@@ -875,7 +888,9 @@ Private Function CalloutExtentClearsOtherAnnotations( _
             Set otherNoteAnnotation = otherNote.GetAnnotation
 
             If Not otherNoteAnnotation Is Nothing Then
-                If Not (otherNoteAnnotation Is currentAnnotation) Then
+                If Not IsSameAnnotation( _
+                    otherNoteAnnotation, currentAnnotation, _
+                    currentAnnotationName) Then
                     Dim noteLeft As Double
                     Dim noteBottom As Double
                     Dim noteRight As Double
@@ -911,6 +926,39 @@ Private Function CalloutExtentClearsOtherAnnotations( _
 Failed:
     evidence.AddFailure "P-0251 manufacturing callout collision check " & _
         "failed: " & CStr(Err.Number) & ": " & Err.Description
+End Function
+
+Private Function IsSameAnnotation( _
+    ByRef candidateAnnotation As SldWorks.Annotation, _
+    ByRef currentAnnotation As SldWorks.Annotation, _
+    ByVal currentAnnotationName As String) As Boolean
+
+    If candidateAnnotation Is Nothing Then Exit Function
+    If candidateAnnotation Is currentAnnotation Then
+        IsSameAnnotation = True
+        Exit Function
+    End If
+
+    ' Only fall back to the name when one is actually available; treating two
+    ' unnamed annotations as identical would silently skip real collisions.
+    If Len(currentAnnotationName) = 0 Then Exit Function
+
+    IsSameAnnotation = _
+        (StrComp(SafeAnnotationName(candidateAnnotation), _
+                 currentAnnotationName, vbTextCompare) = 0)
+End Function
+
+Private Function SafeAnnotationName( _
+    ByRef annotation As SldWorks.Annotation) As String
+
+    If annotation Is Nothing Then Exit Function
+
+    On Error GoTo Unavailable
+    SafeAnnotationName = Trim$(annotation.GetName)
+    Exit Function
+
+Unavailable:
+    SafeAnnotationName = vbNullString
 End Function
 
 Private Function RectanglesOverlapWithClearance( _
@@ -1166,14 +1214,20 @@ Private Function VerifyLinkedText( _
         Dim renderedText As String
         renderedText = note.GetText
 
+        Dim provedExpectedText As String
         If NoteReferencesSemanticField( _
-            linkedText, renderedText, expectedText, propertyName) Then
+            linkedText, renderedText, expectedText, propertyName, _
+            provedExpectedText) Then
 
             observedLinkedText = linkedText
             observedRenderedText = renderedText
 
+            ' provedExpectedText is what the semantic matcher actually accepted,
+            ' which for the static general-notes case may be the controlled
+            ' reference constant rather than the property-sourced value.
             If InStr(1, NormalizeComparisonText(renderedText), _
-                NormalizeComparisonText(expectedText), vbTextCompare) > 0 Then
+                NormalizeComparisonText(provedExpectedText), _
+                vbTextCompare) > 0 Then
 
                 Dim extentText As String
                 Dim extentLeft As Double
@@ -1439,9 +1493,11 @@ Private Function NoteReferencesSemanticField( _
     ByVal linkedText As String, _
     ByVal renderedText As String, _
     ByVal expectedText As String, _
-    ByVal propertyName As String) As Boolean
+    ByVal propertyName As String, _
+    ByRef provedExpectedText As String) As Boolean
 
     Dim aliases As Variant
+    provedExpectedText = expectedText
 
     Select Case UCase$(Trim$(propertyName))
         Case "PARTNO"
@@ -1456,10 +1512,27 @@ Private Function NoteReferencesSemanticField( _
         Case "PARTIDENTIFICATION"
             aliases = Array("PartIdentification", "PART NUMBER")
         Case "GENERALNOTES"
-            NoteReferencesSemanticField = _
-                (StrComp(NormalizeComparisonText(renderedText), _
-                         NormalizeComparisonText(expectedText), _
-                         vbTextCompare) = 0)
+            ' The controlled format carries its general notes as static text
+            ' that no property write can change, so this is a text match rather
+            ' than a link match.  Accept the controlled reference constant as
+            ' well: without it, any part that happens to carry a GeneralNotes
+            ' custom property makes the stage permanently unprovable even
+            ' though the drawing itself is correct.
+            If StrComp(NormalizeComparisonText(renderedText), _
+                       NormalizeComparisonText(expectedText), _
+                       vbTextCompare) = 0 Then
+
+                NoteReferencesSemanticField = True
+                Exit Function
+            End If
+
+            If StrComp(NormalizeComparisonText(renderedText), _
+                       NormalizeComparisonText(REFERENCE_GENERAL_NOTES), _
+                       vbTextCompare) = 0 Then
+
+                provedExpectedText = REFERENCE_GENERAL_NOTES
+                NoteReferencesSemanticField = True
+            End If
             Exit Function
         Case Else
             aliases = Array(propertyName)

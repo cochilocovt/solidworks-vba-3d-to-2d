@@ -453,7 +453,10 @@ Private Function TryMeasureLegacyControlledTitleBlock( _
     Dim zoneTop As Double
     zoneLeft = sheetWidth * 0.63
     zoneRight = sheetWidth * 0.98
-    zoneBottom = sheetHeight * 0.03
+    ' zoneBottom must sit below the smallest realistic inner-border offset.  At
+    ' 0.03 the accepted band for the title-block bottom rule was only 8.9-17.8mm
+    ' on A3, which silently excluded any format drawn against a 20mm border.
+    zoneBottom = sheetHeight * 0.015
     zoneTop = sheetHeight * 0.27
 
     titleLeft = sheetWidth
@@ -519,7 +522,7 @@ Private Function TryMeasureLegacyControlledTitleBlock( _
                            TEMPLATE_GEOMETRY_TOLERANCE_M And _
                            lineLength >= 0.1 Then
 
-                            If y1 <= sheetHeight * 0.06 Then
+                            If y1 <= sheetHeight * 0.09 Then
                                 bottomBoundaryProved = True
                             ElseIf y1 >= sheetHeight * 0.15 Then
                                 topBoundaryProved = True
@@ -547,13 +550,17 @@ Private Function TryMeasureLegacyControlledTitleBlock( _
     titleWidth = titleRight - titleLeft
     titleHeight = titleTop - titleBottom
 
+    ' titleLeft/titleTop are accumulated only from segments that already passed
+    ' the zoneLeft/zoneTop candidate filter, so comparing them back against
+    ' those same bounds proves nothing.  Anchor the rectangle instead: it must
+    ' reach the sheet's right edge and sit against the bottom of the sheet.
     If candidateCount < 10 Or _
        Not bottomBoundaryProved Or Not topBoundaryProved Or _
        Not leftBoundaryProved Or Not rightBoundaryProved Or _
        titleWidth < 0.1 Or titleWidth > 0.18 Or _
        titleHeight < 0.04 Or titleHeight > 0.09 Or _
-       titleLeft < zoneLeft Or titleRight < sheetWidth * 0.95 Or _
-       titleTop > zoneTop Then
+       titleRight < sheetWidth * 0.95 Or _
+       titleBottom > sheetHeight * 0.1 Then
 
         evidence.AddFailure "Legacy title-block sketch geometry did not " & _
             "satisfy the controlled lower-right rectangle contract."
@@ -900,7 +907,8 @@ Public Function TransformPointToView( _
     ByRef viewX As Double, _
     ByRef viewY As Double, _
     ByRef viewZ As Double, _
-    ByRef coordinateFrameProof As String) As Boolean
+    ByRef coordinateFrameProof As String, _
+    ByVal requireOutlineContainment As Boolean) As Boolean
 
     On Error GoTo Failed
 
@@ -973,7 +981,8 @@ Public Function TransformPointToView( _
     viewZ = CDbl(result(2))
 
     If Not ProvePageCoordinateAgainstViewOutline( _
-        swView, viewX, viewY, coordinateFrameProof) Then Exit Function
+        swView, viewX, viewY, requireOutlineContainment, _
+        coordinateFrameProof) Then Exit Function
 
     TransformPointToView = True
     Exit Function
@@ -987,10 +996,15 @@ Failed:
     TransformPointToView = False
 End Function
 
+' requireOutlineContainment must be True for points that are claimed to lie on
+' visible geometry (hole centres, mapped model vertices).  It must be False for
+' reference points such as the projected model origin, which legitimately fall
+' outside the view outline whenever the part origin sits off the solid.
 Private Function ProvePageCoordinateAgainstViewOutline( _
     ByRef swView As SldWorks.View, _
     ByVal pageX As Double, _
     ByVal pageY As Double, _
+    ByVal requireOutlineContainment As Boolean, _
     ByRef coordinateFrameProof As String) As Boolean
 
     On Error GoTo Failed
@@ -1054,13 +1068,29 @@ Private Function ProvePageCoordinateAgainstViewOutline( _
        pageY < minimumY - PROJECTED_TOLERANCE_M Or _
        pageY > maximumY + PROJECTED_TOLERANCE_M Then
 
-        coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & viewName & _
-            "|reason=OutsideCurrentViewOutline" & _
+        If requireOutlineContainment Then
+            coordinateFrameProof = "TRANSFORM_PAGE_REJECT|view=" & viewName & _
+                "|reason=OutsideCurrentViewOutline" & _
+                "|pageXY=" & TransformCoordinateToken(pageX) & "," & _
+                    TransformCoordinateToken(pageY) & _
+                "|outline=" & TransformOutlineToken( _
+                    minimumX, minimumY, maximumX, maximumY) & _
+                "|tolerance=" & TransformCoordinateToken(PROJECTED_TOLERANCE_M)
+            Exit Function
+        End If
+
+        coordinateFrameProof = "TRANSFORM_PAGE_PROOF|view=" & viewName & _
+            "|source=ModelToViewTransform" & _
+            "|frame=DrawingPage" & _
+            "|basis=IView.GetOutline" & _
+            "|containment=NotRequired" & _
             "|pageXY=" & TransformCoordinateToken(pageX) & "," & _
                 TransformCoordinateToken(pageY) & _
             "|outline=" & TransformOutlineToken( _
                 minimumX, minimumY, maximumX, maximumY) & _
             "|tolerance=" & TransformCoordinateToken(PROJECTED_TOLERANCE_M)
+
+        ProvePageCoordinateAgainstViewOutline = True
         Exit Function
     End If
 
@@ -1163,15 +1193,7 @@ Failed:
     TransformVectorToView = False
 End Function
 
-Public Sub ViewToSheetCoordinates( _
-    ByRef swView As SldWorks.View, _
-    ByVal viewX As Double, _
-    ByVal viewY As Double, _
-    ByRef sheetX As Double, _
-    ByRef sheetY As Double)
-
-    ' ModelToViewTransform supplies page coordinates for drawing dimension and
-    ' annotation placement.  IView.Position must not be added a second time.
-    sheetX = viewX
-    sheetY = viewY
-End Sub
+' ViewToSheetCoordinates was removed in r20.  ModelToViewTransform already
+' supplies drawing-page coordinates, so callers assign SheetX/SheetY directly
+' from ViewX/ViewY.  Keeping an identity-valued helper here would silently
+' mis-place any future caller that genuinely held view-local coordinates.

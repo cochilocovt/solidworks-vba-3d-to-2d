@@ -489,7 +489,19 @@ Private Function TryReadClosedCircularEdge( _
             Exit Function
         End If
 
-        proofSource = "ISurface.CylinderParams"
+        ' ISurface.CylinderParams returns the cylinder AXIS ORIGIN, which is an
+        ' arbitrary point on the axis and not the centre of this edge.  Slide it
+        ' along the axis into the plane of the edge so both edges of one bore
+        ' resolve to their own centre instead of a shared axis point.
+        currentStep = "CylinderCentreProjection"
+        If Not ProjectCylinderOriginOntoEdgePlane( _
+            curveParameters, circleData) Then
+
+            failureReason = "ClosedCircleCylinderCentreNotProjectable"
+            Exit Function
+        End If
+
+        proofSource = "ISurface.CylinderParams+EdgePlaneProjection"
     End If
 
     If Not IsArray(circleData) Then
@@ -552,6 +564,67 @@ Private Function CurveParameterEndpointsAreCoincident( _
 
 Failed:
     CurveParameterEndpointsAreCoincident = False
+End Function
+
+' Moves cylinderData(0..2) from the cylinder's axis origin to the foot of the
+' perpendicular from that origin onto the plane of the edge, using a point that
+' is known to lie on the edge itself.  centre = origin + ((p - origin) . a) * a
+Private Function ProjectCylinderOriginOntoEdgePlane( _
+    ByRef curveParameters As SldWorks.CurveParamData, _
+    ByRef cylinderData As Variant) As Boolean
+
+    If curveParameters Is Nothing Then Exit Function
+    If Not IsArray(cylinderData) Then Exit Function
+    On Error GoTo Failed
+
+    Dim edgePoint As Variant
+    edgePoint = curveParameters.StartPoint
+    If Not IsArray(edgePoint) Then Exit Function
+    If Module8_RuntimeSupport.CountVariantItems(edgePoint) < 3 Then Exit Function
+
+    Dim dataBase As Long
+    Dim pointBase As Long
+    dataBase = LBound(cylinderData)
+    pointBase = LBound(edgePoint)
+
+    Dim axisX As Double
+    Dim axisY As Double
+    Dim axisZ As Double
+    axisX = CDbl(cylinderData(dataBase + 3))
+    axisY = CDbl(cylinderData(dataBase + 4))
+    axisZ = CDbl(cylinderData(dataBase + 5))
+
+    Dim axisMagnitude As Double
+    axisMagnitude = Sqr(axisX * axisX + axisY * axisY + axisZ * axisZ)
+    If axisMagnitude <= Module8_RuntimeSupport.GEOMETRY_TOLERANCE_M Then _
+        Exit Function
+
+    axisX = axisX / axisMagnitude
+    axisY = axisY / axisMagnitude
+    axisZ = axisZ / axisMagnitude
+
+    Dim originX As Double
+    Dim originY As Double
+    Dim originZ As Double
+    originX = CDbl(cylinderData(dataBase))
+    originY = CDbl(cylinderData(dataBase + 1))
+    originZ = CDbl(cylinderData(dataBase + 2))
+
+    Dim projection As Double
+    projection = _
+        (CDbl(edgePoint(pointBase)) - originX) * axisX + _
+        (CDbl(edgePoint(pointBase + 1)) - originY) * axisY + _
+        (CDbl(edgePoint(pointBase + 2)) - originZ) * axisZ
+
+    cylinderData(dataBase) = originX + projection * axisX
+    cylinderData(dataBase + 1) = originY + projection * axisY
+    cylinderData(dataBase + 2) = originZ + projection * axisZ
+
+    ProjectCylinderOriginOntoEdgePlane = True
+    Exit Function
+
+Failed:
+    ProjectCylinderOriginOntoEdgePlane = False
 End Function
 
 Private Function TryReadCylinderCircleData( _
@@ -698,10 +771,13 @@ Private Function BuildOwnedCandidate( _
         Exit Function
     End If
 
-    candidate.ModelX = CDbl(circleData(0))
-    candidate.ModelY = CDbl(circleData(1))
-    candidate.ModelZ = CDbl(circleData(2))
-    candidate.Radius = Abs(CDbl(circleData(6)))
+    Dim circleBase As Long
+    circleBase = LBound(circleData)
+
+    candidate.ModelX = CDbl(circleData(circleBase))
+    candidate.ModelY = CDbl(circleData(circleBase + 1))
+    candidate.ModelZ = CDbl(circleData(circleBase + 2))
+    candidate.Radius = Abs(CDbl(circleData(circleBase + 6)))
 
     If Not CylinderFaceMatchesRadius(cylinderFace, candidate.Radius) Then
         candidate.RejectionReason = "CylinderRadiusDoesNotMatchCircularEdge"
@@ -728,17 +804,18 @@ Private Function BuildOwnedCandidate( _
     Dim featureTypeUpper As String
     featureTypeUpper = UCase$(candidate.FeatureType)
 
-    If featureTypeUpper = "MIRRORPATTERN" Then
+    If Module3_ModelAudit.IsPatternFeatureType(featureTypeUpper) Then
         Dim seedFeature As SldWorks.Feature
         Set seedFeature = _
             Module3_ModelAudit.GetOwnedHoleSeedFeature(cylinderFace)
 
         If seedFeature Is Nothing Then
-            candidate.RejectionReason = "MirrorFaceHasNoOwnedHoleSeed"
+            candidate.RejectionReason = "PatternFaceHasNoOwnedHoleSeed:" & _
+                featureTypeUpper
             Exit Function
         End If
 
-        candidate.OwnershipProof = "AuditedMirrorFaceSeed:" & _
+        candidate.OwnershipProof = "AuditedPatternFaceSeed:" & _
             seedFeature.Name & "/" & _
             Module3_ModelAudit.DescribeFeatureType(seedFeature)
 
@@ -755,18 +832,19 @@ Private Function BuildOwnedCandidate( _
     End If
 
     Dim modelAxisMagnitude As Double
-    modelAxisMagnitude = Sqr(CDbl(circleData(3)) * CDbl(circleData(3)) + _
-                             CDbl(circleData(4)) * CDbl(circleData(4)) + _
-                             CDbl(circleData(5)) * CDbl(circleData(5)))
+    modelAxisMagnitude = Sqr( _
+        CDbl(circleData(circleBase + 3)) * CDbl(circleData(circleBase + 3)) + _
+        CDbl(circleData(circleBase + 4)) * CDbl(circleData(circleBase + 4)) + _
+        CDbl(circleData(circleBase + 5)) * CDbl(circleData(circleBase + 5)))
 
     If modelAxisMagnitude <= Module8_RuntimeSupport.GEOMETRY_TOLERANCE_M Then
         candidate.RejectionReason = "DegenerateModelAxis"
         Exit Function
     End If
 
-    candidate.ModelAxisX = CDbl(circleData(3)) / modelAxisMagnitude
-    candidate.ModelAxisY = CDbl(circleData(4)) / modelAxisMagnitude
-    candidate.ModelAxisZ = CDbl(circleData(5)) / modelAxisMagnitude
+    candidate.ModelAxisX = CDbl(circleData(circleBase + 3)) / modelAxisMagnitude
+    candidate.ModelAxisY = CDbl(circleData(circleBase + 4)) / modelAxisMagnitude
+    candidate.ModelAxisZ = CDbl(circleData(circleBase + 5)) / modelAxisMagnitude
     CanonicalizeAxis candidate.ModelAxisX, _
         candidate.ModelAxisY, candidate.ModelAxisZ
 
@@ -806,7 +884,8 @@ Private Function BuildOwnedCandidate( _
     Dim centreTransformProof As String
     If Not Module8_RuntimeSupport.TransformPointToView( _
         swApp, swView, candidate.ModelX, candidate.ModelY, candidate.ModelZ, _
-        candidate.ViewX, candidate.ViewY, viewZ, centreTransformProof) Then
+        candidate.ViewX, candidate.ViewY, viewZ, centreTransformProof, _
+        True) Then
 
         evidence.AddInfo "EVIDENCE|" & centreTransformProof & _
             "|context=CandidateCentre"
@@ -1445,10 +1524,13 @@ Private Sub ProveCenterDatum( _
     Dim projectedOriginY As Double
     Dim projectedOriginZ As Double
     Dim projectedOriginTransformProof As String
+    ' The model origin is a reference point, not a claim about visible geometry.
+    ' It legitimately projects outside the view outline whenever the part origin
+    ' sits off the solid, so outline containment must not be required here.
     If Not Module8_RuntimeSupport.TransformPointToView( _
         swApp, swView, 0#, 0#, 0#, projectedOriginX, _
         projectedOriginY, projectedOriginZ, _
-        projectedOriginTransformProof) Then
+        projectedOriginTransformProof, False) Then
 
         evidence.AddInfo "EVIDENCE|" & projectedOriginTransformProof & _
             "|context=ProjectedModelOrigin"
@@ -1644,15 +1726,15 @@ Private Sub AddMappedModelVertex( _
     If Not Module8_RuntimeSupport.TransformPointToView( _
         swApp, swView, CDbl(pointData(0)), CDbl(pointData(1)), _
         CDbl(pointData(2)), viewX, viewY, viewZ, _
-        mappedVertexTransformProof) Then
+        mappedVertexTransformProof, True) Then
 
+        ' Rejections carry the diagnostic value.  This runs twice per edge over
+        ' every face of every visible component, so logging each success would
+        ' bury the stage proofs under thousands of identical lines.
         evidence.AddInfo "EVIDENCE|" & mappedVertexTransformProof & _
             "|context=MappedModelVertex"
         Exit Sub
     End If
-
-    evidence.AddInfo "EVIDENCE|" & mappedVertexTransformProof & _
-        "|context=MappedModelVertex"
 
     Dim drawingEntity As SldWorks.Entity
     Dim modelEntity As SldWorks.Entity
