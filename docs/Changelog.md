@@ -1,5 +1,86 @@
 # Changelog
 
+## 2026-07-29 - R21 code-review remediation
+
+Source identity moves to `target-spec-hybrid-v2-2026-07-29-r21`. R21 is r20
+plus fixes for defects found in a full review of the r20 diff. No new features.
+
+### Correctness
+
+- `Module5`: the `ISurface.CylinderParams` fallback used the cylinder axis
+  origin as the hole centre. The 2025 docs define that array as
+  `origin/axis/radius` where origin is an arbitrary point on the axis, so an
+  oblique bore was dimensioned at the wrong place and both circular edges of one
+  cylinder collapsed to the same centre. The origin is now projected along the
+  axis into the plane of the edge using a point known to lie on that edge.
+- `Module5`/`Module8`: `TransformPointToView` always required the transformed
+  point to lie inside `IView.GetOutline`. The model origin routinely projects
+  off the solid, so `ProveCenterDatum` failed before examining any vertex and
+  the Center datum became unprovable. Containment is now an explicit argument:
+  required for hole centres and mapped vertices, not for the projected origin.
+- `Module4`: the deterministic lane fallback allocated a new lane per
+  dimension, giving an ordinate chain one baseline per member. Ordinates on a
+  side now share one lane. `swOrdinateDimension` (1) - documented as "base
+  ordinate and its subordinates" and already counted as an ordinate by
+  `Module6` - was absent from the type switch and fell through to proximity
+  routing, splitting a chain across two sides; types 1 and 16 are now handled.
+- `Module3`/`Module5`: hole-seed resolution was wired only for `MirrorPattern`
+  although `IFace2::GetSeedFeature` covers patterned, mirrored and copied
+  bodies. Linear, circular, curve, table and fill patterns produced no
+  candidate and no rejection record. All pattern families now share one proof.
+- `Module7`: the FACE and SIDE manufacturing callouts shared one target
+  position, so two callouts resolving to the same view were placed on top of
+  each other and the collision check then failed the stage. SIDE has its own
+  lane.
+- `Module7`: the callout was excluded from its own collision scan using `Is`
+  against a re-fetched `GetAnnotation` pointer, which may be a different
+  wrapper for the same annotation - the note could collide with itself.
+  Identity now also matches on annotation name.
+- `Module7`: general-notes verification compared against a value read from a
+  part custom property, but the controlled format carries that note as static
+  text no property write can change. Any part carrying a `GeneralNotes`
+  property made the stage permanently unprovable. The controlled reference
+  constant is now also accepted, and whichever text proved the note is what the
+  containment check uses.
+
+### Robustness and diagnostics
+
+- `Module6`: removed the exact-equality assertion between the section-line
+  array length and the `Size` out-param of `GetSectionLineCount2`. The API docs
+  describe `Size` only as "size, which includes an extra double per section
+  line containing the layer ID" and never define it as the raw array length, so
+  a convention difference would reject every drawing. The per-element cursor
+  guards already bound every read; the pair is now recorded, not enforced.
+- `Module6`: every malformed-array exit in `ValidateSectionLineInfo` now
+  reports what failed and at which index. Previously they returned silently and
+  the caller reused the same stage message as a real clearance violation.
+- `Module4`: selection readback no longer has to equal the `Select3` success
+  count. Re-selecting an already-selected annotation returns True without
+  growing the list, so one duplicate let a cosmetic arrange step reject the
+  whole run. An empty selection still fails; a shortfall is warned.
+- `Module8`: widened the legacy title-block bottom-edge window, which accepted
+  only 8.9-17.8 mm on A3 and excluded any format drawn to a 20 mm border.
+  Replaying the recorded P-0251 template sketch gives byte-identical bounds
+  before and after.
+- `Module8`: replaced two rectangle-contract checks that compared the measured
+  bounds against the same limits the candidate filter had already enforced, so
+  they could never fire.
+- `Module8`: removed `ViewToSheetCoordinates`, reduced in r20 to an identity
+  copy with no callers, which would have silently mis-placed any future caller
+  holding genuinely view-local coordinates.
+- `Module5`: the per-vertex transform proof is logged only on rejection. It ran
+  twice per edge over every face of every visible component.
+
+### Verified statically only
+
+API contracts were confirmed against SOLIDWORKS 2025 documentation through the
+project `solidworks-api` MCP. The `GetSectionLineInfo2` cursor strides
+(7/9/9/7) were checked against the documented layout and are correct as r20
+wrote them; no change was made there. Procedure-block balance, duplicate `Dim`,
+and signature/call-site arity were script-checked across every module.
+**R21 has not been compiled in the VBA editor or run against a fixture.**
+Full-project **Compile Project** and a focused P-0251 run remain mandatory.
+
 ## 2026-07-28 - R20 GetSectionLineCount2 compile hotfix
 
 - A user-run full-project VBA compile stopped in

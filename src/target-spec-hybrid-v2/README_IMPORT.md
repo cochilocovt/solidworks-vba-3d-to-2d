@@ -1,11 +1,27 @@
 # Target-Spec Hybrid V2
 
-Source identity: `target-spec-hybrid-v2-2026-07-28-r20`
+Source identity: `target-spec-hybrid-v2-2026-07-29-r21`
 
 After the one-time bootstrap is installed, use
 `tools/swp-deploy/Deploy-TargetSpecHybrid.ps1` to synchronize the replaceable
 standard/class modules into `Fable.swp`. See `tools/swp-deploy/README.md` for
 the guarded candidate, compile, readback, and promotion workflow.
+
+R21 is r20 plus the repairs from a full review of the r20 diff. It corrects the
+`ISurface.CylinderParams` fallback, which used the cylinder axis origin as the
+hole centre; makes view-outline containment a per-call decision so the
+projected model origin no longer blocks the Center datum; keeps every ordinate
+on one shared baseline in the dimension-arrange fallback and recognises
+`swOrdinateDimension` (1) as an ordinate; routes all pattern families - not
+only MirrorPattern - through the hole-seed proof; separates the FACE and SIDE
+callout lanes; stops the manufacturing callout colliding with itself; and
+accepts the controlled reference general notes when a part property would
+otherwise make that stage unprovable. It also relaxes two assertions that could
+reject a valid run (section-line array size, dimension selection readback),
+widens the legacy title-block bottom-edge window, removes two contract checks
+that could never fire, deletes the identity-valued `ViewToSheetCoordinates`,
+and stops per-vertex transform proofs from flooding the evidence file.
+See `docs/R21_REVIEW_HANDOFF.md` for the full finding-by-finding record.
 
 R20 keeps the runtime-proven J-J section, portrait primary, selected-view model
 import, isometric isolation, P-0251 reference-led layout, metric mass

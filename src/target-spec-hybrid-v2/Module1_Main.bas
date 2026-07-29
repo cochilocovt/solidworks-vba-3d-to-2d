@@ -46,7 +46,7 @@ Public GlobalSectionCount As Long
 Public GlobalEvidence As CRunEvidence
 
 Public Const MACRO_SOURCE_REVISION As String = _
-    "target-spec-hybrid-v2-2026-07-28-r20"
+    "target-spec-hybrid-v2-2026-07-29-r21"
 
 ' Temporary inspection mode. Keep False for production acceptance.
 Public Const DIAGNOSTIC_DRAWING_MODE As Boolean = True
