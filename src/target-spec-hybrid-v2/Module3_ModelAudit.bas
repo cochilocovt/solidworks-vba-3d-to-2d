@@ -75,10 +75,12 @@ Public Function IsPatternFeatureType( _
     Select Case featureTypeUpper
         Case "MIRRORPATTERN", "MIRRORSOLID", _
              "LPATTERN", "CIRPATTERN", "TABLEPATTERN", _
-             "CURVEPATTERN", "FILLPATTERN", _
+             "CURVEPATTERN", "APATTERN", _
              "DERIVEDLPATTERN", "DERIVEDCIRPATTERN", _
+             "DERIVEDHOLEPATTERN", _
              "LOCALLPATTERN", "LOCALCIRPATTERN", "LOCALCURVEPATTERN", _
-             "CHAINPATTERN", "VARIABLEPATTERN"
+             "LOCALCHAINPATTERN", "DIMPATTERN", _
+             "SKETCHPATTERN", "LOCALSKETCHPATTERN"
 
             IsPatternFeatureType = True
     End Select

@@ -1,8 +1,39 @@
 # Current Status
 
-Date: 2026-07-28
+Date: 2026-07-29
 
-## R20 compile hotfix is synchronized and awaiting full-project VBA compilation
+## R22 corrected review line is awaiting user compile and runtime evidence
+
+The authoritative managed source identifies as
+`target-spec-hybrid-v2-2026-07-29-r22`.
+
+R22 combines all source changes from the r20/r21 commit line, retains the
+review fixes that satisfy the verified contracts, and corrects the latest
+commit's three substantive defects:
+
+- non-circular cylinder trims now fail closed at `ICurve.IsCircle=False`
+  instead of being assigned a centre from `ISurface.CylinderParams`;
+- pattern ownership uses the exact SOLIDWORKS 2025 `GetTypeName2` literals,
+  including `APattern`, `LocalChainPattern`, `DimPattern`,
+  `DerivedHolePattern`, `SketchPattern`, and `LocalSketchPattern`; and
+- the arrange fallback delegates ordinate-set jogs to
+  `IDisplayDimension.AutoJogOrdinate`, using manual deterministic lanes only
+  for non-ordinate dimensions.
+
+The local MCP contracts and installed SOLIDWORKS 2025 SP1.2 interop
+`33.1.2.4` confirm the used member signatures and dimension enum values. The
+retained P-0251 curve probe confirms that all relevant owned model edges already
+provide `IsCircle=True` and valid `CircleParams`, so removing the unsafe
+cylinder-trim inference does not discard those valid candidates.
+
+The guarded r22 deployment and exact managed-source readback are the next
+offline gates. After deployment, the user must run VBA Editor **Debug > Compile
+Project**, then run only an authorized fixture and return the complete
+Immediate Window output, `QA_REPORT.txt`, and one uncropped full-sheet
+screenshot. Static checks, interop reflection, and the deployment bootstrap
+probe are not full VBA compilation or manufacturing acceptance.
+
+## Historical R20 compile hotfix and runtime baseline
 
 The authoritative managed source and embedded macro now identify as
 `target-spec-hybrid-v2-2026-07-28-r20`.
@@ -254,7 +285,7 @@ regression and limits recovery to a named `DRAWINGVIEW` selection plus one
 
 ## Remaining gates
 
-1. Run synchronized r20 on P-0251 and retain its complete E6 runtime and drawing
+1. Run synchronized r22 on P-0251 and retain its complete E6 runtime and drawing
    evidence.
 2. Confirm nonzero complete circular boundaries/mapped edges, ten canonical
    P-0251 physical locations, and the required X/Y ordinate coverage.
@@ -308,8 +339,8 @@ run the macro.
 
 ## Exact handoff point
 
-The coherent r20 managed source is embedded in `Fable.swp`, compile-probed, and
-verified 15/15 against exported source. The user should now run r20 on
+The coherent r22 managed source is embedded in `Fable.swp`, bootstrap-probed,
+and verified 15/15 against exported source. The user should now compile and run r22 on
 `P-0251-14A-001.SLDPRT` with the same acceptance-profile settings and share the
 new QA report, complete Immediate Window output, and one uncropped full-sheet
 screenshot. No Computer Use is required.

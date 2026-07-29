@@ -183,7 +183,6 @@ Private Function CollectOwnedCandidates( _
     Dim circularEdgeCount As Long
     Dim mappedEdgeCount As Long
     Dim curveCircleProofCount As Long
-    Dim cylinderSurfaceProofCount As Long
 
     Dim featureIndex As Long
     For featureIndex = 1 To modelHoleFeatures.Count
@@ -223,7 +222,7 @@ Private Function CollectOwnedCandidates( _
                                     Dim circleFailure As String
                                     Dim circleProofSource As String
                                     If TryReadClosedCircularEdge( _
-                                        modelEdge, cylinderFace, _
+                                        modelEdge, _
                                         provenCircleData, circleProofSource, _
                                         circleFailure) Then
 
@@ -234,12 +233,6 @@ Private Function CollectOwnedCandidates( _
 
                                             curveCircleProofCount = _
                                                 curveCircleProofCount + 1
-                                        ElseIf StrComp(circleProofSource, _
-                                            "ISurface.CylinderParams", _
-                                            vbTextCompare) = 0 Then
-
-                                            cylinderSurfaceProofCount = _
-                                                cylinderSurfaceProofCount + 1
                                         End If
 
                                         Dim drawingEdge As SldWorks.Edge
@@ -289,7 +282,6 @@ Private Function CollectOwnedCandidates( _
         "|internalCylinders=" & CStr(cylinderFaceCount) & _
         "|circularEdges=" & CStr(circularEdgeCount) & _
         "|curveCircleProofs=" & CStr(curveCircleProofCount) & _
-        "|cylinderSurfaceProofs=" & CStr(cylinderSurfaceProofCount) & _
         "|mappedEdges=" & CStr(mappedEdgeCount)
 
     evidence.CandidatesAccepted = _
@@ -408,7 +400,6 @@ End Function
 
 Private Function TryReadClosedCircularEdge( _
     ByRef modelEdge As SldWorks.Edge, _
-    ByRef cylinderFace As SldWorks.Face2, _
     ByRef circleData As Variant, _
     ByRef proofSource As String, _
     ByRef failureReason As String) As Boolean
@@ -418,10 +409,6 @@ Private Function TryReadClosedCircularEdge( _
     failureReason = "ClosedCircleReadUninitialized"
     If modelEdge Is Nothing Then
         failureReason = "ClosedCircleModelEdgeNothing"
-        Exit Function
-    End If
-    If cylinderFace Is Nothing Then
-        failureReason = "ClosedCircleCylinderFaceNothing"
         Exit Function
     End If
     On Error GoTo Failed
@@ -476,33 +463,17 @@ Private Function TryReadClosedCircularEdge( _
     Dim curveIsCircular As Boolean
     curveIsCircular = CBool(curve.IsCircle)
 
-    If curveIsCircular Then
-        currentStep = "CircleParams"
-        circleData = curve.CircleParams
-        proofSource = "ICurve.CircleParams"
-    Else
-        currentStep = "CylinderParamsFallback"
-        If Not TryReadCylinderCircleData( _
-            cylinderFace, circleData) Then
-
-            failureReason = "ClosedCircleCylinderParamsUnavailable"
-            Exit Function
-        End If
-
-        ' ISurface.CylinderParams returns the cylinder AXIS ORIGIN, which is an
-        ' arbitrary point on the axis and not the centre of this edge.  Slide it
-        ' along the axis into the plane of the edge so both edges of one bore
-        ' resolve to their own centre instead of a shared axis point.
-        currentStep = "CylinderCentreProjection"
-        If Not ProjectCylinderOriginOntoEdgePlane( _
-            curveParameters, circleData) Then
-
-            failureReason = "ClosedCircleCylinderCentreNotProjectable"
-            Exit Function
-        End If
-
-        proofSource = "ISurface.CylinderParams+EdgePlaneProjection"
+    If Not curveIsCircular Then
+        ' A cylindrical owning face proves the surface, not the shape of its
+        ' trimming edge.  Oblique cylinder trims are closed ellipses, so a
+        ' CylinderParams-derived radius/axis cannot prove this edge is circular.
+        failureReason = "ClosedCircleCurveNotCircular"
+        Exit Function
     End If
+
+    currentStep = "CircleParams"
+    circleData = curve.CircleParams
+    proofSource = "ICurve.CircleParams"
 
     If Not IsArray(circleData) Then
         failureReason = "ClosedCircleParamsNotArray"
@@ -564,97 +535,6 @@ Private Function CurveParameterEndpointsAreCoincident( _
 
 Failed:
     CurveParameterEndpointsAreCoincident = False
-End Function
-
-' Moves cylinderData(0..2) from the cylinder's axis origin to the foot of the
-' perpendicular from that origin onto the plane of the edge, using a point that
-' is known to lie on the edge itself.  centre = origin + ((p - origin) . a) * a
-Private Function ProjectCylinderOriginOntoEdgePlane( _
-    ByRef curveParameters As SldWorks.CurveParamData, _
-    ByRef cylinderData As Variant) As Boolean
-
-    If curveParameters Is Nothing Then Exit Function
-    If Not IsArray(cylinderData) Then Exit Function
-    On Error GoTo Failed
-
-    Dim edgePoint As Variant
-    edgePoint = curveParameters.StartPoint
-    If Not IsArray(edgePoint) Then Exit Function
-    If Module8_RuntimeSupport.CountVariantItems(edgePoint) < 3 Then Exit Function
-
-    Dim dataBase As Long
-    Dim pointBase As Long
-    dataBase = LBound(cylinderData)
-    pointBase = LBound(edgePoint)
-
-    Dim axisX As Double
-    Dim axisY As Double
-    Dim axisZ As Double
-    axisX = CDbl(cylinderData(dataBase + 3))
-    axisY = CDbl(cylinderData(dataBase + 4))
-    axisZ = CDbl(cylinderData(dataBase + 5))
-
-    Dim axisMagnitude As Double
-    axisMagnitude = Sqr(axisX * axisX + axisY * axisY + axisZ * axisZ)
-    If axisMagnitude <= Module8_RuntimeSupport.GEOMETRY_TOLERANCE_M Then _
-        Exit Function
-
-    axisX = axisX / axisMagnitude
-    axisY = axisY / axisMagnitude
-    axisZ = axisZ / axisMagnitude
-
-    Dim originX As Double
-    Dim originY As Double
-    Dim originZ As Double
-    originX = CDbl(cylinderData(dataBase))
-    originY = CDbl(cylinderData(dataBase + 1))
-    originZ = CDbl(cylinderData(dataBase + 2))
-
-    Dim projection As Double
-    projection = _
-        (CDbl(edgePoint(pointBase)) - originX) * axisX + _
-        (CDbl(edgePoint(pointBase + 1)) - originY) * axisY + _
-        (CDbl(edgePoint(pointBase + 2)) - originZ) * axisZ
-
-    cylinderData(dataBase) = originX + projection * axisX
-    cylinderData(dataBase + 1) = originY + projection * axisY
-    cylinderData(dataBase + 2) = originZ + projection * axisZ
-
-    ProjectCylinderOriginOntoEdgePlane = True
-    Exit Function
-
-Failed:
-    ProjectCylinderOriginOntoEdgePlane = False
-End Function
-
-Private Function TryReadCylinderCircleData( _
-    ByRef cylinderFace As SldWorks.Face2, _
-    ByRef cylinderData As Variant) As Boolean
-
-    cylinderData = Empty
-    If cylinderFace Is Nothing Then Exit Function
-    On Error GoTo Failed
-
-    Dim surface As SldWorks.Surface
-    Set surface = cylinderFace.GetSurface
-    If surface Is Nothing Then Exit Function
-
-    Dim isCylinder As Boolean
-    isCylinder = CBool(surface.IsCylinder)
-    If isCylinder = False Then Exit Function
-
-    cylinderData = surface.CylinderParams
-    If Not IsArray(cylinderData) Then Exit Function
-    If Module8_RuntimeSupport.CountVariantItems(cylinderData) <> 7 Then
-        cylinderData = Empty
-        Exit Function
-    End If
-
-    TryReadCylinderCircleData = True
-    Exit Function
-
-Failed:
-    cylinderData = Empty
 End Function
 
 Private Function VerticesAreCoincident( _

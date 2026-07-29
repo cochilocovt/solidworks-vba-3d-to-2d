@@ -1,27 +1,29 @@
 # Target-Spec Hybrid V2
 
-Source identity: `target-spec-hybrid-v2-2026-07-29-r21`
+Source identity: `target-spec-hybrid-v2-2026-07-29-r22`
 
 After the one-time bootstrap is installed, use
 `tools/swp-deploy/Deploy-TargetSpecHybrid.ps1` to synchronize the replaceable
 standard/class modules into `Fable.swp`. See `tools/swp-deploy/README.md` for
 the guarded candidate, compile, readback, and promotion workflow.
 
-R21 is r20 plus the repairs from a full review of the r20 diff. It corrects the
-`ISurface.CylinderParams` fallback, which used the cylinder axis origin as the
-hole centre; makes view-outline containment a per-call decision so the
-projected model origin no longer blocks the Center datum; keeps every ordinate
-on one shared baseline in the dimension-arrange fallback and recognises
-`swOrdinateDimension` (1) as an ordinate; routes all pattern families - not
-only MirrorPattern - through the hole-seed proof; separates the FACE and SIDE
-callout lanes; stops the manufacturing callout colliding with itself; and
-accepts the controlled reference general notes when a part property would
-otherwise make that stage unprovable. It also relaxes two assertions that could
-reject a valid run (section-line array size, dimension selection readback),
-widens the legacy title-block bottom-edge window, removes two contract checks
-that could never fire, deletes the identity-valued `ViewToSheetCoordinates`,
-and stops per-vertex transform proofs from flooding the evidence file.
-See `docs/R21_REVIEW_HANDOFF.md` for the full finding-by-finding record.
+R22 combines r20 with the valid review corrections from r21 and replaces the
+three low-confidence implementations that did not satisfy the documented API
+contracts. A closed edge is accepted only when `ICurve.IsCircle=True`; a
+cylindrical owning face no longer substitutes for circular-edge proof. Pattern
+recognition uses the exact `IFeature.GetTypeName2` literals from the 2025 table,
+including `APattern`, `LocalChainPattern`, `DimPattern`, derived-hole, and
+sketch-pattern families. If `AlignDimensions` returns False, ordinate
+dimensions use the installed, set-aware
+`IDisplayDimension.AutoJogOrdinate`; manual `SetPosition2` lanes are used only
+for non-ordinate dimensions, so unrelated ordinate sets are neither merged nor
+split by per-member proximity.
+
+R22 retains the verified r21 corrections for projected-origin containment,
+FACE/SIDE callout separation, annotation self-identity, controlled general
+notes, section-line parsing robustness, selection readback, title-region
+measurement, and diagnostic volume. See
+`docs/R22_REVIEW_RESOLUTION.md` for the contract and review record.
 
 R20 keeps the runtime-proven J-J section, portrait primary, selected-view model
 import, isometric isolation, P-0251 reference-led layout, metric mass
@@ -39,7 +41,7 @@ attached to ownership-proven drawing edges using SOLIDWORKS symbol tokens.
 Existing-note reuse requires the complete normalized controlled definition, so
 an imported Hole Wizard note containing only a short shared phrase is rejected.
 Set
-`DIAGNOSTIC_DRAWING_MODE = False` only after the focused r20 run and full
+`DIAGNOSTIC_DRAWING_MODE = False` only after the focused r22 run and full
 three-fixture acceptance matrix pass.
 
 This folder is a clean replacement VBA source set derived from
@@ -47,7 +49,7 @@ This folder is a clean replacement VBA source set derived from
 overwrite `src/active-ordinate/active_ordinate.swp`, and it does not modify the
 protected baseline.
 
-## What is implemented in the exported r20 source
+## What is implemented in the exported r22 source
 
 The following paths exist in exported source, have E2 source-contract coverage,
 and use separately validated E3 signatures/enums. The guarded deployment proves
@@ -78,8 +80,8 @@ acceptance remain pending.
 - model-feature-to-face ownership proof before any ordinate candidate;
 - full-circle, cylinder-radius, active-configuration, axis-normal, and stable
   semantic-instance checks;
-- complete-curve parameter proof plus internal-cylinder geometry fallback for
-  trimmed circular boundary curves;
+- complete-curve parameter proof plus explicit `ICurve.IsCircle` and
+  `CircleParams` proof; non-circular cylinder trims fail closed;
 - typed selectable datum proof with direction-specific P-0251 Center-X and
   Bottom-Y behavior;
 - family/view/datum-scoped linear-and-ordinate coverage reconciliation;
@@ -87,9 +89,9 @@ acceptance remain pending.
   codes, and pick-mode cleanup;
 - configuration-first title properties, truthful part identification, and
   fail-closed QA evidence;
-- a required, fail-closed auto-arrange stage with view-scoped selection,
-  `AlignDimensions` readback, and border-safe deterministic lanes when the API
-  returns `False`;
+- a required, fail-closed auto-arrange stage with view-scoped selection and
+  `AlignDimensions` readback; when the API returns `False`, ordinate sets use
+  `AutoJogOrdinate` while non-ordinates use border-safe deterministic lanes;
 - runtime proof that transformed page points lie within the current
   `IView.GetOutline`;
 - measured J-J segment, arrow, and label clearance from the part-ID note; and
@@ -169,14 +171,14 @@ Use only `P-0251-14A-001.SLDPRT` with:
 
 - fixture acceptance profile (Front, Left, and one isometric role);
 - isometric enabled;
-- the fixture UI datum setting, with r20 resolving P-0251 as Center-X plus
+- the fixture UI datum setting, with r22 resolving P-0251 as Center-X plus
   Bottom-Left-Y; both selectable entities and transforms require E4/E6 proof;
 - Hole Wizard callouts enabled;
 - 1:1 requested scale;
 - exactly one horizontal section labeled `J`;
 - title, notes, part identification, auto-arrange, and QA enabled.
 
-The layout-preview control is intentionally disabled in r20 because this source
+The layout-preview control is intentionally disabled in r22 because this source
 does not yet implement a separate preview/continue/cancel transaction.
 
 The run writes `QA_REPORT.txt` in a unique run folder under
@@ -194,8 +196,8 @@ import. It currently passes **74 tests and 13,608 structural subtests**; those
 source-contract, structure, regression, and fake-COM checks establish E2 only.
 Separate installed-interop
 and documentation checks establish E3. The guarded deployment at
-`test_assets/iteration_evidence/swp_deployment/20260728_142300/` establishes a
-15/15 embedded-source match for the corrected r20 source. Its
+`test_assets/iteration_evidence/swp_deployment/20260728_142300/` is historical
+r20 evidence; the current r22 deployment evidence is reported separately. Its
 `COMPILE_PROBE|status=SUCCESS` output is only a bootstrap execution check, not a
 full-project compile; `compile-probe-scope.txt` records that limitation. None of
 these checks substitutes for VBA Editor **Compile Project**, a SOLIDWORKS

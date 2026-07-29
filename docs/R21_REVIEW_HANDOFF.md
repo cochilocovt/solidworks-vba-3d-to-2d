@@ -1,5 +1,8 @@
 # R21 review handoff
 
+> Historical review input. R22 resolves the low-confidence items recorded
+> here; use `R22_REVIEW_RESOLUTION.md` for the current implementation decision.
+
 R21 contains **no new features**. It is r20 with fixes for defects found in a
 full review of the r20 diff. This document exists so a second reviewer can
 check the fixes without re-deriving the findings.

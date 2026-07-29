@@ -488,3 +488,85 @@ This also invalidated the earlier interpretation of the deployment
 `COMPILE_PROBE`: it executes only the bootstrap procedure and does not perform
 VBA Editor **Compile Project**. Manual full-project compilation remains the E5
 gate.
+
+## 2026-07-29 R22 review-resolution addendum
+
+R22 re-queried the project `solidworks-api` MCP and reflected the installed
+SOLIDWORKS 2025 SP1.2 interop assemblies (`33.1.2.4`) before replacing the
+three low-confidence r21 implementations.
+
+### Circular trimming edges
+
+- MCP `ICurve.IsCircle`: returns True only when the curve is a circle; False
+  means another curve type. Its Remarks direct callers to edge curve
+  parameters to distinguish a complete circle from an arc.
+- MCP `ICurve.CircleParams`: the seven-value array is
+  `[center xyz, axis xyz, radius]`.
+- MCP `ISurface.CylinderParams`: the seven-value array describes the
+  cylindrical surface as `[axis origin xyz, axis xyz, radius]`; it does not
+  state that every closed trimming edge is circular.
+- Installed interop confirms `Boolean IsCircle()`, `Object CircleParams`, and
+  `Object CylinderParams`.
+- Source decision: `TryReadClosedCircularEdge` now requires both complete-edge
+  topology/parameter proof and `ICurve.IsCircle=True`. A closed trim on a
+  cylindrical face fails as `ClosedCircleCurveNotCircular` when that predicate
+  is False. `CylinderParams` remains valid for independently checking the
+  already-proved circle against its owning internal cylindrical face, but no
+  longer manufactures circle data.
+
+The retained
+`20260728_083008_P-0251-14A-001/R19_CURVE_CONTRACT_PROBE.json` records
+`is_circle=true`, complete `0..2*pi` spans, and seven-value circle parameters
+for every relevant P-0251 owned edge inspected by that probe.
+
+### Pattern type strings
+
+The MCP and official 2025 `IFeature.GetTypeName2` table identify these exact
+pattern strings used by r22:
+
+- `APattern` -> `IFillPatternFeatureData`;
+- `CirPattern`, `CurvePattern`, `LPattern`, and `TablePattern`;
+- `DerivedCirPattern`, `DerivedHolePattern`, and `DerivedLPattern`;
+- `LocalChainPattern`, `LocalCirPattern`, `LocalCurvePattern`,
+  `LocalLPattern`, and `LocalSketchPattern`;
+- `DimPattern`;
+- `SketchPattern`; and
+- `MirrorPattern` and `MirrorSolid`.
+
+The guessed r21 strings `FillPattern`, `ChainPattern`, and `VariablePattern`
+are not the documented return literals and have been removed.
+
+MCP `IFace2.GetSeedFeature` returns the seed feature of a patterned, mirrored,
+or copied body. Installed interop confirms
+`Feature GetSeedFeature()` and the compatibility fallback
+`Object GetPatternSeedFeature()`.
+
+### Ordinate arrangement
+
+- MCP `swDimensionType_e` and installed `swconst` agree:
+  `swOrdinateDimension=1`, `swHorOrdinateDimension=7`,
+  `swVertOrdinateDimension=8`, and `swAngularOrdinateDimension=16`.
+- MCP `IDisplayDimension.AutoJogOrdinate` is parameterless and returns True
+  only when auto-jog succeeds.
+- MCP `IDisplayDimension.DisplayAsChain` applies to every dimension in one
+  ordinate or angular-running set, but the 141-member interface inventory
+  exposes no API for obtaining a stable ordinate-set identity.
+- Installed interop confirms `Boolean AutoJogOrdinate()` and
+  `Boolean DisplayAsChain`.
+
+Source decision: when `AlignDimensions` returns False, r22 calls and checks
+`AutoJogOrdinate` for ordinate types and validates annotation-position
+readback. It does not construct a group key from annotation proximity or merge
+separate sets into one side lane. Manual `SetPosition2` lanes remain limited to
+non-ordinate dimensions.
+
+### Annotation identity
+
+MCP `IAnnotation.SetName` requires a new unique name and verifies uniqueness
+before setting it. Installed interop confirms `String GetName()` and
+`Boolean SetName(String)`. R22 therefore retains the r21 self-collision
+fallback: pointer identity first, then equality of nonempty annotation names.
+
+These checks establish E3 API/type-library compatibility only. The guarded SWP
+deployment, full VBA Editor compile, authorized fixture run, QA, and
+visual/manufacturing comparison remain separate gates.

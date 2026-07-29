@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-07-29 - R22 verified review resolution
+
+Source identity moves to `target-spec-hybrid-v2-2026-07-29-r22`. R22 contains
+the complete r20/r21 line, retains the corrections from `1698b7d` that satisfy
+their contracts, and replaces the latest commit's unsafe or incomplete parts.
+
+### Correctness
+
+- `Module5`: removed the `ISurface.CylinderParams` trimming-edge fallback.
+  `ICurve.IsCircle=False` now fails as `ClosedCircleCurveNotCircular`; an
+  internal cylindrical face no longer proves that a closed trim is a circle.
+  This prevents oblique elliptical trims from being assigned a false centre.
+  The retained P-0251 contract probe shows every relevant owned edge already
+  supplies `IsCircle=True` and seven-value `CircleParams`.
+- `Module3`: replaced guessed feature aliases with the exact 2025
+  `GetTypeName2` literals: `APattern`, `LocalChainPattern`, `DimPattern`,
+  `DerivedHolePattern`, `SketchPattern`, and `LocalSketchPattern`, while
+  retaining the already-correct pattern and mirror names.
+- `Module4`: removed the module-level per-side ordinate-lane cache. If
+  `AlignDimensions` returns False, ordinate types 1, 7, 8, and 16 now call and
+  check `IDisplayDimension.AutoJogOrdinate`, then prove their readback
+  positions. Deterministic `SetPosition2` lanes remain only for non-ordinate
+  dimensions. This avoids both merging independent chains and splitting one
+  type-1 chain by member proximity.
+
+### Retained review fixes
+
+R22 retains r21's projected-origin containment correction, pattern-seed
+routing, FACE/SIDE callout separation, annotation-name self-identity fallback,
+controlled static general-note proof, section-line parser robustness,
+selection-readback tolerance, title-border window, redundant-check removal,
+and reduced rejected-vertex logging.
+
+### Verification
+
+- Queried the local `solidworks-api` MCP for the load-bearing circle, feature,
+  seed, ordinate, annotation, and enum contracts.
+- Reflected the installed SOLIDWORKS 2025 SP1.2 interop assemblies, version
+  `33.1.2.4`, for all newly used members and `swDimensionType_e`.
+- Updated source/docs and prepared the guarded r22 SWP deployment.
+- Full VBA Editor compilation, fixture runtime, QA, and visual/manufacturing
+  acceptance remain separate gates.
+
+See `docs/R22_REVIEW_RESOLUTION.md`.
+
 ## 2026-07-29 - R21 code-review remediation
 
 Source identity moves to `target-spec-hybrid-v2-2026-07-29-r21`. R21 is r20
