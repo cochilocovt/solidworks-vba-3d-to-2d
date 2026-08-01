@@ -2,7 +2,44 @@
 
 Date: 2026-08-01
 
-## R23 Phase 4 gate SATISFIED (sixth live run)
+## R23 Phase 5 source complete, awaiting first live run
+
+**2026-08-01.** `Module15_OrdinateScheme.bas` (36 procedures) plus typed
+records `COrdinateScheme.cls` and `COrdinateBucket.cls`. Statically verified
+only — nothing below is runtime-proven.
+
+The scheme key replaces feature-family grouping with **view role + machining
+face + datum policy + direction**, every part measured rather than read off a
+name: machining face from the location's sign-normalized axis, view role from
+Phase 3's axis-normal measurement via the existing eligibility tests.
+
+Two Phase 3 findings are carried into the design rather than worked around:
+
+- **Coverage is counted per distinct page position, credited to locations.**
+  A bucket holds one selectable entity and the list of physical locations it
+  represents. Coaxial holes collapse to one drawing entity, so demanding one
+  dimension per location is unsatisfiable by construction; crediting only one
+  of the pair would silently drop the other.
+- **Small-hole membership is family size, not a radius threshold.** P-0251's
+  stepped bore is excluded because it is a singleton family. A magic
+  millimetre value would misclassify a different part.
+
+Three defects caught before compiling: `IsOrdinateEligibleView` and
+`IsDeferredCreationView` take `(graph, swView)`, not `(swView, graph)`; and
+`IView.GetFirstDisplayDimension5` is obsolete **and** sheet-scoped by its own
+Remarks, so a read-back built on it would credit other views' dimensions to
+this scheme. Read-back now uses view-scoped `IView.GetDisplayDimensions` with
+a before/after snapshot diffed by `ISldWorks.IsSame`.
+
+Mutation boundary: `CreateOrdinateGroup` alone creates anything and refuses
+without `allowMutation`; it also refuses when the datum is unproven.
+`R23_ProbeOrdinateScheme` contains no `AddOrdinateDimension` call at all.
+
+Verification: 22 Phase 5 contracts, suite 212 tests with the same five stale
+R20 failures. Preflight 27 managed components. `MACRO_SOURCE_REVISION`
+remains `r22`.
+
+## Historical: R23 Phase 4 gate SATISFIED (sixth live run)
 
 **2026-08-01.** Read-only throughout: `mutations=0`, `initialSelectionCount=0`,
 `finalSelectionCount=0`, `drawingUnchanged=True`.

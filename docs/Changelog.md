@@ -1,5 +1,74 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 5: ordinate schemes and the transaction (source)
+
+`Module15_OrdinateScheme.bas` (36 procedures), `COrdinateScheme.cls`,
+`COrdinateBucket.cls`. Statically verified only; no live run yet.
+
+### R23-500, the scheme key
+
+view role + machining face + datum policy + direction. A family says what a
+hole IS and nothing about which ordinate group it belongs to: two holes of
+one family machined from opposite faces belong to different groups, and two
+holes of different families machined from the same face in one view belong
+to the same group. Every part of the key is measured - machining face from
+the location's sign-normalized axis, view role from Phase 3's axis-normal
+measurement - so a renamed or reoriented view still lands correctly.
+
+`swOrdinate` (1) is deliberately never used. Letting SOLIDWORKS infer the
+direction from the selected points would make the created dimension depend
+on selection order rather than on the scheme.
+
+### R23-505 and R23-509, counted the way the geometry allows
+
+A bucket holds ONE selectable drawing entity and the LIST of physical
+locations it represents. Phase 3 proved live that two coaxial holes viewed
+along their shared axis produce exactly one drawing entity; dimensioning it
+twice is a duplicate, and crediting only one hole silently drops the other.
+Coverage is therefore counted per distinct page position and credited to
+locations - the finding carried forward from Phase 3.
+
+### R23-507, small-hole membership
+
+Family size, read from the graph. P-0251's stepped bore is excluded because
+it is a singleton, not because it is large. A radius threshold would look
+equivalent here and misclassify a different part.
+
+### R23-508, the transaction
+
+Activate and verify the view, bind `ISelectData.View` (guarded - it is
+documented get/set but raises error 91 on this build), select the datum
+first, append in ascending coordinate order, verify the selection count
+advanced by exactly one at every append, call `AddOrdinateDimension`, decode
+all eleven `swCreateOrdDimError_e` members by name, call `SetPickMode`
+whatever the result was, clear selections on every exit, then read back.
+
+### Three defects caught before compiling
+
+- `IsOrdinateEligibleView` and `IsDeferredCreationView` take
+  `(graph, swView)`, not `(swView, graph)`.
+- **`IView.GetFirstDisplayDimension5` is obsolete and its own Remarks say
+  the `GetNext5` walk covers the drawing SHEET.** A read-back built on it
+  would credit other views' dimensions to this scheme. Replaced with
+  view-scoped `IView.GetDisplayDimensions`.
+- A count-difference read-back would be inflated by any unrelated dimension.
+  Replaced with a before/after snapshot diffed by `ISldWorks.IsSame`, exact
+  `= 1`.
+
+### Mutation boundary
+
+`CreateOrdinateGroup` is the only procedure that creates anything. It
+refuses without `allowMutation`, and refuses again when the datum is
+unproven - the datum is the first selection and everything is measured from
+it. `R23_ProbeOrdinateScheme` contains no `AddOrdinateDimension` call.
+
+### Verification
+
+36/36 and 9/9 and 7/7 procedure blocks balanced, ANSI/CRLF, no BOM, max line
+78. 22 Phase 5 contracts. Suite 212 tests with the same five known-stale R20
+failures. Preflight 27 managed components. `MACRO_SOURCE_REVISION` unchanged
+at `target-spec-hybrid-v2-2026-07-29-r22`.
+
 ## 2026-08-01 - R23 Phase 4 gate satisfied; reverse route ruled out on evidence
 
 ### What the instrumented run proved

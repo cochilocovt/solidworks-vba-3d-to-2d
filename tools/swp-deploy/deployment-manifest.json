@@ -9,29 +9,140 @@
   "revisionSourceFile": "Module1_Main.bas",
   "revisionPattern": "target-spec-hybrid-v2-20[0-9]{2}-[0-9]{2}-[0-9]{2}-r[0-9]+",
   "components": [
-    { "name": "Module1_Main", "file": "Module1_Main.bas", "kind": "StdModule" },
-    { "name": "Module2_DrawingPipeline", "file": "Module2_DrawingPipeline.bas", "kind": "StdModule" },
-    { "name": "Module3_ModelAudit", "file": "Module3_ModelAudit.bas", "kind": "StdModule" },
-    { "name": "Module4_ModelItemImporter", "file": "Module4_ModelItemImporter.bas", "kind": "StdModule" },
-    { "name": "Module5_FallbackDimensionEngine", "file": "Module5_FallbackDimensionEngine.bas", "kind": "StdModule" },
-    { "name": "Module6_QAEngine", "file": "Module6_QAEngine.bas", "kind": "StdModule" },
-    { "name": "Module7_TitleBlockEngine", "file": "Module7_TitleBlockEngine.bas", "kind": "StdModule" },
-    { "name": "Module8_RuntimeSupport", "file": "Module8_RuntimeSupport.bas", "kind": "StdModule" },
-    { "name": "Module9_LayoutEngine", "file": "Module9_LayoutEngine.bas", "kind": "StdModule" },
-    { "name": "Module11_GeometryIdentity", "file": "Module11_GeometryIdentity.bas", "kind": "StdModule" },
-    { "name": "Module12_FeatureQualification", "file": "Module12_FeatureQualification.bas", "kind": "StdModule" },
-    { "name": "Module13_ProjectionResolution", "file": "Module13_ProjectionResolution.bas", "kind": "StdModule" },
-    { "name": "Module14_AnnotationImport", "file": "Module14_AnnotationImport.bas", "kind": "StdModule" },
-    { "name": "BtnHandler", "file": "BtnHandler.cls", "kind": "ClassModule" },
-    { "name": "CDatumProof", "file": "CDatumProof.cls", "kind": "ClassModule" },
-    { "name": "CFeatureDefinition", "file": "CFeatureDefinition.cls", "kind": "ClassModule" },
-    { "name": "CHoleCandidate", "file": "CHoleCandidate.cls", "kind": "ClassModule" },
-    { "name": "CImportedAnnotation", "file": "CImportedAnnotation.cls", "kind": "ClassModule" },
-    { "name": "CLocationGraph", "file": "CLocationGraph.cls", "kind": "ClassModule" },
-    { "name": "CPhysicalHoleLocation", "file": "CPhysicalHoleLocation.cls", "kind": "ClassModule" },
-    { "name": "CRunEvidence", "file": "CRunEvidence.cls", "kind": "ClassModule" },
-    { "name": "CViewHoleProjection", "file": "CViewHoleProjection.cls", "kind": "ClassModule" },
-    { "name": "SectionBtnHandler", "file": "SectionBtnHandler.cls", "kind": "ClassModule" },
-    { "name": "SectionDlgBtnHandler", "file": "SectionDlgBtnHandler.cls", "kind": "ClassModule" }
+    {
+      "name": "BtnHandler",
+      "file": "BtnHandler.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "CDatumProof",
+      "file": "CDatumProof.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "CFeatureDefinition",
+      "file": "CFeatureDefinition.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "CHoleCandidate",
+      "file": "CHoleCandidate.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "CImportedAnnotation",
+      "file": "CImportedAnnotation.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "CLocationGraph",
+      "file": "CLocationGraph.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "COrdinateBucket",
+      "file": "COrdinateBucket.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "COrdinateScheme",
+      "file": "COrdinateScheme.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "CPhysicalHoleLocation",
+      "file": "CPhysicalHoleLocation.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "CRunEvidence",
+      "file": "CRunEvidence.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "CViewHoleProjection",
+      "file": "CViewHoleProjection.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "SectionBtnHandler",
+      "file": "SectionBtnHandler.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "SectionDlgBtnHandler",
+      "file": "SectionDlgBtnHandler.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "Module15_OrdinateScheme",
+      "file": "Module15_OrdinateScheme.bas",
+      "kind": "StandardModule"
+    },
+    {
+      "name": "Module11_GeometryIdentity",
+      "file": "Module11_GeometryIdentity.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module12_FeatureQualification",
+      "file": "Module12_FeatureQualification.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module13_ProjectionResolution",
+      "file": "Module13_ProjectionResolution.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module14_AnnotationImport",
+      "file": "Module14_AnnotationImport.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module1_Main",
+      "file": "Module1_Main.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module2_DrawingPipeline",
+      "file": "Module2_DrawingPipeline.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module3_ModelAudit",
+      "file": "Module3_ModelAudit.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module4_ModelItemImporter",
+      "file": "Module4_ModelItemImporter.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module5_FallbackDimensionEngine",
+      "file": "Module5_FallbackDimensionEngine.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module6_QAEngine",
+      "file": "Module6_QAEngine.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module7_TitleBlockEngine",
+      "file": "Module7_TitleBlockEngine.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module8_RuntimeSupport",
+      "file": "Module8_RuntimeSupport.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module9_LayoutEngine",
+      "file": "Module9_LayoutEngine.bas",
+      "kind": "StdModule"
+    }
   ]
 }

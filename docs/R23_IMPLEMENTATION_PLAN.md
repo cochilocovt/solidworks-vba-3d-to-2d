@@ -806,6 +806,18 @@ Three Phase 4 contracts worth carrying forward:
 
 ### Phase 5 — Create the required location schemes
 
+Implemented in `Module15_OrdinateScheme.bas` (36 procedures) with two typed
+records, `COrdinateScheme.cls` and `COrdinateBucket.cls`.
+
+**Mutation boundary.** Exactly one procedure creates anything:
+`CreateOrdinateGroup`, which refuses unless passed an explicit
+`allowMutation`. `R23_ProbeOrdinateScheme` never passes it, contains no
+`AddOrdinateDimension` call at all, and reports selection counts before and
+after, so it can be run against the manual reference drawing.
+
+**Status: source complete, awaiting first live run.** Statically verified
+only. No claim below is runtime-proven yet.
+
 - [ ] **R23-500:** Replace feature-family ordinate grouping with:
   `view role + machining face + datum-policy ID + direction`.
 - [ ] **R23-501:** Prove a selectable centre datum for P-0251 X locations.
