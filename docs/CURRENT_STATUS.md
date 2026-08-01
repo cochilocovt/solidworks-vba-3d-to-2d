@@ -2,7 +2,58 @@
 
 Date: 2026-08-01
 
-## R23 Phase 6 source complete, awaiting first live run
+## R23 Phase 6 read-only gate SATISFIED (third live run)
+
+**2026-08-01.** `definitions=3|definitionFailures=None|`
+`counterboredFamilies=1|threadedFamilies=1|shapeFailures=None|`
+`nativeCallouts=2|creations=0|drawingUnchanged=True`.
+
+The M5 family retained its **native** callout
+(`reason=CompleteAssociativeDefinitionAvailable`); the counterbore and
+stepped-bore families retained controlled fallbacks with
+`reason=NoNativeCalloutAttributedToFamily`. Both branches of R23-605
+exercised live.
+
+**A corroboration worth recording.** The M5 depth resolved to **12.4 mm**
+from `swCalloutVariable_Tap_Drill_Depth`, and its thread depth to 10 mm.
+The legacy hardcoded string in `Module7_TitleBlockEngine.bas` reads
+`4.2 x 12.4 DEEP` / `TAP M5x0.8-6H x 10 DEEP`. Same numbers - now derived
+from typed callout variables rather than typed by hand. That is independent
+evidence the derivation is right, not just self-consistent.
+
+Four defects the runs found, in the order they surfaced:
+
+1. **Depth rule inverted.** `swEndCondBlind = 0`, so a *blind* hole needs a
+   depth. The rule read `<> 0`, demanding one from a ThroughNext family and
+   letting a blind tapped hole pass with no depth at all - the dangerous
+   direction.
+2. **NominalDiameter unproven everywhere.** No feature on this build
+   declares one. The location knows it from its own proven cylindrical face
+   radius, which is measured geometry rather than a declared parameter.
+3. **Family keys destroyed the evidence format.** A family key is itself a
+   delimited string, so `R23_CALLOUT_END` was unparseable. `EvidenceToken`
+   escapes the rendering; the key itself is untouched.
+4. **Attachment unprovable for a fallback.** Only the native path set it, so
+   a fallback could never earn it and a native losing on completeness
+   discarded the proof it had. Attachment is a property of the family's
+   geometry. ATTACHED and ATTACHABLE stay distinguishable in the proof
+   source.
+
+Then one mislabel the passing run exposed: `threadedFamilies=2`, because a
+thread *description* was treated as a thread. The counterbored family
+carries the fastener size of the screw it clears with `threadDepthM=0`. A
+tapped hole has a thread depth.
+
+**Still open:** R23-604's creation half and R23-609's legacy removal. The
+counterbore callout remains unattributed (`NoOwningProjection`) - the Phase 4
+forward-alias limitation, not a Phase 6 defect, and no longer blocking now
+that attachment is proved from geometry.
+
+Verification: 27 Phase 6 contracts, suite 242 tests with the same five stale
+R20 failures. Preflight 29 components. `MACRO_SOURCE_REVISION` remains
+`r22`.
+
+## Historical: R23 Phase 6 source complete
 
 **2026-08-01.** `Module16_CalloutDefinition.bas` (20 procedures) plus
 `CCalloutDefinition.cls`. Statically verified only.

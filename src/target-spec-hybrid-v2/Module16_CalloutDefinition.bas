@@ -708,7 +708,14 @@ Public Function VerifyRequiredDefinitionShapes( _
             counterboreFamilies = counterboreFamilies + 1
         End If
 
-        If Len(Trim$(definition.ThreadDescription)) > 0 Then
+        ' A thread DESCRIPTION alone does not make a family threaded. The
+        ' first passing run counted two threaded families, but one was a
+        ' counterbored clearance-hole family whose thread string carries the
+        ' FASTENER SIZE of the screw it clears, with threadDepthM=0. A hole
+        ' that is actually tapped has a thread depth.
+        If Len(Trim$(definition.ThreadDescription)) > 0 And _
+            definition.ThreadDepthM > 0# Then
+
             threadedFamilies = threadedFamilies + 1
         End If
 

@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 6 read-only gate satisfied
+
+`definitions=3|definitionFailures=None|counterboredFamilies=1|
+threadedFamilies=1|shapeFailures=None|nativeCallouts=2|creations=0|
+drawingUnchanged=True`.
+
+### Corroboration, not just self-consistency
+
+The M5 family's depth resolved to 12.4 mm from
+swCalloutVariable_Tap_Drill_Depth (28), and its thread depth to 10 mm. The
+legacy hardcoded string in Module7_TitleBlockEngine.bas reads
+"4.2 x 12.4 DEEP" and "TAP M5x0.8-6H x 10 DEEP". The same numbers arrived by
+a completely different route - typed callout variables instead of a human
+typing them - which is independent evidence that the derivation is correct.
+
+### Both retention branches exercised live
+
+The M5 family kept its native callout
+(reason=CompleteAssociativeDefinitionAvailable). The counterbore and
+stepped-bore families retained ControlledFallback with
+reason=NoNativeCalloutAttributedToFamily. An earlier run also produced
+reason=NativeIncomplete|nativeMissing=Depth, so R23-605 is proved in both
+directions rather than only the one the fixture happened to take.
+
+### One more mislabel the passing run exposed
+
+threadedFamilies came back as 2. A thread DESCRIPTION was being treated as a
+thread, and the counterbored clearance-hole family carries the fastener size
+of the screw it clears, with threadDepthM=0. A hole that is actually tapped
+has a thread depth. Now 1, which is the truth.
+
+This one mattered less than the others - the gate would have passed either
+way, because the M5 family is genuinely tapped. It was still wrong, and a
+shape classifier that miscounts is a shape classifier that will eventually
+pass something it should not.
+
+### Verification
+
+27 Phase 6 contracts. Suite 242 tests with the five known-stale R20
+failures. Preflight 29 managed components. MACRO_SOURCE_REVISION unchanged
+at target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phase 6: callout reconciliation and controlled fallback
 
 `Module16_CalloutDefinition.bas` (20 procedures), `CCalloutDefinition.cls`.

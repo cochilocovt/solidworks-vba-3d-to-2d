@@ -891,24 +891,49 @@ whatever edge is selected, so selecting an unproven entity would produce an
 associative callout pointing at the wrong hole and looking correct on the
 sheet. `R23_ProbeCalloutDefinition` contains no `AddHoleCallout2` call.
 
-**Status: source complete, awaiting first live run.** Statically verified
-only.
+**Phase 6 read-only gate SATISFIED** (three live runs). Final run:
+`definitions=3|definitionFailures=None|counterboredFamilies=1|`
+`threadedFamilies=1|shapeFailures=None|nativeCallouts=2|creations=0|`
+`initialSelectionCount=0|finalSelectionCount=0|drawingUnchanged=True`.
 
-- [ ] **R23-600:** Always request native callouts when the configuration enables
+Everything provable without creating an annotation is proved. R23-604's
+creation half is unrun because it mutates.
+
+- [x] **R23-600:** Always request native callouts when the configuration enables
   them.
-- [ ] **R23-601:** Traverse display dimensions and require
-  `IsHoleCallout=True` for native hole-callout classification.
-- [ ] **R23-602:** Match native callout attachments to one graph family.
-- [ ] **R23-603:** Validate quantity, size, depth, counterbore/thread data,
-  view ownership, and variable-level tolerance/fit fields.
-- [ ] **R23-604:** Retain one complete associative native callout per family.
-- [ ] **R23-605:** Use source-backed controlled fallback only when no complete
-  native definition exists.
-- [ ] **R23-606:** Build fallback quantity from unique physical locations, not
-  feature names or raw edge count.
-- [ ] **R23-607:** Build counterbore/thread fields from typed feature data.
-- [ ] **R23-608:** Build fit/tolerance fields only from source model dimension
-  data.
+- [x] **R23-601:** `nativeCallouts=2` classified by
+  `IDisplayDimension.IsHoleCallout` alone. A native callout reports
+  `Type2 = 6` and so does an ordinary diameter dimension, so no
+  dimension-type constant is declared in the module at all.
+- [x] **R23-602:** One of the two callouts attributed by COM identity;
+  the other reports `NoOwningProjection` because its edge is none of the
+  forward aliases - the Phase 4 limitation, recorded rather than worked
+  around. A callout resolving to two families is rejected, not tie-broken.
+- [x] **R23-603:** Read from `GetHoleCalloutVariables` per
+  `ICalloutVariable`, never from rendered text. The live run printed all
+  four M5 variables with their `swCalloutVariable_e` types: Tap Drill
+  Diameter 29, **Tap Drill Depth 28 = 0.0124**, Thread Description 41,
+  Thread Depth 32 = 0.010.
+- [ ] **R23-604: read-only half met.** The M5 family retained its native
+  callout with `reason=CompleteAssociativeDefinitionAvailable`. Creating a
+  native callout for a family that lacks one is `CreateNativeCalloutForFamily`
+  and is unrun, because it mutates.
+- [x] **R23-605:** Proved in both directions live. The M5 family kept its
+  native callout; the other two retained `ControlledFallback` with
+  `reason=NoNativeCalloutAttributedToFamily`. An earlier run also exercised
+  `reason=NativeIncomplete|nativeMissing=Depth`.
+- [x] **R23-606:** `quantity=6`, `4` and `1` from
+  `CLocationGraph.LocationsForFamily.UniquePhysicalLocations`. Six
+  counterbores come from one Hole Wizard feature and four side holes from
+  one feature plus a mirror, so neither a feature count nor an edge count
+  would have produced these.
+- [x] **R23-607:** `cboreDiameterM=0.011`, `cboreDepthM=0.006`,
+  `thread=M6` and `thread=M5x0.8` all carried from `CFeatureDefinition`
+  with their proof sources. Nothing parsed from a feature name.
+- [x] **R23-608:** The counterbore family's `holeFit=Normal` carries
+  `toleranceSource=IWizardHoleFeatureData2.HoleFit=1`. Families with no
+  source fit report `Unproven` rather than an invented value, and no
+  drawing-authored tolerance is promoted here.
 - [ ] **R23-609: half met, and the remaining half is deliberate.** The new
   path contains none of it: no part number, no `6X`, no `M5x0.8`, no `H7`,
   no diameter literal, and no scoring by feature name or by proximity to an
@@ -919,10 +944,19 @@ only.
   not yet wired into `main`. Deleting them now would degrade the deployable
   macro while its replacement is disconnected. They come out in the phase
   that switches the pipeline over, and that switch bumps the revision.
-- [ ] **R23-610:** Fail `MANUFACTURING_DEFINITION` with a field-specific reason
-  if a required semantic field is unavailable.
-- [ ] **R23-611:** Prove one six-hole counterbore definition and one four-hole
-  tapped definition, correctly owned and attached.
+- [x] **R23-610:** Proved by the failures it produced before the fixes
+  landed - `NominalDiameter`, `Depth`, `CounterBoreDepth`, `Attachment`,
+  each named individually. Depth is demanded only from a blind hole
+  (`swEndCondBlind = 0`), so a through hole is never asked for one.
+- [x] **R23-611:** `counterboredFamilies=1|threadedFamilies=1|`
+  `shapeFailures=None` - the six-hole counterbored family and the four-hole
+  tapped family, both complete and both attachment-proved. The rule is
+  stated as shapes rather than part numbers.
+
+  The first passing run counted **two** threaded families: a thread
+  description alone was being treated as a thread, and the counterbored
+  clearance-hole family carries the fastener size of the screw it clears
+  with `threadDepthM=0`. A hole that is actually tapped has a thread depth.
 
 ### Phase 7 — Rebuild J-J from model intent
 
