@@ -77,7 +77,7 @@
     {
       "name": "Module15_OrdinateScheme",
       "file": "Module15_OrdinateScheme.bas",
-      "kind": "StandardModule"
+      "kind": "StdModule"
     },
     {
       "name": "Module11_GeometryIdentity",
