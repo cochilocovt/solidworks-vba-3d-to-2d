@@ -160,8 +160,8 @@ Public Function MatchCalloutToFamily( _
                     ' two is a real ambiguity, not something to break ties
                     ' on.
                     diagnostics = "match=AmbiguousFamilies" & _
-                        "|first=" & familyKey & _
-                        "|second=" & candidateKey
+                        "|first=" & EvidenceToken(familyKey) & _
+                        "|second=" & EvidenceToken(candidateKey)
                     MatchCalloutToFamily = vbNullString
                     Exit Function
                 End If
@@ -316,7 +316,7 @@ Public Sub ReadNativeCalloutFields( _
         On Error GoTo Failed
 
         EmitInfo evidence, "CALLOUT_VARIABLE|family=" & _
-            definition.FamilyKey & _
+            EvidenceToken(definition.FamilyKey) & _
             "|index=" & CStr(i) & _
             "|name=" & variableName & _
             "|holeFit=" & holeFit & _
@@ -353,7 +353,8 @@ ContinueVariable:
 
 Failed:
     EmitWarning evidence, "CALLOUT_VARIABLE_ERROR|family=" & _
-        definition.FamilyKey & "|error=" & CStr(Err.Number)
+        EvidenceToken(definition.FamilyKey) & _
+        "|error=" & CStr(Err.Number)
 End Sub
 
 ' R23-605, R23-606, R23-607 and R23-608. Builds the definition for one
@@ -412,6 +413,25 @@ Public Function BuildDefinitionFromTypedData( _
 
 ContinueFeature:
     Next s
+
+    ' The first live run returned diameterM=0 with diameterSource=Unproven
+    ' for EVERY family, because no Hole Wizard or cut feature declared a
+    ' nominal diameter this build could read - FEATURE_ACCEPTED reported
+    ' diameterM=0.000000000 across the board.
+    '
+    ' The location itself knows better. Phase 3 proved each hole's radius
+    ' from its own cylindrical face and closed circular boundary
+    ' (IsCircleAndClosedCurveParams), which is measured geometry rather than
+    ' a declared parameter. PrimaryRadiusM is the smallest coaxial cylinder,
+    ' which is exactly the functional size a callout names.
+    If definition.NominalDiameterM <= 0# And _
+        firstLocation.PrimaryRadiusM > 0# Then
+
+        definition.NominalDiameterM = firstLocation.PrimaryRadiusM * 2#
+        definition.DiameterProofSource = _
+            "CPhysicalHoleLocation.PrimaryRadiusM" & _
+            ".ProvenCylindricalFaceRadius"
+    End If
 
     Exit Function
 
@@ -547,7 +567,7 @@ Public Function VerifyManufacturingDefinitions( _
 
         If StrComp(reason, "None", vbBinaryCompare) <> 0 Then
             failures = AppendFailure(failures, _
-                definition.FamilyKey & ":" & reason)
+                EvidenceToken(definition.FamilyKey) & ":" & reason)
         End If
     Next i
 
@@ -730,6 +750,22 @@ Private Function TryBindSelectDataView( _
     Exit Function
 Failed:
     TryBindSelectDataView = "UnboundAfterError:" & CStr(Err.Number)
+End Function
+
+' A semantic family key is itself a delimited string - it looks like
+' "op=HOLEWIZARD|dia=...|thread=M6". Emitting it raw into a pipe-delimited
+' evidence line destroys the line's own structure, which the first live run
+' demonstrated: R23_CALLOUT_END came back with definitionFailures containing
+' embedded pipes and equals signs and could not be parsed field by field.
+'
+' The key is NOT changed - it stays the dictionary key and the identity. Only
+' its rendering in evidence is escaped.
+Public Function EvidenceToken(ByVal value As String) As String
+    Dim result As String
+    result = value
+    result = Replace$(result, "|", "/")
+    result = Replace$(result, "=", ":")
+    EvidenceToken = result
 End Function
 
 Private Function AppendFailure( _

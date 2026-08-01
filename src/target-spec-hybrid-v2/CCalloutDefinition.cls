@@ -104,10 +104,17 @@ Public Function CompletenessFailureReason() As String
         missing = AppendMissing(missing, "EndConditionUnproven")
     End If
 
-    ' Depth is only required when the hole does not go through. The end
-    ' condition is what decides that, so an unproven end condition already
-    ' failed above and this cannot silently pass.
-    If EndConditionCode <> 0 And DepthM <= 0# Then
+    ' Depth is required only for a BLIND hole. swEndConditions_e verified
+    ' against the 2025 table: swEndCondBlind = 0, and every through/up-to
+    ' member is non-zero (ThroughAll 1, ThroughNext 2, UpToSurface 4,
+    ' MidPlane 6, ThroughAllBoth 9, UpToNext 11).
+    '
+    ' The first live run proved this was written inverted. It demanded a
+    ' depth from the counterbore family (EndCondition 2, ThroughNext, which
+    ' has no depth to give) and let the M5 family pass with EndCondition 0
+    ' and no depth at all - the dangerous direction, because a genuinely
+    ' missing depth on a blind tapped hole went unreported.
+    If EndConditionCode = 0 And DepthM <= 0# Then
         missing = AppendMissing(missing, "Depth")
     End If
 
@@ -155,8 +162,10 @@ Private Function AppendMissing( _
 End Function
 
 Public Function Summary() As String
-    Summary = "family=" & FamilyKey & _
-        "|face=" & MachiningFaceKey & _
+    Summary = "family=" & _
+        Module16_CalloutDefinition.EvidenceToken(FamilyKey) & _
+        "|face=" & _
+        Module16_CalloutDefinition.EvidenceToken(MachiningFaceKey) & _
         "|source=" & DefinitionSource & _
         "|view=" & OwnerViewName & _
         "|quantity=" & CStr(Quantity) & _
