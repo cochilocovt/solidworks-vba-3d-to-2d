@@ -960,6 +960,19 @@ creation half is unrun because it mutates.
 
 ### Phase 7 — Rebuild J-J from model intent
 
+Implemented in `Module17_SectionPath.bas` (21 procedures) with the typed
+record `CSectionPath.cls`.
+
+**Mutation boundary.** One procedure creates anything:
+`CreateSectionFromPath`, which refuses without `allowMutation` and refuses
+again unless the path resolved with its crossings proved (R23-708). The
+section view's placement is a caller argument, not a default: defaulting it
+to a point on the source view would stack the section on the view it was cut
+from, and choosing where a view sits is layout, a later phase.
+
+**Status: source complete, awaiting first live run.** Statically verified
+only.
+
 - [ ] **R23-700:** Split graph/projection discovery from ordinate creation so
   section construction can consume proved locations first.
 - [ ] **R23-701:** Resolve one stepped-bore centre and a 2×3 face-hole family.
@@ -970,8 +983,14 @@ creation half is unrun because it mutates.
   4. same column at the lowest face-hole row.
 - [ ] **R23-703:** Prove the path crosses the stepped bore and all three holes
   in the chosen column.
-- [ ] **R23-704:** Delete the old P-0251 `extension`,
-  `topY + extension`, `bottomY - extension`, and outline-percentage fallback.
+- [ ] **R23-704: half met, deliberately.** The new path contains none of
+  it - no `extension`, no `topY`/`bottomY`, no `leftX`/`rightX`, and none of
+  the fractions `15/72`, `90/196`, `15.84/24` or `0.1 *`. A contract
+  asserts each is absent. **The literals remain in
+  `Module2_DrawingPipeline.bas` (lines 1525-1556)** because that is still
+  the reachable production path and Module17 is not wired into `main`.
+  Removing them now would break the deployable macro while its replacement
+  is disconnected - the same situation as R23-609.
 - [ ] **R23-705:** Convert page coordinates to source-view sketch coordinates
   exactly once before `CreateLine`.
 - [ ] **R23-706:** Create exactly three view-owned segments and verify their

@@ -2,7 +2,53 @@
 
 Date: 2026-08-01
 
-## R23 Phase 6 read-only gate SATISFIED (third live run)
+## R23 Phase 7 source complete, awaiting first live run
+
+**2026-08-01.** `Module17_SectionPath.bas` (21 procedures) plus
+`CSectionPath.cls`. Statically verified only.
+
+The J-J path is four waypoints and three segments, every coordinate taken
+from a proved projection: the stepped-bore centre, the same X at the highest
+face-hole row, the minimum-X column at that row, then the same column at the
+lowest row. The disproved strategy is entirely absent - no `extension`, no
+`topY`/`bottomY`, no outline fractions - because a percentage of an outline
+knows nothing about where the holes are, which is why the old upper label
+landed in the zone region and the lower arrow in the part-identification
+band.
+
+Design points worth carrying:
+
+- **The bore is a singleton family, not a radius threshold.** Family size
+  comes from the graph, so a different part is not misclassified.
+- **The grid is proved, not assumed.** Fewer than two columns or two rows
+  is a stated rejection rather than an array index that happens to work.
+- **Crossings are judged against each hole's own projected radius**, and
+  the segment distance is clamped to the finite segment - an unclamped
+  projection would report a circle beyond an endpoint as crossed because
+  the infinite line passes through it.
+- **The frame conversion happens exactly once per waypoint**, immediately
+  before `CreateLine`. Nothing upstream holds view coordinates, so there is
+  nothing to convert twice. Mixing frames is the defect section work has hit
+  before.
+- **Segment selection order is verified before the cut.** SOLIDWORKS reads
+  the segments in selection order, so an unverified order produces a
+  differently shaped cut.
+
+Two defects caught before compiling: I passed an empty label instead of the
+resolved one, and placed the section view's centre at waypoint 3 - a point
+inside the source view, which would have stacked the section on top of it.
+Placement is now a caller argument, because choosing where a view sits is
+layout and belongs to a later phase.
+
+**R23-704 is half met**, the same shape as R23-609: the new path is clean
+and contracts prove it, but the legacy literals stay in
+`Module2_DrawingPipeline.bas` (1525-1556) until the pipeline switches over.
+
+Verification: 22 Phase 7 contracts, suite 264 tests with the same five stale
+R20 failures. Preflight 31 components. `MACRO_SOURCE_REVISION` remains
+`r22`.
+
+## Historical: R23 Phase 6 read-only gate SATISFIED
 
 **2026-08-01.** `definitions=3|definitionFailures=None|`
 `counterboredFamilies=1|threadedFamilies=1|shapeFailures=None|`

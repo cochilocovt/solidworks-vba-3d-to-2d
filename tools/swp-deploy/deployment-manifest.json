@@ -65,6 +65,11 @@
       "kind": "ClassModule"
     },
     {
+      "name": "CSectionPath",
+      "file": "CSectionPath.cls",
+      "kind": "ClassModule"
+    },
+    {
       "name": "CViewHoleProjection",
       "file": "CViewHoleProjection.cls",
       "kind": "ClassModule"
@@ -107,6 +112,11 @@
     {
       "name": "Module16_CalloutDefinition",
       "file": "Module16_CalloutDefinition.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module17_SectionPath",
+      "file": "Module17_SectionPath.bas",
       "kind": "StdModule"
     },
     {

@@ -1,5 +1,66 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 7: J-J section path from model intent
+
+`Module17_SectionPath.bas` (21 procedures), `CSectionPath.cls`. Statically
+verified only; no live run yet.
+
+### The path
+
+Four waypoints, three segments, every coordinate a proved projection's page
+coordinate: bore centre; same X at the highest face-hole row; minimum-X
+column at that row; same column at the lowest row. R23-703 then proves the
+path actually crosses the bore and every hole on the chosen column, naming
+each one it misses.
+
+### What is deliberately absent
+
+No `extension`, no `topY`/`bottomY`, no `leftX`/`rightX`, and none of the
+fractions 15/72, 90/196, 15.84/24 or 0.1x. A percentage of a view outline
+knows nothing about where the holes are, which is exactly why the old upper
+label landed in the zone region and the lower arrow in the
+part-identification band. Contracts assert each token is gone.
+
+### Contracts worth carrying
+
+- The bore is the largest SINGLETON-family location, read from the graph.
+  No radius threshold, so a different part is not misclassified.
+- The grid is proved: fewer than two columns or two rows is a stated
+  rejection, not an array index that happens to work.
+- Crossings are judged against each hole's own projected radius, and the
+  point-to-segment distance is CLAMPED to the finite segment. Unclamped, a
+  circle beyond an endpoint reports as crossed because the infinite line
+  passes through it.
+- The page-to-view-sketch conversion happens exactly once per waypoint,
+  immediately before CreateLine. Nothing upstream holds view coordinates, so
+  there is nothing to convert twice.
+- Segment selection order is verified before CreateSectionViewAt5, whose
+  Remarks require the section line to be selected first. SOLIDWORKS reads
+  the segments in selection order, so an unverified order cuts a different
+  shape.
+
+### Two defects caught before compiling
+
+CreateSectionViewAt5 was being passed an empty label instead of the resolved
+one. And its X/Y - the CENTRE of the new view - were being defaulted to
+waypoint 3, a point inside the source view, which would have stacked the
+section on top of the view it was cut from. Placement is now a caller
+argument: choosing where a view sits is layout, and layout needs the full
+annotation envelopes this module cannot see.
+
+### R23-704 is half met, deliberately
+
+Same shape as R23-609. The new path is clean; the legacy literals stay in
+Module2_DrawingPipeline.bas (1525-1556) because it is the reachable
+production path and Module17 is not wired into main.
+
+### Verification
+
+Procedure blocks balanced 21/21 and 4/4. ANSI-only bytes, CRLF, no BOM, max
+line 77. 22 Phase 7 contracts. Suite 264 tests with the five known-stale R20
+failures. Preflight 31 managed components. MACRO_SOURCE_REVISION unchanged
+at target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phase 6 read-only gate satisfied
 
 `definitions=3|definitionFailures=None|counterboredFamilies=1|
