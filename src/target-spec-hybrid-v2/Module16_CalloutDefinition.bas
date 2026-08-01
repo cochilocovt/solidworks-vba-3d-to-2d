@@ -30,6 +30,20 @@ Option Explicit
 Public Const DEFINITION_NATIVE As String = "NativeCallout"
 Public Const DEFINITION_FALLBACK As String = "ControlledFallback"
 
+' swCalloutVariable_e depth members, verified against the 2025 table. A
+' callout carries its depth as a typed variable, not as text:
+'   14 swCalloutVariable_Depth
+'   21 swCalloutVariable_Hole_Depth
+'   28 swCalloutVariable_Tap_Drill_Depth
+'   32 swCalloutVariable_Thread_Depth
+'
+' Tap Drill Depth is the one that matters for a blind tapped hole: it is the
+' depth of the hole itself, which is what a manufacturing callout states.
+' Thread Depth is a different quantity and is already carried separately.
+Private Const CALLOUT_VAR_DEPTH As Long = 14
+Private Const CALLOUT_VAR_HOLE_DEPTH As Long = 21
+Private Const CALLOUT_VAR_TAP_DRILL_DEPTH As Long = 28
+
 Private mEmitDiagnostics As Boolean
 
 Private Sub EmitInfo( _
@@ -298,6 +312,8 @@ Public Sub ReadNativeCalloutFields( _
         Dim toleranceMin As Double
         Dim toleranceMax As Double
         Dim variableName As String
+        Dim variableType As Long
+        Dim lengthValue As Double
 
         holeFit = vbNullString
         shaftFit = vbNullString
@@ -305,26 +321,52 @@ Public Sub ReadNativeCalloutFields( _
         toleranceMin = 0#
         toleranceMax = 0#
         variableName = vbNullString
+        variableType = -1
+        lengthValue = 0#
 
         On Error Resume Next
         variableName = calloutVariable.UserReadableVariableName
+        variableType = CLng(calloutVariable.VariableType)
         holeFit = calloutVariable.HoleFit
         shaftFit = calloutVariable.ShaftFit
         toleranceType = CLng(calloutVariable.ToleranceType)
         toleranceMin = CDbl(calloutVariable.ToleranceMin)
         toleranceMax = CDbl(calloutVariable.ToleranceMax)
+        ' ICalloutLengthVariable.Length. Only length-typed variables carry
+        ' it, so the read is guarded and stays 0 for the others.
+        lengthValue = CDbl(calloutVariable.Length)
         On Error GoTo Failed
 
         EmitInfo evidence, "CALLOUT_VARIABLE|family=" & _
             EvidenceToken(definition.FamilyKey) & _
             "|index=" & CStr(i) & _
             "|name=" & variableName & _
+            "|variableType=" & CStr(variableType) & _
+            "|lengthM=" & Format$(lengthValue, "0.000000000") & _
             "|holeFit=" & holeFit & _
             "|shaftFit=" & shaftFit & _
             "|toleranceType=" & CStr(toleranceType) & _
             "|toleranceMin=" & Format$(toleranceMin, "0.000000000") & _
             "|toleranceMax=" & Format$(toleranceMax, "0.000000000") & _
             "|source=ICalloutVariable"
+
+        ' R23-603 covers depth as well as fit. The M5 family's own Hole
+        ' Wizard feature returned depthM=0 on this build, but its native
+        ' callout carries a Tap Drill Depth variable - the depth of the hole
+        ' itself, which is exactly what the callout states. Read only from
+        ' the depth-typed members verified against swCalloutVariable_e, and
+        ' never overwrite a depth the feature already proved.
+        If definition.DepthM <= 0# And lengthValue > 0# Then
+            If variableType = CALLOUT_VAR_TAP_DRILL_DEPTH Or _
+                variableType = CALLOUT_VAR_HOLE_DEPTH Or _
+                variableType = CALLOUT_VAR_DEPTH Then
+
+                definition.DepthM = lengthValue
+                definition.DepthProofSource = _
+                    "ICalloutLengthVariable.Length" & _
+                    ".swCalloutVariable:" & CStr(variableType)
+            End If
+        End If
 
         ' The first variable carrying fit or tolerance data defines the
         ' callout's fit fields. Later variables are reported but do not
@@ -433,11 +475,69 @@ ContinueFeature:
             ".ProvenCylindricalFaceRadius"
     End If
 
+    ' Attachment is a property of the FAMILY'S GEOMETRY, not of a callout.
+    '
+    ' The first live run returned attachmentProven=False on every retained
+    ' definition, including families whose holes are anchored in a view.
+    ' Only the native path was setting the flag, so a fallback could never
+    ' earn it - and when a native definition lost on completeness, the
+    ' fallback that replaced it discarded the proof the native had.
+    '
+    ' The two claims are genuinely different and stay distinguishable in the
+    ' proof source. A native callout is ATTACHED. A fallback is ATTACHABLE:
+    ' the family owns at least one projection with a proven selectable
+    ' anchor, which is the precondition for placing a callout at all. A
+    ' family with no anchor anywhere still fails, which is correct - nothing
+    ' could be attached to it.
+    If FamilyHasAnchoredProjection(graph, familyKey) Then
+        definition.AttachmentProven = True
+        definition.AttachmentProofSource = _
+            "CLocationGraph.AnchoredProjectionAvailable" & _
+            ".AttachableNotYetAttached"
+    End If
+
     Exit Function
 
 Failed:
     EmitFailure evidence, "CALLOUT_FALLBACK_ERROR|family=" & familyKey & _
         "|error=" & CStr(Err.Number)
+End Function
+
+' True when at least one projection of this family, in any view, carries a
+' proven selectable anchor. That is the precondition for attaching a callout
+' to the family, and it is proved from the graph rather than assumed.
+Private Function FamilyHasAnchoredProjection( _
+    ByRef graph As CLocationGraph, _
+    ByVal familyKey As String) As Boolean
+
+    On Error GoTo Failed
+
+    Dim projections As Collection
+    Set projections = graph.Projections()
+
+    Dim i As Long
+    For i = 1 To projections.Count
+        Dim projection As CViewHoleProjection
+        Set projection = projections(i)
+
+        If projection Is Nothing Then GoTo ContinueProjection
+        If projection.PhysicalLocation Is Nothing Then GoTo ContinueProjection
+        If Not projection.HasSelectableAnchor() Then GoTo ContinueProjection
+
+        If StrComp(projection.PhysicalLocation.SemanticFamilyKey, _
+            familyKey, vbBinaryCompare) = 0 Then
+
+            FamilyHasAnchoredProjection = True
+            Exit Function
+        End If
+
+ContinueProjection:
+    Next i
+
+    Exit Function
+
+Failed:
+    FamilyHasAnchoredProjection = False
 End Function
 
 ' Copies one typed feature's proved fields onto the definition. A field is
