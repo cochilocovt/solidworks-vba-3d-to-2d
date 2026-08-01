@@ -1648,3 +1648,73 @@ A read-only probe must measure for itself. `ISheet.GetSize` and
 `swZoneMargin_e` is `swZoneTopMargin` 0, `swZoneBottomMargin` 1,
 `swZoneRightMargin` 2, `swZoneLeftMargin` 3.
 
+## 2026-08-01 second live run: three contracts settled
+
+### Which nominal route answers a drawing reference dimension
+
+Live, on all seven `RD1..RD7@Drawing View6` dimensions in
+`Section View J-J`:
+
+| Route | Result |
+|---|---|
+| `GetSystemValue3(swThisConfiguration, Empty)` | declined |
+| `GetSystemValue3(swAllConfiguration, Empty)` | declined |
+| `GetSystemValue2("")` (obsolete) | **answered**, exact metres |
+
+Nominals returned: 0.018, 0.012, 0.0115, 0.040, 0.047, 0.1736, 0.1048.
+
+The supported `GetSystemValue3` route is what answers for an imported model
+dimension - Phase 0 proved that on `D1@Sketch4`. For a drawing-authored
+reference dimension on this build, the obsolete `GetSystemValue2` is the
+only route that returns a value. R23 keeps both and names which answered;
+`swAllConfiguration` was removed after declining on all seven.
+
+### IDisplayDimension.Diametric is False for the drawing's bore dimensions
+
+All seven section dimensions returned `Diametric = False` with the read
+succeeding. That includes the 47 carrying H7 and the 40. So a diameter on
+this drawing is not necessarily a diametric record, and
+`IDisplayDimension.Type2` is not necessarily 6 or 15 either.
+
+Three independent sources can establish that a dimension reads as a
+diameter, and R23 records which one applied:
+
+1. `Type2` is `swDiameterDimension` 6 or `swDiametricLinearDimension` 15;
+2. `IDisplayDimension.Diametric` is True; or
+3. the text prefix carries the symbol -
+   `GetText(swDimensionTextPrefix)` for what is drawn and
+   `GetText(swDimensionTextPrefixDefinition)` for the authored form, where
+   SOLIDWORKS writes the `<MOD-DIAM>` token.
+
+`swDimensionTextParts_e`: `swDimensionTextAll` 0 (SetText only),
+`swDimensionTextPrefix` 1, `swDimensionTextSuffix` 2,
+`swDimensionTextCalloutAbove` 3, `swDimensionTextCalloutBelow` 4,
+`swDimensionTextPrefixDefinition` 5, `swDimensionTextSuffixDefinition` 6,
+`swDimensionTextCalloutAboveDefinition` 7,
+`swDimensionTextCalloutBelowDefinition` 8. `GetText` does not support hole
+callouts, and `swDimensionTextAll` is not valid for it.
+
+### GetSectionLineInfo2 arrow block: 9 doubles, proved by item count
+
+`Drawing View4` returned 49 items for a section line with three segments.
+The grammar that fits is:
+
+```
+2                       numSectionLines, layer
+1                       numSegments
+7 x 3                   lineType + startPt[3] + endPt[3], per segment
+9                       arrow 1: start[3] + end[3] + width + height + style
+9                       arrow 2: same
+7                       textPt1[3] + textPt2[3] + textHeight
+--
+49
+```
+
+Reading the arrow block as 11 doubles - the mistake in R23's first Phase 9
+source - matches no segment count at all, which is how it was caught. A
+parser that consumes the wrong stride still returns plausible-looking
+coordinates, so the item-count check is not optional.
+
+The one-`layer`-overall reading is the one that fits; the alternative from
+`GetSectionLineCount2`'s Remarks was tried and did not.
+

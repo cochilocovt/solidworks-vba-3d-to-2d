@@ -59,9 +59,13 @@ Private Const SET_VALUE_NO_CONFIGURATION As Long = -1
 ' MCP corpus value for swDrawingViewTypes_e.swDrawingSectionView.
 Private Const VIEW_TYPE_SECTION As Long = 2
 
-' MCP corpus values for swInConfigurationOpts_e.
+' MCP corpus value for swInConfigurationOpts_e.
 Private Const CONFIG_THIS As Long = 1
-Private Const CONFIG_ALL As Long = 2
+
+' MCP corpus values for swDimensionTextParts_e. The prefix is where a
+' diameter symbol lives when the dimension is not a diametric record.
+Private Const TEXT_PREFIX As Long = 1
+Private Const TEXT_PREFIX_DEFINITION As Long = 5
 
 ' Two nominals are the same when they agree to a micrometre. Every
 ' requirement below is separated from every other by at least 5.5 mm, so
@@ -341,6 +345,12 @@ Public Function InventorySectionDimensions( _
         Dim diametric As Boolean
         diametric = SafeDiametric(displayDimension, diametricKnown)
 
+        Dim prefixText As String
+        Dim prefixDefinition As String
+        Dim diameterSymbol As Boolean
+        diameterSymbol = ReadDiameterPrefix( _
+            displayDimension, prefixText, prefixDefinition)
+
         Dim toleranceType As Long
         Dim fitType As Long
         Dim holeFit As String
@@ -372,6 +382,9 @@ Public Function InventorySectionDimensions( _
             "|" & nominalRoute & _
             "|diametricKnown=" & CStr(diametricKnown) & _
             "|diametric=" & CStr(diametric) & _
+            "|diameterSymbol=" & CStr(diameterSymbol) & _
+            "|prefix=" & SectionToken(prefixText) & _
+            "|prefixDefinition=" & SectionToken(prefixDefinition) & _
             "|attachedEntities=" & CStr(attachedCount) & _
             "|attachedTypes=" & attachedTypes & _
             "|" & toleranceProof
@@ -438,14 +451,18 @@ End Function
 ' configuration to ask about, so the supported route can legitimately
 ' decline where it succeeds for D1@Sketch4.
 '
-' Every route is therefore tried in turn and the one that produced the value
-' is NAMED in evidence, so a later run can drop whichever proved
-' unnecessary. Two of them are obsolete members kept as labelled last
-' resorts: both are documented as returning system units, and finding out
-' which route a reference dimension answers is exactly the question this run
-' has to settle. When all decline, the raw shape of the GetSystemValue3
-' result is reported, because "no nominal" and "an empty SafeArray" are
-' different problems.
+' The 2026-08-01 second run settled it: all seven answered
+' nominalRoute=Obsolete.GetSystemValue2, with exact nominals. The
+' swAllConfiguration attempt was reached and declined on every one, so it is
+' gone - a route with live evidence against it is not kept "just in case".
+'
+' Two routes remain. GetSystemValue3 with swThisConfiguration is the
+' supported call and is what answers for imported model dimensions like
+' D1@Sketch4. GetSystemValue2 is obsolete, is labelled obsolete in the route
+' name, and is the only thing that answers for a drawing-authored reference
+' dimension on this build. When both decline, the raw shape of the
+' GetSystemValue3 result is reported, because "no nominal" and "an empty
+' SafeArray" are different problems.
 Private Function TryReadNominal( _
     ByRef dimension As SldWorks.Dimension, _
     ByRef nominalM As Double, _
@@ -456,12 +473,6 @@ Private Function TryReadNominal( _
 
     If TryNominalInConfiguration(dimension, CONFIG_THIS, nominalM) Then
         route = "nominalRoute=GetSystemValue3.ThisConfiguration"
-        TryReadNominal = True
-        Exit Function
-    End If
-
-    If TryNominalInConfiguration(dimension, CONFIG_ALL, nominalM) Then
-        route = "nominalRoute=GetSystemValue3.AllConfigurations"
         TryReadNominal = True
         Exit Function
     End If
@@ -508,7 +519,9 @@ End Function
 ' IDimension.GetSystemValue2 and IDimension.SystemValue are both marked
 ' obsolete by the 2025 Help. They run ONLY after the supported route has
 ' declined, and the route name says so, so no reader can mistake this for
-' the preferred call.
+' the preferred call. GetSystemValue2 is the one that answers on this build;
+' SystemValue has never been reached and is kept as the final fallback
+' rather than removed on no evidence either way.
 Private Function TryNominalFromObsoleteMembers( _
     ByRef dimension As SldWorks.Dimension, _
     ByRef nominalM As Double, _
@@ -570,7 +583,46 @@ Failed:
     DescribeNominalShape = "Error:" & CStr(Err.Number)
 End Function
 
-' R23-804 revisited. The first live run found every section dimension typed
+' R23-804, third reading. The second live run returned diametric=False for
+' every section dimension INCLUDING the 47 and the 40, with
+' diametricKnown=True - a real answer, not a read failure. So the bore
+' dimensions are plain linear records measuring across the bore.
+'
+' That is not yet enough to call them non-diameters. A drawing can carry the
+' diameter symbol in the dimension's text PREFIX while the diametric flag
+' stays false, and then the sheet reads correctly even though the record
+' does not. Both the rendered prefix and its definition are read:
+' IDisplayDimension.GetText(swDimensionTextPrefix) gives what is drawn, and
+' swDimensionTextPrefixDefinition gives the authored form, where SOLIDWORKS
+' writes the <MOD-DIAM> token.
+'
+' Cp1252 216 is the diameter sign. It is written as Chr$(216) rather than as
+' a literal because every byte of this source must stay below 0x80.
+Private Function ReadDiameterPrefix( _
+    ByRef displayDimension As SldWorks.DisplayDimension, _
+    ByRef prefixText As String, _
+    ByRef definitionText As String) As Boolean
+
+    prefixText = vbNullString
+    definitionText = vbNullString
+
+    On Error GoTo Failed
+
+    prefixText = displayDimension.GetText(TEXT_PREFIX)
+    definitionText = displayDimension.GetText(TEXT_PREFIX_DEFINITION)
+
+    ReadDiameterPrefix = _
+        (InStr(1, definitionText, "MOD-DIAM", vbTextCompare) > 0) Or _
+        (InStr(1, prefixText, Chr$(216), vbBinaryCompare) > 0) Or _
+        (InStr(1, definitionText, Chr$(216), vbBinaryCompare) > 0)
+    Exit Function
+
+Failed:
+    prefixText = "Error:" & CStr(Err.Number)
+    ReadDiameterPrefix = False
+End Function
+
+' The first live run found every section dimension typed
 ' swLinearDimension=2, including the one carrying H7 - not the
 ' swDiameterDimension=6 records Phase 0 saw in an earlier state of this
 ' drawing. IDisplayDimension.Diametric is what distinguishes a linear
@@ -859,6 +911,13 @@ Private Sub RecordObservation( _
         SafeDiametric(displayDimension, diametricKnown)
     requirement.MatchedDiametricKnown = diametricKnown
 
+    Dim prefixText As String
+    Dim prefixDefinition As String
+    requirement.MatchedDiameterSymbol = ReadDiameterPrefix( _
+        displayDimension, prefixText, prefixDefinition)
+    requirement.MatchedDiameterPrefix = _
+        SectionToken(prefixText) & "/" & SectionToken(prefixDefinition)
+
     If attachedCount = 0 Then
         requirement.Failures = AppendFailure( _
             requirement.Failures, "DimensionNotAttached")
@@ -869,18 +928,27 @@ Private Sub RecordObservation( _
     ' a diameter is a separate fact, and an unproved one is reported rather
     ' than assumed in either direction.
     If requirement.RequiresDiameterDisplay Then
-        If typeCode <> DIM_TYPE_DIAMETER And _
-            typeCode <> DIM_TYPE_DIAMETRIC_LINEAR Then
+        If typeCode = DIM_TYPE_DIAMETER Or _
+            typeCode = DIM_TYPE_DIAMETRIC_LINEAR Then
 
-            If Not diametricKnown Then
-                requirement.Failures = AppendFailure( _
-                    requirement.Failures, _
-                    "DiameterDisplayUnreadable:" & CStr(typeCode))
-            ElseIf Not requirement.MatchedDiametric Then
-                requirement.Failures = AppendFailure( _
-                    requirement.Failures, _
-                    "NotDisplayedAsDiameter:" & CStr(typeCode))
-            End If
+            requirement.DiameterDisplaySource = "DiametricRecord"
+        ElseIf requirement.MatchedDiameterSymbol Then
+            ' The record is linear but the sheet carries the diameter
+            ' symbol, so what a machinist reads is a diameter. Recorded as
+            ' the weaker source it is, not failed.
+            requirement.DiameterDisplaySource = "TextPrefix"
+        ElseIf requirement.MatchedDiametric Then
+            requirement.DiameterDisplaySource = "DiametricFlag"
+        ElseIf Not diametricKnown Then
+            requirement.DiameterDisplaySource = "Unreadable"
+            requirement.Failures = AppendFailure( _
+                requirement.Failures, _
+                "DiameterDisplayUnreadable:" & CStr(typeCode))
+        Else
+            requirement.DiameterDisplaySource = "None"
+            requirement.Failures = AppendFailure( _
+                requirement.Failures, _
+                "NotDisplayedAsDiameter:" & CStr(typeCode))
         End If
     End If
 End Sub

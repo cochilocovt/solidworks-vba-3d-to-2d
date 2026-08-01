@@ -1,5 +1,71 @@
 # Changelog
 
+## 2026-08-01 - R23 second live run: R23-907 reversed, six defects fixed
+
+### Phase 8 matched every requirement
+
+satisfied=5|missing=0|duplicated=0, with all seven nominals exact. The
+nominal route is settled: every dimension answered
+nominalRoute=Obsolete.GetSystemValue2, and GetSystemValue3 declined both
+configuration modes on all seven. swAllConfiguration has been removed - a
+route with live evidence against it is not kept for insurance.
+
+The two flagged requirements are the bore diameters, on
+NotDisplayedAsDiameter:2. All seven returned diametric=False with
+diametricKnown=True, a real answer. A drawing can carry the diameter symbol
+in the dimension's TEXT PREFIX while the diametric flag stays False, and
+then the sheet reads correctly even though the record does not.
+ReadDiameterPrefix reads GetText(swDimensionTextPrefix) and its
+...PrefixDefinition form, where SOLIDWORKS writes <MOD-DIAM>, and
+DiameterDisplaySource names which of DiametricRecord, DiametricFlag or
+TextPrefix answered. NotDisplayedAsDiameter is recorded only when all three
+decline.
+
+### Phase 9 ran end to end, and the arrow block was the bug
+
+Drawing View4 returned items=49 from GetSectionLineInfo2. That is
+2 header + 1 numSegments + 7x3 segments + 9 + 9 arrows + 7 text: an arrow
+block is start[3] + end[3] + width + height + style = 9 doubles, not the 11
+the first version counted, and three segments is the J-J path exactly. With
+11 nothing matched, which is why arrow=0|section=0 on every envelope. The
+dry-run grammar check did its job - it refused to parse rather than
+producing plausible coordinates.
+
+Four more from the same run: a view with no section line was reported as a
+failed parse rather than as having no section line; every envelope printed
+twice, the same AddInfo-already-prints defect fixed in Phase 8 and missed
+here; the display-data frame check allowed 120 mm of slack and tested only
+line start points, so its 26/28 consistent counts were weaker than they
+looked; and 34 rejected off-sheet points were counted without one
+coordinate being kept, which makes a frame error and genuinely off-sheet
+geometry indistinguishable. The eleven *Front/*Top/*Isometric template
+entries GetViews returns are now skipped by name.
+
+### R23-907 reversed by the user
+
+"The views are allowed to rescaled as per need". The accepted reference
+drawing cannot satisfy the old prohibition: its four view envelopes need
+0.479 m of height in the 0.253 m available.
+
+The prohibition is replaced by a gate and a record. The only ScaleDecimal
+assignment is inside ApplyScaleToFit, which refuses without allowMutation,
+records the mutation, and reads each new scale back. PlanPlacement returns
+plan=RescaleRequired with a suggested factor labelled
+factorIs=GeometricEstimateTextDoesNotScale, because annotation text height
+does not scale with the view - so the factor is applied, the drawing is
+rebuilt, and the envelopes are RE-MEASURED rather than scaled
+arithmetically. ReportScaleChanges names every view whose scale changed with
+before and after values.
+
+R23-908 survives: rescale happens once, and if the content still does not
+fit, ApplyPlacementPlan returns layout=Reject|reason=LargerSheetRequired.
+
+### Verification
+
+Suite 357 tests with the five known-stale R20 failures. Preflight 35
+managed components. MACRO_SOURCE_REVISION unchanged at
+target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phases 8 and 9 first live run: four defects fixed
 
 Both probes ran read-only against the P-0251 reference drawing. Neither gate

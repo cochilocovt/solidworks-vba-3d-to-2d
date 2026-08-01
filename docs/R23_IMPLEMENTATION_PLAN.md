@@ -1045,10 +1045,18 @@ drawing, and nothing writes an OBSERVED field from a REQUIRED one. A
 requirement that reports its own nominal back as the observed nominal proves
 nothing, and a contract asserts the assignment never happens.
 
-**Status: first live run made, gate NOT satisfied, three defects fixed.**
-The 2026-08-01 run returned `satisfied=0|missing=7` while seven dimensions
-sat in `Section View J-J`, and the cause was in this module rather than in
-the drawing. Awaiting the second run.
+**Status: second live run made, `missing=0`, two requirements flagged.**
+The second run returned `satisfied=5|missing=0|duplicated=0` with every
+nominal exact - 0.018, 0.012, 0.0115, 0.040, 0.047, 0.1736, 0.1048 - so all
+seven requirement keys exist in the drawing and are matched.
+
+The two flagged are the bore diameters, on `NotDisplayedAsDiameter:2`. Every
+section dimension returned `diametric=False` with `diametricKnown=True`, a
+real answer rather than a read failure. Before that can be called a defect
+in the drawing, the dimension's TEXT PREFIX has to be read: a drawing can
+carry the diameter symbol there while the diametric flag stays False, and
+then the sheet reads correctly even though the record does not. That read is
+now in place. Awaiting the third run.
 
 - [x] **R23-800:** Added `Module10_SectionDimensionEngine.bas`. The plan
   named the free `Module10` slot and it is taken as named; the other R23
@@ -1101,11 +1109,18 @@ the drawing. Awaiting the second run.
   dimensions in `Section View J-J`, every one `swLinearDimension = 2` and
   named `RD1..RD7`, drawing-authored reference dimensions rather than
   imported model dimensions. Both states are real, so a diameter
-  requirement now accepts type 6, type 15 **and** the linear types, and
-  `IDisplayDimension.Diametric` is recorded to say which of them the drawing
-  actually displays as a diameter. Requiring any single type would reject
-  one of the two real states, which is exactly what R23-804 exists to
-  prevent.
+  requirement now accepts type 6, type 15 **and** the linear types.
+  Requiring any single type would reject one of the two real states, which
+  is exactly what R23-804 exists to prevent.
+
+  Which of them the drawing DISPLAYS as a diameter is a separate question
+  with three possible answers, and `DiameterDisplaySource` names the one
+  that applies: `DiametricRecord` (the type says so), `DiametricFlag`
+  (`IDisplayDimension.Diametric` says so), or `TextPrefix` (the symbol is
+  in the dimension's text, read through
+  `GetText(swDimensionTextPrefix)` and its `...PrefixDefinition` form,
+  where SOLIDWORKS writes `<MOD-DIAM>`). Only when all three decline is
+  `NotDisplayedAsDiameter` recorded.
 - [x] **R23-805: corrected after the live run.** The nominal read was the
   defect that blocked the whole phase. `GetSystemValue3` with
   `swThisConfiguration` returned nothing for all seven dimensions - a
@@ -1113,12 +1128,18 @@ the drawing. Awaiting the second run.
   and without a nominal nothing can match, so every requirement reported
   Missing while its dimension sat in the view.
 
-  `TryReadNominal` now tries `swThisConfiguration`, then
-  `swAllConfiguration`, then the obsolete `GetSystemValue2("")` and
-  `SystemValue` as labelled last resorts, and NAMES the route that answered
-  so a later run can drop whichever proved unnecessary. When every route
-  declines it reports the raw shape of the `GetSystemValue3` result, because
-  "no nominal" and "an empty SafeArray" are different problems.
+  `TryReadNominal` names the route that answered, and the second run
+  settled it: all seven returned `nominalRoute=Obsolete.GetSystemValue2`
+  with exact nominals. `swAllConfiguration` was reached and declined on
+  every one, so it has been REMOVED - a route with live evidence against it
+  is not kept "just in case". Two remain: `GetSystemValue3` with
+  `swThisConfiguration`, which is the supported call and what answers for
+  imported model dimensions like `D1@Sketch4`, and the obsolete
+  `GetSystemValue2`, labelled obsolete in the route name, which is the only
+  thing that answers for a drawing-authored reference dimension on this
+  build. When both decline the raw shape of the `GetSystemValue3` result is
+  reported, because "no nominal" and "an empty SafeArray" are different
+  problems.
 
   Everything else is read through supported members only. All four
   `IDimension` tolerance members - `GetToleranceValues`,
@@ -1216,13 +1237,30 @@ their agreement with the view's own documented outline is COUNTED rather
 than asserted, because a contract the Help does not make is not one this
 project states.
 
-**Status: first live run aborted before any envelope was built.** The probe
-called `Module8_RuntimeSupport.MeasureControlledSheetRegions`, a production
-fail-closed gate that demands an `ITitleBlock` the reference drawing does
-not have - and that SETS `ISheet.SheetFormatVisible`, so a run that promised
-`mutations=0` had already attempted one. The probe now measures the sheet
-itself, read-only, and degrades instead of aborting. Awaiting the second
-run.
+**Status: second live run completed end to end; five defects fixed.** The
+sheet measured (`A3 0.420 x 0.297`, `contentBorder=Measured`,
+`titleBlock=Absent`), four envelopes built, clearances checked, a plan
+produced. Five defects the run exposed are fixed and it awaits a third run:
+
+1. **The section-line arrow block is 9 doubles, not 11.** `Drawing View4`
+   returned `items=49`, and `49 = 2 header + 1 numSegments + 7x3 segments +
+   9 + 9 arrows + 7 text` - three segments, the J-J path exactly. With 11
+   nothing matched, which is why `arrow=0|section=0` on every envelope.
+2. **A view with no section line is not a failed parse.** An empty array was
+   reported as `Unmatched` and appended to `sourceFailures` on every
+   envelope; it is now `sectionGrammar=NoSectionLine`.
+3. **Every envelope line printed twice** - the same `AddInfo`-already-prints
+   defect fixed in Phase 8 and missed here.
+4. **The display-data frame check allowed 120 mm of slack** and tested only
+   line start points, so its 26/28 "consistent" counts were weaker evidence
+   than they looked. Now 24 mm, both endpoints.
+5. **Rejected points were counted without being sampled.** 34 rejections on
+   the section view with no coordinate makes a frame error and genuinely
+   off-sheet geometry indistinguishable; the first rejection is now kept
+   with its source.
+
+The eleven `*Front`/`*Top`/`*Isometric` template entries `GetViews` returns
+are now skipped by name and logged as skipped.
 
 - [x] **R23-900:** All eight sources contribute, each counted separately so
   an outline-only rectangle cannot pass as a content envelope
@@ -1285,14 +1323,33 @@ run.
   other rectangle is protected. The section envelope already includes the
   arrows and both label points with their text height, so the 2 mm is
   measured from the geometry that actually overshot.
-- [x] **R23-907:** The module contains no `ScaleDecimal =`, no
-  `ScaleRatio` and no `SetScale`, and contracts assert each absence.
-  `CaptureViewScales` photographs every approved scale before the moves and
-  `VerifyScalesUnchanged` proves none changed.
-- [x] **R23-908:** `PlanPlacement` returns
-  `plan=Reject|reason=LargerSheetRequired` with the required and available
-  width and height stated. Because R23-907 forbids shrinking a view, this is
-  a failure and a request rather than a fallback.
+- [x] **R23-907: REVERSED BY THE USER on 2026-08-01** - "The views are
+  allowed to rescaled as per need". The prohibition is replaced by a gate
+  and a record, not by silence:
+
+  - the only `ScaleDecimal` assignment in the module is inside
+    `ApplyScaleToFit`, which refuses without `allowMutation`, records the
+    mutation, and reads each new scale back rather than assuming the set
+    took;
+  - the factor is an ESTIMATE and says so
+    (`factorIs=GeometricEstimateTextDoesNotScale`). Annotation text height
+    does not scale with the view, so a view at half scale does not have half
+    the envelope. The factor is applied, the drawing is rebuilt, and the
+    envelopes are re-measured; and
+  - `CaptureViewScales` photographs every approved scale first and
+    `ReportScaleChanges` names every view whose scale changed, with the
+    before and after values.
+
+  The reversal was needed because the accepted reference drawing itself
+  cannot satisfy the old rule: its four view envelopes need 0.479 m of
+  height in the 0.253 m available.
+- [x] **R23-908: survives the R23-907 reversal.** `PlanPlacement` now
+  returns `plan=RescaleRequired` with the suggested factor and the required
+  and available width and height. Rescaling is a permitted remedy, not an
+  unlimited one: it happens once, the envelopes are re-measured, and if the
+  content still does not fit, `ApplyPlacementPlan` returns
+  `layout=Reject|reason=LargerSheetRequired`. The sheet being too small is
+  still an answer this engine is allowed to give.
 - [x] **R23-909:** `SealLayout` photographs the evidence ledger's
   mutation sequence when layout completes and
   `VerifyNothingCreatedAfterLayout` compares it afterwards, reporting the

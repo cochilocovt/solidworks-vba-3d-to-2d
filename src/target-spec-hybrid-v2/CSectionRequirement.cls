@@ -72,6 +72,14 @@ Public ToleranceProof As String
 Public MatchedDiametric As Boolean
 Public MatchedDiametricKnown As Boolean
 
+' A drawing can carry the diameter symbol in the dimension's text prefix
+' while the diametric flag stays False. The sheet then reads as a diameter
+' even though the record does not, so both are recorded and which one
+' answered is named in DiameterDisplaySource.
+Public MatchedDiameterSymbol As Boolean
+Public MatchedDiameterPrefix As String
+Public DiameterDisplaySource As String
+
 ' Which of the nominal-read routes actually answered. The supported
 ' configuration route declines for drawing-authored reference dimensions,
 ' so naming the route that worked is what lets a later run drop the ones
@@ -97,6 +105,9 @@ Private Sub Class_Initialize()
     MatchedToleranceMaxStatus = -1
     MatchedDiametric = False
     MatchedDiametricKnown = False
+    MatchedDiameterSymbol = False
+    MatchedDiameterPrefix = "NotRead"
+    DiameterDisplaySource = "NotApplicable"
     NominalRoute = "nominalRoute=NotRead"
     RequiresDiameterDisplay = False
     ToleranceSatisfied = False
@@ -134,6 +145,9 @@ Public Function ObservationSummary() As String
         "|" & NominalRoute & _
         "|diametricKnown=" & CStr(MatchedDiametricKnown) & _
         "|diametric=" & CStr(MatchedDiametric) & _
+        "|diameterSymbol=" & CStr(MatchedDiameterSymbol) & _
+        "|diameterDisplaySource=" & DiameterDisplaySource & _
+        "|prefix=" & MatchedDiameterPrefix & _
         "|attachedEntities=" & CStr(AttachedEntityCount) & _
         "|attachedTypes=" & AttachedEntityTypes & _
         "|" & ToleranceProof

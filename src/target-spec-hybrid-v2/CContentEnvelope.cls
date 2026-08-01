@@ -45,7 +45,15 @@ Public OtherPoints As Long
 ' Points discarded because they fell outside the sheet. A non-zero count is
 ' a frame smell, not a rounding artefact: page-frame geometry belonging to a
 ' view on the sheet lies on the sheet.
+'
+' The first rejected point is kept with its source. A bare count cannot tell
+' a frame error from geometry that really does hang off the page, and the
+' 2026-08-01 run reported 34 rejections on the section view without saying
+' where a single one of them was.
 Public RejectedOffSheet As Long
+Public FirstRejectedX As Double
+Public FirstRejectedY As Double
+Public FirstRejectedSource As String
 
 Public SourceFailures As String
 
@@ -54,7 +62,22 @@ Private Sub Class_Initialize()
     Frame = "Page"
     Seeded = False
     RejectedOffSheet = 0
+    FirstRejectedSource = "None"
     SourceFailures = vbNullString
+End Sub
+
+Public Sub RecordRejection( _
+    ByVal x As Double, _
+    ByVal y As Double, _
+    ByVal source As String)
+
+    If RejectedOffSheet = 0 Then
+        FirstRejectedX = x
+        FirstRejectedY = y
+        FirstRejectedSource = source
+    End If
+
+    RejectedOffSheet = RejectedOffSheet + 1
 End Sub
 
 Public Sub AddPoint( _
@@ -168,6 +191,9 @@ Public Function Summary() As String
         "|section=" & CStr(SectionPoints) & _
         "|other=" & CStr(OtherPoints) & _
         "|rejectedOffSheet=" & CStr(RejectedOffSheet) & _
+        "|firstRejected=" & FirstRejectedSource & _
+            ":" & Format$(FirstRejectedX, "0.000000") & _
+            "," & Format$(FirstRejectedY, "0.000000") & _
         "|annotationContent=" & CStr(HasAnnotationContent()) & _
         "|sourceFailures=" & failures
 End Function

@@ -2,6 +2,71 @@
 
 Date: 2026-08-01
 
+## R23 Phases 8 and 9 second live run: R23-907 reversed, six defects fixed
+
+**2026-08-01.** Both probes ran read-only. Phase 8 matched every
+requirement; Phase 9 completed end to end for the first time.
+
+### Phase 8: `satisfied=5|missing=0|duplicated=0`
+
+All seven nominals read exactly - 0.018, 0.012, 0.0115, 0.040, 0.047,
+0.1736, 0.1048 - so every P-0251 section requirement exists in the drawing
+and is matched to a dimension.
+
+**The nominal route is settled.** Every one answered
+`nominalRoute=Obsolete.GetSystemValue2`. `GetSystemValue3` declined both
+configuration modes on all seven, so `swAllConfiguration` has been removed -
+a route with live evidence against it is not kept for insurance. Two remain:
+the supported configuration call, which is what answers for imported model
+dimensions, and the obsolete `GetSystemValue2`, which is the only thing that
+answers for a drawing-authored reference dimension on this build.
+
+**The two flagged requirements are the bore diameters**, on
+`NotDisplayedAsDiameter:2`. Every section dimension returned
+`diametric=False` with `diametricKnown=True` - a real answer. Before that is
+called a defect in the drawing, the dimension's text PREFIX has to be read:
+a drawing can carry the diameter symbol there while the diametric flag stays
+False, and then the sheet reads correctly even though the record does not.
+`ReadDiameterPrefix` now reads both the rendered prefix and its definition
+form, where SOLIDWORKS writes `<MOD-DIAM>`, and `DiameterDisplaySource`
+names which of the three sources answered.
+
+`FIT_BORE_D47_H7` reads
+`toleranceSatisfied=True|toleranceProvenance=PresentOnDrawing.TargetSpecReferenceAuthority.NotModelData`
+against a live `holeFit=H7`, `maximumM=0.000025`. Exactly the R23-806
+position.
+
+### Phase 9: completed, five defects, and R23-907 reversed
+
+The sheet measured cleanly - A3 0.420 x 0.297, `contentBorder=Measured` from
+`ISheet.GetZoneMargin`, `titleBlock=Absent` - and four envelopes were built
+with `annotationEnvelopes=3`.
+
+**The decisive bug: the section-line arrow block is 9 doubles, not 11.**
+`Drawing View4` returned `items=49`, and 49 = 2 header + 1 numSegments +
+7x3 segments + 9 + 9 arrows + 7 text. Three segments - the J-J path exactly.
+Counting 11 matched nothing, which is why every envelope reported
+`arrow=0|section=0`. The dry-run design caught it as designed: it refused to
+parse rather than producing plausible coordinates.
+
+Four more: an absent section line was reported as a failed parse; every
+envelope line printed twice; the display-data frame check allowed 120 mm of
+slack and tested only line start points; and rejected off-sheet points were
+counted without a single coordinate being kept.
+
+**R23-907 is reversed by the user** - "The views are allowed to rescaled as
+per need". The reference drawing itself cannot satisfy the old rule: its
+four envelopes need 0.479 m of height in the 0.253 m available. Rescaling is
+now a gated, recorded remedy: one `ScaleDecimal` assignment, inside
+`ApplyScaleToFit`, refusing without `allowMutation`, reading each new scale
+back, and reporting every changed view by name. The factor is labelled an
+estimate because annotation text does not scale with the view, so the
+envelopes are re-measured rather than predicted. R23-908 survives: if the
+content still does not fit after the rescale, the sheet is too small.
+
+Verification: 357 tests with the same five stale R20 failures. Preflight 35
+components. `MACRO_SOURCE_REVISION` remains `r22`.
+
 ## R23 Phases 8 and 9 first live run: four defects found and fixed
 
 **2026-08-01.** Both probes ran read-only against the P-0251 reference

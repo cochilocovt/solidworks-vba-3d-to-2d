@@ -42,6 +42,25 @@ Option Explicit
 ' own documented outline and reported as consistent or not, because a
 ' contract the Help does not state is not a contract this project asserts.
 
+' R23-907 was "do not reduce an approved view scale to force a fit". The
+' user reversed it on 2026-08-01: "The views are allowed to rescaled as per
+' need". Rescaling is therefore a permitted remedy, and the rules that
+' replace the old prohibition are:
+'
+'   - a scale change happens only inside ApplyPlacementPlan, which refuses
+'     without allowMutation, like every other mutation here;
+'   - the factor is an ESTIMATE, never a prediction. Annotation text height
+'     does not scale with the view, so a view at half scale does not have
+'     half the envelope. The factor is applied, the drawing is rebuilt, and
+'     the envelopes are re-measured; and
+'   - every view's approved scale is captured first and the before/after
+'     pair is reported for each one, so a reader sees exactly what was
+'     given up to make the content fit.
+'
+' R23-908 survives as the final answer: if the content still does not fit
+' after the permitted rescale and the one correction pass, the sheet is too
+' small and that is what gets reported.
+
 ' R23-905. Minimum clearance between any two view envelopes, and between a
 ' view envelope and a protected region. Matches Module9_LayoutEngine's
 ' existing VIEW_GAP_M so the two engines do not disagree about what "clear"
@@ -56,6 +75,17 @@ Public Const SECTION_CLEARANCE_M As Double = 0.002
 ' correcting is a placement that does not converge, and iterating it hides
 ' that.
 Public Const MAX_CORRECTION_PASSES As Long = 1
+
+' R23-900. How far outside a view's own outline a display-data point may
+' sit and still be treated as page-frame agreement.
+'
+' The first version used ten times the view clearance - 120 mm - which is
+' wide enough to accept a view-frame point by accident, so the 26/28
+' "consistent" counts it produced were weaker evidence than they looked.
+' Two view clearances is enough for extension lines and dimension text
+' standing off the geometry, and narrow enough that a point in the wrong
+' frame lands outside it.
+Public Const FRAME_AGREEMENT_SLACK_M As Double = 0.024
 
 ' A round trip through the forward and inverse view transform must return
 ' the original page point to within this. It is a numerical check on two
@@ -75,6 +105,9 @@ Private Const SOURCE_SECTION As String = "Section"
 
 ' MCP corpus value for swDrawingViewTypes_e.swDrawingSectionView.
 Private Const VIEW_TYPE_SECTION As Long = 2
+
+' One section-line arrow block: start[3] + end[3] + width + height + style.
+Private Const ARROW_BLOCK_DOUBLES As Long = 9
 
 ' MCP corpus values for swZoneMargin_e.
 Private Const ZONE_TOP_MARGIN As Long = 0
@@ -152,6 +185,19 @@ Private Function SafeViewName( _
     SafeViewName = swView.GetName2
 End Function
 
+' ISheet.GetViews returns the drawing's named orientation entries -
+' *Front, *Top, *Isometric and the rest - alongside the real views. They
+' carry no page geometry: the second run seeded none of them and rejected
+' two off-sheet outline points from each. They are skipped by name rather
+' than by failing to seed, so the log says why they are absent.
+Public Function IsTemplateOrientationView( _
+    ByRef swView As SldWorks.View) As Boolean
+
+    On Error Resume Next
+    If swView Is Nothing Then Exit Function
+    IsTemplateOrientationView = (Left$(SafeViewName(swView), 1) = "*")
+End Function
+
 Public Function NewEnvelope( _
     ByVal kind As String, _
     ByVal name As String) As CContentEnvelope
@@ -176,7 +222,10 @@ Private Sub ContributePoint( _
     ByVal sheetHeight As Double)
 
     If x < 0# Or y < 0# Or x > sheetWidth Or y > sheetHeight Then
-        envelope.RejectedOffSheet = envelope.RejectedOffSheet + 1
+        ' Counted AND sampled. The second run rejected 34 points on the
+        ' section view without saying where any of them were, which makes a
+        ' frame error and genuinely off-sheet geometry look identical.
+        envelope.RecordRejection x, y, source
         Exit Sub
     End If
 
@@ -352,8 +401,15 @@ Private Sub AddDisplayDimensionGeometry( _
         ' [color, lineType, lineStyle, lineWeight, startPt[3], endPt[3]]
         If (UBound(lineInfo) - lineBase + 1) < 10 Then GoTo ContinueLine
 
+        ' Both endpoints, not only the start. A line with one endpoint in
+        ' the right place and one in the wrong frame is exactly the case a
+        ' start-only test cannot see.
         RecordFrameAgreement CDbl(lineInfo(lineBase + 4)), _
             CDbl(lineInfo(lineBase + 5)), _
+            outlineMinX, outlineMinY, outlineMaxX, outlineMaxY, _
+            consistentPoints, inconsistentPoints
+        RecordFrameAgreement CDbl(lineInfo(lineBase + 7)), _
+            CDbl(lineInfo(lineBase + 8)), _
             outlineMinX, outlineMinY, outlineMaxX, outlineMaxY, _
             consistentPoints, inconsistentPoints
 
@@ -426,7 +482,7 @@ Private Sub RecordFrameAgreement( _
     ByRef inconsistentPoints As Long)
 
     Dim slack As Double
-    slack = VIEW_CLEARANCE_M * 10#
+    slack = FRAME_AGREEMENT_SLACK_M
 
     If x >= (outlineMinX - slack) And x <= (outlineMaxX + slack) And _
        y >= (outlineMinY - slack) And y <= (outlineMaxY + slack) Then
@@ -624,7 +680,15 @@ End Function
 '
 ' The documented grammar is
 ' [numSectionLines, layer, {numSegments, {lineType, startPt[3], endPt[3]},
-'  arrow1[11], arrow2[11], textPt1[3], textPt2[3], textHeight}].
+'  arrow1[9], arrow2[9], textPt1[3], textPt2[3], textHeight}], where each
+' arrow block is start[3] + end[3] + width + height + style = 9 doubles.
+'
+' The first version counted 11 per arrow and matched nothing. The live run
+' returned 49 items for Drawing View4, and 49 = 2 header + 1 numSegments +
+' 7*3 segments + 9 + 9 arrows + 7 text - three segments, which is the J-J
+' path exactly. Counting the arrow block wrong is precisely the failure this
+' dry-run design was built to catch rather than paper over.
+'
 ' GetSectionLineCount2's own Remarks say its Size includes a layer double
 ' for EACH section line, which the grammar above does not show. Rather than
 ' pick one reading, both are tried and the one whose consumption matches the
@@ -653,6 +717,15 @@ Private Function AddSectionGeometry( _
     Dim total As Long
     total = UBound(info) - LBound(info) + 1
 
+    ' A view with no section line returns nothing to parse. That is a fact
+    ' about the view, not a failed parse, and calling it one put
+    ' SectionGrammarUnmatched on every envelope in the second run.
+    If total < 1 Then
+        grammarProof = "sectionGrammar=NoSectionLine|items=0"
+        AddSectionGeometry = True
+        Exit Function
+    End If
+
     If ConsumeSectionInfo(envelope, swView, info, False, _
         sheetWidth, sheetHeight, True) = total Then
 
@@ -675,7 +748,7 @@ Private Function AddSectionGeometry( _
 
     grammarProof = "sectionGrammar=Unmatched|items=" & CStr(total)
     envelope.SourceFailures = AppendFailure( _
-        envelope.SourceFailures, "SectionGrammarUnmatched")
+        envelope.SourceFailures, "SectionGrammarUnmatched:" & CStr(total))
     Exit Function
 
 Failed:
@@ -738,7 +811,7 @@ Private Function ConsumeSectionInfo( _
             cursor = cursor + 7
         Next segment
 
-        ' arrow1 and arrow2: start[3], end[3], width, height, style
+        ' arrow1 and arrow2: start[3], end[3], width, height, style = 9.
         Dim arrow As Long
         For arrow = 1 To 2
             ContributeSectionPoint envelope, swView, info, _
@@ -747,7 +820,7 @@ Private Function ConsumeSectionInfo( _
             ContributeSectionPoint envelope, swView, info, _
                 baseIndex + cursor + 3, SOURCE_ARROW, _
                 sheetWidth, sheetHeight, dryRun
-            cursor = cursor + 11
+            cursor = cursor + ARROW_BLOCK_DOUBLES
         Next arrow
 
         ' textPt1[3], textPt2[3], textHeight. The label occupies the text
@@ -1234,7 +1307,8 @@ End Function
 Public Function PlanPlacement( _
     ByRef viewEnvelopes As Collection, _
     ByRef evidence As CRunEvidence, _
-    ByRef planProof As String) As Collection
+    ByRef planProof As String, _
+    ByRef suggestedScaleFactor As Double) As Collection
 
     Dim result As Collection
     Set result = New Collection
@@ -1243,6 +1317,7 @@ Public Function PlanPlacement( _
     On Error GoTo Failed
 
     planProof = "plan=NotAttempted"
+    suggestedScaleFactor = 1#
 
     Dim usableWidth As Double
     Dim usableHeight As Double
@@ -1321,11 +1396,27 @@ Public Function PlanPlacement( _
         End If
     Next r
 
-    ' R23-908. The complete content either fits or the sheet is too small.
-    ' R23-907 forbids shrinking a view to make it fit, so this is a failure
-    ' and a request, not a fallback.
+    ' The content does not fit as it stands. Rescaling is authorized, so
+    ' this reports the factor that would make the CURRENT envelopes fit and
+    ' says plainly that it is an estimate: annotation text does not shrink
+    ' with the view, so the real envelopes after a rescale have to be
+    ' measured, not predicted.
     If widestRow > usableWidth Or totalHeight > usableHeight Then
-        planProof = "plan=Reject|reason=LargerSheetRequired" & _
+        Dim widthFactor As Double
+        Dim heightFactor As Double
+        widthFactor = usableWidth / widestRow
+        heightFactor = usableHeight / totalHeight
+
+        If widthFactor < heightFactor Then
+            suggestedScaleFactor = widthFactor
+        Else
+            suggestedScaleFactor = heightFactor
+        End If
+
+        planProof = "plan=RescaleRequired" & _
+            "|suggestedScaleFactor=" & _
+                Format$(suggestedScaleFactor, "0.000000") & _
+            "|factorIs=GeometricEstimateTextDoesNotScale" & _
             "|requiredWidthM=" & FormatMetres(widestRow) & _
             "|requiredHeightM=" & FormatMetres(totalHeight) & _
             "|usableWidthM=" & FormatMetres(usableWidth) & _
@@ -1410,13 +1501,18 @@ Failed:
     Set CaptureViewScales = result
 End Function
 
-Public Function VerifyScalesUnchanged( _
+' Reports every approved-to-actual scale change by name. Rescaling is
+' permitted, so this is a record rather than a verdict - but an unreported
+' rescale would let a drawing come back at a different scale than the one
+' that was approved, which nobody could see from the counts.
+Public Function ReportScaleChanges( _
     ByRef views As Collection, _
     ByRef capturedScales As Collection) As String
 
     On Error GoTo Failed
 
-    Dim failures As String
+    Dim changes As String
+    Dim changed As Long
 
     Dim i As Long
     For i = 1 To views.Count
@@ -1430,19 +1526,111 @@ Public Function VerifyScalesUnchanged( _
         approved = CDbl(capturedScales(i))
 
         If Abs(current - approved) > 0.000001 Then
-            failures = AppendFailure(failures, _
-                "ScaleChanged:" & SafeViewName(swView) & _
-                ":" & Format$(approved, "0.000000") & _
+            changed = changed + 1
+            changes = AppendFailure(changes, _
+                SafeViewName(swView) & ":" & _
+                Format$(approved, "0.000000") & _
                 ">" & Format$(current, "0.000000"))
         End If
     Next i
 
-    If Len(failures) = 0 Then failures = "None"
-    VerifyScalesUnchanged = "scaleFailures=" & failures
+    If Len(changes) = 0 Then changes = "None"
+
+    ReportScaleChanges = "scalesChanged=" & CStr(changed) & _
+        "|scaleChanges=" & changes
     Exit Function
 
 Failed:
-    VerifyScalesUnchanged = "scaleFailures=Error:" & CStr(Err.Number)
+    ReportScaleChanges = "scaleChanges=Error:" & CStr(Err.Number)
+End Function
+
+' MUTATES THE DRAWING. Rebuilds, and says so when the rebuild declines.
+' A failed rebuild leaves every envelope read afterwards describing the
+' drawing as it was before the change, which is worse than no reading.
+Private Sub RebuildVerified( _
+    ByRef swDraw As SldWorks.ModelDoc2, _
+    ByRef evidence As CRunEvidence, _
+    ByVal stage As String)
+
+    Dim rebuilt As Boolean
+    rebuilt = Module11_GeometryIdentity.NormalizeSwBoolean( _
+        swDraw.EditRebuild3)
+
+    If Not rebuilt Then
+        EmitWarning evidence, "LAYOUT_REBUILD|stage=" & stage & _
+            "|editRebuild3=False"
+    End If
+End Sub
+
+' MUTATES THE DRAWING. Multiplies every view's scale by one factor.
+'
+' Uniform, because a mixed-scale sheet reads as a mistake unless each scale
+' is deliberate and labelled, and choosing per-view scales is a drawing
+' decision rather than a fitting one. Refuses without allowMutation, records
+' the mutation, and reads each new scale back rather than assuming the set
+' took.
+Public Function ApplyScaleToFit( _
+    ByRef swDraw As SldWorks.ModelDoc2, _
+    ByRef views As Collection, _
+    ByVal factor As Double, _
+    ByVal allowMutation As Boolean, _
+    ByRef evidence As CRunEvidence) As String
+
+    On Error GoTo Failed
+
+    If Not allowMutation Then
+        EmitWarning evidence, "LAYOUT_RESCALE_REFUSED" & _
+            "|reason=MutationNotAuthorized"
+        ApplyScaleToFit = "rescale=Refused"
+        Exit Function
+    End If
+
+    If factor <= 0# Or factor >= 1# Then
+        ApplyScaleToFit = "rescale=Skipped|factor=" & _
+            Format$(factor, "0.000000")
+        Exit Function
+    End If
+
+    Dim applied As Long
+    Dim readbackFailures As String
+
+    Dim i As Long
+    For i = 1 To views.Count
+        Dim swView As SldWorks.View
+        Set swView = views(i)
+
+        Dim before As Double
+        before = CDbl(swView.ScaleDecimal)
+
+        evidence.RecordSolidWorksMutation _
+            "IView.ScaleDecimal:" & SafeViewName(swView)
+        swView.ScaleDecimal = before * factor
+
+        Dim after As Double
+        after = CDbl(swView.ScaleDecimal)
+
+        If Abs(after - before * factor) > 0.000001 Then
+            readbackFailures = AppendFailure(readbackFailures, _
+                SafeViewName(swView) & ":" & _
+                Format$(before * factor, "0.000000") & _
+                ">" & Format$(after, "0.000000"))
+        Else
+            applied = applied + 1
+        End If
+    Next i
+
+    If Len(readbackFailures) = 0 Then readbackFailures = "None"
+
+    ApplyScaleToFit = "rescale=Applied" & _
+        "|factor=" & Format$(factor, "0.000000") & _
+        "|views=" & CStr(views.Count) & _
+        "|applied=" & CStr(applied) & _
+        "|readbackFailures=" & readbackFailures
+    Exit Function
+
+Failed:
+    EmitFailure evidence, "LAYOUT_RESCALE_ERROR|error=" & CStr(Err.Number)
+    ApplyScaleToFit = "rescale=Error:" & CStr(Err.Number)
 End Function
 
 ' R23-909. Seals the layout. Anything created afterwards changes the
@@ -1517,6 +1705,54 @@ Public Function ApplyPlacementPlan( _
     Dim capturedScales As Collection
     Set capturedScales = CaptureViewScales(views)
 
+    ' The permitted rescale, once, before anything moves. The plan already
+    ' said whether the content fits; if it does not, the factor is applied
+    ' and the envelopes are RE-MEASURED rather than scaled arithmetically,
+    ' because annotation text does not shrink with the view.
+    Dim rescaleProof As String
+    rescaleProof = "rescale=NotNeeded"
+
+    Dim planProof As String
+    Dim suggestedFactor As Double
+    Dim replan As Collection
+    Set replan = PlanPlacement(viewEnvelopes, evidence, planProof, _
+        suggestedFactor)
+
+    If InStr(1, planProof, "plan=RescaleRequired", vbBinaryCompare) > 0 Then
+        rescaleProof = ApplyScaleToFit(swDraw, views, suggestedFactor, _
+            allowMutation, evidence)
+
+        RebuildVerified swDraw, evidence, "Rescale"
+
+        Dim rescaledEnvelopes As Collection
+        Set rescaledEnvelopes = New Collection
+
+        Dim r As Long
+        For r = 1 To views.Count
+            rescaledEnvelopes.Add BuildViewEnvelope(views(r), _
+                sheetWidth, sheetHeight, evidence)
+        Next r
+
+        Set viewEnvelopes = rescaledEnvelopes
+        Set replan = PlanPlacement(viewEnvelopes, evidence, planProof, _
+            suggestedFactor)
+
+        EmitInfo evidence, "LAYOUT_RESCALE|" & rescaleProof & _
+            "|" & planProof
+
+        ' R23-908 survives the reversal of R23-907: if the content still
+        ' does not fit after the permitted rescale, the sheet is too small
+        ' and that is the answer, not another rescale.
+        If InStr(1, planProof, "plan=Accept", vbBinaryCompare) = 0 Then
+            ApplyPlacementPlan = "layout=Reject" & _
+                "|reason=LargerSheetRequired" & _
+                "|" & rescaleProof & "|" & planProof
+            Exit Function
+        End If
+
+        Set targetCentres = replan
+    End If
+
     Dim pass As Long
     Dim verdict As String
 
@@ -1549,14 +1785,7 @@ Public Function ApplyPlacementPlan( _
 
         ' R23-904. Rebuild, then re-acquire everything. Nothing read before
         ' the move survives it.
-        Dim rebuilt As Boolean
-        rebuilt = Module11_GeometryIdentity.NormalizeSwBoolean( _
-            swDraw.EditRebuild3)
-
-        If Not rebuilt Then
-            EmitWarning evidence, "LAYOUT_REBUILD|pass=" & CStr(pass) & _
-                "|editRebuild3=False"
-        End If
+        RebuildVerified swDraw, evidence, "Pass" & CStr(pass)
 
         Dim rebuiltEnvelopes As Collection
         Set rebuiltEnvelopes = New Collection
@@ -1587,7 +1816,8 @@ Public Function ApplyPlacementPlan( _
 
     ApplyPlacementPlan = "layout=Applied|passes=" & CStr(pass) & _
         "|" & verdict & _
-        "|" & VerifyScalesUnchanged(views, capturedScales)
+        "|" & rescaleProof & _
+        "|" & ReportScaleChanges(views, capturedScales)
     Exit Function
 
 Failed:
@@ -1713,6 +1943,13 @@ Public Sub R23_ProbeContentEnvelope()
         Set swView = views(i)
         If swView Is Nothing Then GoTo ContinueView
 
+        If IsTemplateOrientationView(swView) Then
+            Debug.Print "QA INFO: ENVELOPE_SKIPPED|view=" & _
+                EnvelopeToken(SafeViewName(swView)) & _
+                "|reason=TemplateOrientationEntry"
+            GoTo ContinueView
+        End If
+
         Dim envelope As CContentEnvelope
         Set envelope = BuildViewEnvelope(swView, _
             evidence.SheetWidth, evidence.SheetHeight, evidence)
@@ -1722,7 +1959,9 @@ Public Sub R23_ProbeContentEnvelope()
         viewList.Add swView
         envelopes.Add envelope
 
-        Debug.Print "QA INFO: ENVELOPE|" & envelope.Summary()
+        ' BuildViewEnvelope already emitted this line through the evidence
+        ' ledger, and CRunEvidence.AddInfo prints what it records. Printing
+        ' it again here duplicated every envelope in the second run's log.
 
 ContinueView:
     Next i
@@ -1749,8 +1988,10 @@ ContinueView:
     Debug.Print "QA INFO: ENVELOPE_CLEARANCE|" & clearanceVerdict
 
     Dim planProof As String
+    Dim suggestedFactor As Double
     Dim plan As Collection
-    Set plan = PlanPlacement(envelopes, evidence, planProof)
+    Set plan = PlanPlacement(envelopes, evidence, planProof, _
+        suggestedFactor)
 
     Debug.Print "QA INFO: ENVELOPE_PLAN|" & planProof
 
