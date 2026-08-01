@@ -130,6 +130,11 @@
       "kind": "StdModule"
     },
     {
+      "name": "Module19_SemanticQA",
+      "file": "Module19_SemanticQA.bas",
+      "kind": "StdModule"
+    },
+    {
       "name": "Module1_Main",
       "file": "Module1_Main.bas",
       "kind": "StdModule"

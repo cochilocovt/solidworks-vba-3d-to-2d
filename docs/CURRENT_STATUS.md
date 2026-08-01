@@ -2,6 +2,59 @@
 
 Date: 2026-08-01
 
+## R23 Phase 10 source complete, awaiting first live run
+
+**2026-08-01.** `Module19_SemanticQA.bas` (25 procedures). Statically
+verified only. Built while Phases 8 and 9 await their third live run.
+
+Ten required stages, each with an evaluator that can prove or fail it:
+`MODEL_INTENT_CATALOG`, `MODEL_IMPORT_COVERAGE`, `NATIVE_CALLOUT_COVERAGE`,
+`PHYSICAL_LOCATION_GRAPH`, `VIEW_PROJECTION`, `ORDINATE_SCHEME`,
+`SECTION_GEOMETRY`, `SECTION_DIMENSIONS`, the retained
+`MANUFACTURING_DEFINITION`, and `FINAL_LAYOUT`.
+
+**The module changes nothing at all** - not even behind an `allowMutation`
+gate, unlike every other R23 module. A QA engine that repairs what it is
+judging cannot report on it.
+
+What the count-based checks missed, and what replaces them:
+
+- **"Nonzero import" is satisfied by one view receiving everything.**
+  Coverage is now reported per view and per category - accepted
+  projections, covered in X, covered in Y, annotations attached - and a view
+  with accepted projections and none of the three fails by name.
+- **A note-token check passes on text that has drifted from the geometry**
+  and fails on a correct drawing worded differently. Section dimensions are
+  judged by type, nominal, attachment and tolerance; `GetText` and
+  `GetNotes` appear nowhere in the module.
+- **A number with no source is not evidence.** Every manufacturing field is
+  emitted beside its proof source, and blank, `None` and `Unproven` all fail
+  as `NoProvenance`.
+- **A projection COUNT hides an unprojected location** behind the ones that
+  did project, so every identity-proven location with no accepted projection
+  is named.
+- **Duplicate keys mean the graph has lost track of which hole is which.**
+  Physical, family definition and section requirement keys are all checked,
+  and `DuplicateKeyReport` returns `"None"` rather than an empty string so
+  "no duplicates" and "the check did not run" stay distinguishable.
+
+`CollectRetainedDefinitions` runs the loop locally but takes every
+JUDGEMENT from `Module16_CalloutDefinition`'s public surface - what is a
+native callout, which family it belongs to, which definition is retained -
+so the two cannot drift on the part that matters.
+
+**Deferred:** `Module6_QAEngine` still runs the count-based checks on the
+reachable production path. Switching over is Phase 11, and doing it now
+would put unproven gates in front of a deployable macro.
+
+**Phase 11 was deliberately not started.** It reorders the production
+pipeline and bumps `MACRO_SOURCE_REVISION`, which switches the deployable
+macro onto Phases 5 to 10 - none of which has a green live run yet. That
+sequencing needs the Phase 8 and 9 third run first.
+
+Verification: 24 Phase 10 contracts, suite 381 tests with the same five
+stale R20 failures. Preflight 36 components.
+
 ## R23 Phases 8 and 9 second live run: R23-907 reversed, six defects fixed
 
 **2026-08-01.** Both probes ran read-only. Phase 8 matched every

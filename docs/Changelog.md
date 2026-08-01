@@ -1,5 +1,82 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 10: semantic QA replaces count-based checks
+
+`Module19_SemanticQA.bas` (25 procedures). Statically verified only.
+
+### Ten required stages, each with an evaluator that can fail it
+
+MODEL_INTENT_CATALOG, MODEL_IMPORT_COVERAGE, NATIVE_CALLOUT_COVERAGE,
+PHYSICAL_LOCATION_GRAPH, VIEW_PROJECTION, ORDINATE_SCHEME, SECTION_GEOMETRY,
+SECTION_DIMENSIONS, the retained MANUFACTURING_DEFINITION, and FINAL_LAYOUT.
+Declaring a stage is what gates the run: SealRequiredStages turns any stage
+nothing proved into a named failure rather than an absence nobody notices.
+
+### The module changes nothing at all
+
+Not even behind an allowMutation gate, unlike every other R23 module. A QA
+engine that repairs what it is judging cannot report on it, and a contract
+asserts the absence of every mutating call the other phases own.
+
+### What the counts missed
+
+"Did anything get imported?" is satisfied by importing every dimension into
+one view and none into the others. Coverage is now per view AND per
+category - accepted projections, covered in X, covered in Y, annotations
+attached - and a view with accepted projections and none of the three fails
+by name.
+
+"Does the note contain the expected text?" passes on free text that has
+drifted from the geometry beside it and fails on a correct drawing whose
+wording differs. Section dimensions are judged by type, nominal, attachment
+and tolerance; GetText, GetNotes and note-text searching appear nowhere in
+the module.
+
+A projection count hides an unprojected location behind the ones that did
+project, so every identity-proven location with no accepted projection is
+named individually.
+
+### Provenance, types and duplicate keys
+
+Every manufacturing field is emitted beside its proof source, and a value
+whose source is blank, "None" or "Unproven" fails as NoProvenance - 6.6 is
+correct or wrong depending on whether it was read from the feature, read
+from a callout variable, or assumed.
+
+Every audited feature emits raw type, effective type, resolution source,
+operation kind and rejection reason - every feature, not every accepted one,
+because a rejection with no type recorded cannot be reviewed. An empty
+effective type and the three outcomes Module12 actually writes -
+IceUnresolved, Unresolved, ReadError - fail the catalog, and a contract
+checks those literals against Module12 rather than trusting the copy.
+
+DuplicateKeyReport names every repeated key and its count across physical,
+family definition and section requirement keys, and returns "None" rather
+than an empty string so "no duplicates" and "the check did not run" cannot
+be confused.
+
+### Decision logic is not duplicated
+
+CollectRetainedDefinitions runs its own loop but takes every judgement from
+Module16_CalloutDefinition's public surface - IsNativeHoleCallout,
+MatchCalloutToFamily, BuildDefinitionFromTypedData, ReadNativeCalloutFields,
+RetainDefinitionForFamily - so the two cannot drift on what matters.
+
+### Deferred, and why Phase 11 was not started
+
+Module6_QAEngine still runs the count-based checks on the reachable
+production path; switching over is Phase 11, the same deferral R23-609,
+R23-704 and R23-810 already carry. Phase 11 also bumps
+MACRO_SOURCE_REVISION and switches the deployable macro onto Phases 5 to 10,
+none of which has a green live run yet.
+
+### Verification
+
+Procedure blocks balanced 21/21 and 3/3. ANSI-only bytes, CRLF, no BOM, max
+line 79. 24 Phase 10 contracts. Suite 381 tests with the five known-stale
+R20 failures. Preflight 36 managed components. MACRO_SOURCE_REVISION
+unchanged at target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 second live run: R23-907 reversed, six defects fixed
 
 ### Phase 8 matched every requirement

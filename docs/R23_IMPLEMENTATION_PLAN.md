@@ -1359,31 +1359,86 @@ are now skipped by name and logged as skipped.
 
 ### Phase 10 — Replace count-based QA
 
-- [ ] **R23-1000:** Add required stage `MODEL_INTENT_CATALOG`.
-- [ ] **R23-1001:** Add required stage `MODEL_IMPORT_COVERAGE`.
-- [ ] **R23-1002:** Add required stage `NATIVE_CALLOUT_COVERAGE`.
-- [ ] **R23-1003:** Add required stage `PHYSICAL_LOCATION_GRAPH`.
-- [ ] **R23-1004:** Add required stage `VIEW_PROJECTION`.
-- [ ] **R23-1005:** Add required stage `ORDINATE_SCHEME`.
-- [ ] **R23-1006:** Add required stage `SECTION_GEOMETRY`.
-- [ ] **R23-1007:** Add required stage `SECTION_DIMENSIONS`.
-- [ ] **R23-1008:** Retain and strengthen `MANUFACTURING_DEFINITION`.
-- [ ] **R23-1009:** Add final post-content stage `FINAL_LAYOUT`.
-- [ ] **R23-1010:** Replace “nonzero import” with per-view/per-category semantic
-  coverage.
-- [ ] **R23-1011:** Replace note-token-only stepped-bore checks with actual
-  section display-dimension and tolerance inspection.
-- [ ] **R23-1012:** Emit source provenance for every manufacturing field.
-- [ ] **R23-1013:** Emit raw/effective feature type for every accepted/rejected
-  manufacturing feature.
-- [ ] **R23-1014:** Fail when an `ICE` feature has an empty or unsupported
-  underlying type.
-- [ ] **R23-1015:** Fail when a required model location lacks a proved drawing
-  projection.
-- [ ] **R23-1016:** Fail on duplicate physical, source-dimension, family
-  definition, or section-requirement keys.
-- [ ] **R23-1017:** Fail when J-J geometry or any mandatory annotation envelope
-  is unavailable or unsafe.
+Implemented in `Module19_SemanticQA.bas` (25 procedures). No typed record:
+every artefact it judges already has one.
+
+**Strictly read-only, and unusually so.** This module creates, moves,
+deletes and selects nothing at all - not even behind an `allowMutation`
+gate. A QA engine that repairs what it is judging cannot report on it, and
+a contract asserts the absence of every mutating call the other phases own.
+
+**Why counts were not enough.** The checks this replaces ask "did anything
+get imported?" and "does the note contain the expected text?". A nonzero
+import count is satisfied by importing every dimension into one view and
+none into the others. A note-token check is satisfied by free text that has
+drifted from the geometry beside it, and fails on a correct drawing whose
+wording differs. Neither says anything about the part.
+
+**Pipeline wiring is deferred**, the same as R23-609, R23-704 and R23-810.
+`Module6_QAEngine` still runs the count-based checks on the reachable
+production path; switching over is Phase 11's job and would put unproven
+gates in front of a deployable macro.
+
+**Status: source complete, awaiting first live run.** Statically verified
+only.
+
+- [x] **R23-1000:** Required stage `MODEL_INTENT_CATALOG`.
+- [x] **R23-1001:** Required stage `MODEL_IMPORT_COVERAGE`.
+- [x] **R23-1002:** Required stage `NATIVE_CALLOUT_COVERAGE`.
+- [x] **R23-1003:** Required stage `PHYSICAL_LOCATION_GRAPH`.
+- [x] **R23-1004:** Required stage `VIEW_PROJECTION`.
+- [x] **R23-1005:** Required stage `ORDINATE_SCHEME`. Proved when
+  every scheme resolved its datum and has buckets; a count of created
+  dimensions proves nothing, because two groups can be created against
+  the wrong datum and still count as two.
+- [x] **R23-1006:** Required stage `SECTION_GEOMETRY`.
+- [x] **R23-1007:** Required stage `SECTION_DIMENSIONS`.
+- [x] **R23-1008:** Retained and strengthened: a definition counts
+  only when it is complete AND attached to real drawing geometry. Text
+  that describes the part correctly but hangs off nothing is a caption,
+  not a manufacturing definition.
+- [x] **R23-1009:** Final stage `FINAL_LAYOUT`.
+- [x] **R23-1010:** `EvaluateModelImportCoverage` reports each view's own
+  accepted projections and how many are covered in X, covered in Y and carry
+  attached annotations. A view with accepted projections and none of the
+  three fails by name (`ViewImportedNothing`), and a sheet where no view has
+  accepted projections fails outright.
+- [x] **R23-1011:** `EvaluateSectionDimensions` calls
+  `Module10_SectionDimensionEngine.VerifySectionDimensions`, which judges
+  type, nominal, attachment and tolerance. A contract asserts `GetText`,
+  `GetNotes` and note-text searching appear nowhere in the module.
+- [x] **R23-1012:** Every field is emitted beside its proof source, and
+  a value with no source behind it fails `NoProvenance`. Blank, `None` and
+  `Unproven` are treated as the same thing: nobody can say where the number
+  came from. "6.6" is correct or wrong depending on whether it was read from
+  the feature, read from a callout variable, or assumed.
+- [x] **R23-1013:** `QA_FEATURE_TYPE` carries `RawTypeName2`,
+  `RawTypeName`, `EffectiveType`, `TypeResolutionSource`, `OperationKind`
+  and the rejection reason for EVERY audited feature. Every feature rather
+  than every accepted one, deliberately: a rejection with no type recorded
+  cannot be reviewed, and "it was rejected" is not a reason.
+- [x] **R23-1014:** `TypeResolutionFailed` fails an empty effective type
+  and the three resolution outcomes `Module12_FeatureQualification` actually
+  writes - `IceUnresolved`, `Unresolved` and `ReadError`. A contract checks
+  those literals against Module12 rather than trusting the copy here.
+- [x] **R23-1015:** `EvaluateViewProjection` names every
+  identity-proven location with no accepted projection anywhere
+  (`NoProvedProjection`). Reporting the projection COUNT would hide it
+  behind the locations that did project.
+- [x] **R23-1016:** `DuplicateKeyReport` names every repeated key and
+  how often, applied to physical location keys, family definition keys and
+  section requirement keys. It returns `"None"` rather than an empty string,
+  so "no duplicates" and "the check did not run" cannot be confused at a
+  call site.
+
+  Two locations sharing one physical key means the graph has lost track of
+  which hole is which, and everything downstream that looks a location up by
+  key silently gets the wrong one.
+- [x] **R23-1017:** `EvaluateSectionGeometry` fails a missing path, an
+  unresolved path and any crossing failure; `EvaluateFinalLayout` fails an
+  envelope that could not be seeded (`EnvelopeUnavailable`) and any
+  clearance failure. An envelope that could not be built is an unsafe
+  layout, not a missing number.
 
 ### Phase 11 — Reorder the production pipeline
 
