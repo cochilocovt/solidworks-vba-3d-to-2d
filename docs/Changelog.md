@@ -1,5 +1,88 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 8: semantic section-dimension engine
+
+`Module10_SectionDimensionEngine.bas` (28 procedures),
+`CSectionRequirement.cls`. Statically verified only; no live run yet.
+
+### Reconcile before create
+
+The section already carries imported dimensions - Phase 0 counted seventeen -
+so `ReconcileSectionDimensions` runs before any creation path and
+`CreateSectionDimension` refuses outright for a requirement that already
+matched. Each requirement records six independent observations about what it
+matched: source dimension identity, attached geometry, semantic role,
+nominal, type and tolerance. Nominal and accepted type decide the match; the
+other four are recorded so the match can be audited.
+
+Every match is counted, not just the first, so R23-811 can fail on a
+duplicate rather than quietly dimensioning the same thing twice.
+
+### REQUIRED and OBSERVED never touch
+
+CSectionRequirement splits what the specification demands from what was read
+back, and nothing writes an OBSERVED field from a REQUIRED one. A
+requirement that reports its own nominal back as the observed nominal proves
+nothing; a contract asserts the assignment never appears.
+
+### The obsolete tolerance route is gone
+
+All four IDimension tolerance members - GetToleranceValues,
+SetToleranceValues, GetToleranceFitValues, SetToleranceFitValues - are
+marked obsolete by the 2025 Help, each superseded by an IDimensionTolerance
+member. The Phase 0 probe used them; production reads
+IDimension.Tolerance instead.
+
+GetMinValue2 and GetMaxValue2 return a STATUS and hand the value back by
+reference, so the status is reported beside the value it qualifies. A zero
+value with a failed status is not a zero tolerance.
+
+### H7 provenance is enforced, not just documented
+
+REFERENCE_HOLE_FIT, the two deviations and
+REFERENCE_FIT_AUTHORITY = "TargetSpecReferenceAuthority.NotModelData" are
+each stated once. ApplyReferenceFit sets swTolFITWITHTOL BEFORE the values,
+because SetValues2 refuses while the type is swTolNONE by its own Remarks
+and FitType is only available for the fit types; it then reads the result
+back rather than trusting the two return values, normalizing both COM
+booleans.
+
+EvaluateTolerance will not claim model provenance for a tolerance it merely
+found on the drawing. Present-on-drawing is recorded as PresentOnDrawing
+plus the same reference authority, because Phase 0 read the part source
+directly and proved it carries none.
+
+### No free text, ever
+
+No InsertNote, no CreateText, no SetText anywhere in the module, and every
+failure exit from CreateSectionDimension carries
+policy=NoFreeTextSubstitute. A note is not a dimension: it does not move
+with the geometry and cannot be inspected as one.
+
+### Per-dimension locals reset every iteration
+
+VBA block-scoped locals live for the whole procedure. That is exactly how
+the Phase 0 section inventory mislabelled eleven of its seventeen
+dimensions - index 6 set DIAMETER_40 and indices 7 to 17 kept the label.
+Both loops here reset every field they report.
+
+### Deferred, all for the same reason
+
+R23-803's creation half needs live entity selection. R23-808 assigns lane
+NAMES and leaves coordinates to Phase 9, which owns the annotation
+envelope - the same call Phase 7 made about the section view's placement.
+R23-809's predicate exists but Module9_LayoutEngine does not consult it, and
+R23-810 detects the Module7_TitleBlockEngine free-text bore callout without
+removing it, because removing it before real dimensions exist would leave
+the bore undefined.
+
+### Verification
+
+Procedure blocks balanced 28/28 and 5/5. ANSI-only bytes, CRLF, no BOM, max
+line 76. 37 Phase 8 contracts. Suite 302 tests with the five known-stale R20
+failures. Preflight 33 managed components. MACRO_SOURCE_REVISION unchanged
+at target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phase 7 read-only gate satisfied
 
 `resolvedPaths=1|segments=3|columnHoles=3|crossingsProven=4|

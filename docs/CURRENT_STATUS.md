@@ -2,6 +2,51 @@
 
 Date: 2026-08-01
 
+## R23 Phase 8 source complete, awaiting first live run
+
+**2026-08-01.** `Module10_SectionDimensionEngine.bas` (28 procedures) plus
+`CSectionRequirement.cls`. Statically verified only.
+
+The seven P-0251 section requirements are stated once, each with its nominal,
+its accepted dimension types and its lane. Reconciliation against the
+dimensions already in the section runs before any creation path - Phase 0
+counted seventeen imported dimensions there, and creating a second dimension
+for something already dimensioned is the defect that ordering prevents.
+
+Design points worth carrying:
+
+- **REQUIRED and OBSERVED are separate field groups on the record**, and
+  nothing writes an OBSERVED field from a REQUIRED one. A requirement that
+  reports its own nominal back as the observed nominal proves nothing.
+- **All four `IDimension` tolerance members are obsolete.**
+  `GetToleranceValues`, `SetToleranceValues`, `GetToleranceFitValues` and
+  `SetToleranceFitValues` are each superseded by an `IDimensionTolerance`
+  member. The Phase 0 probe used the obsolete route; production does not.
+- **`GetMinValue2`/`GetMaxValue2` return a STATUS**, with the value coming
+  back by reference. A zero value with a failed status is not a zero
+  tolerance, so the status is printed beside the value it qualifies.
+- **Type 6 is accepted and type 15 is never required** - the imported 47/40
+  records are live-proven `swDiameterDimension = 6`.
+- **Per-dimension locals reset every iteration.** VBA block-scoped locals
+  live for the whole procedure; that is exactly how the Phase 0 inventory
+  mislabelled eleven of seventeen dimensions.
+
+**The H7 provenance rule is enforced in code, not just documented.** The fit
+is applied from the approved reference specification and recorded as
+`TargetSpecReferenceAuthority.NotModelData`. A tolerance merely *found* on
+the drawing is recorded as `PresentOnDrawing.` plus the same authority,
+because Phase 0 read the part source directly and proved it carries none.
+
+**Still deferred, all for the same reason the pipeline is not switched:**
+R23-803's creation half, R23-808's lane-to-coordinate placement (Phase 9
+owns the envelope), R23-809's call from `Module9_LayoutEngine`, and
+R23-810's removal of the `Module7_TitleBlockEngine.bas:359-361` free-text
+bore callout - which cannot go before real dimensions replace it.
+
+Verification: 37 Phase 8 contracts, suite 302 tests with the same five stale
+R20 failures. Preflight 33 components. `MACRO_SOURCE_REVISION` remains
+`r22`.
+
 ## R23 Phase 7 read-only gate SATISFIED (first live run)
 
 **2026-08-01.** `resolvedPaths=1|segments=3|columnHoles=3|`

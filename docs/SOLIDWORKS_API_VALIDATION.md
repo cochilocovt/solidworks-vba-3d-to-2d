@@ -1416,3 +1416,97 @@ display primitives. The three-source custom manifest passed read-only
 deployment preflight against the copied macro. Full-project VBA compilation,
 both installed-build import runs, screenshots, and visual-overlap judgment
 remain pending, so R23-007 and R23-008 are still open.
+
+## 2026-08-01 R23 Phase 8 section-dimension contracts
+
+MCP corpus lookups for the section-dimension engine. Enum values are corpus
+evidence and still require SW2025 Object Browser confirmation; the method
+contracts below come from each member's own Remarks.
+
+### The IDimension tolerance members are all obsolete
+
+Four members the Phase 0 probe used are marked `deprecated: true`:
+
+| Obsolete member | Superseded by |
+|---|---|
+| `IDimension.GetToleranceValues` | `IDimensionTolerance.GetMaxValue`/`GetMinValue` |
+| `IDimension.SetToleranceValues` | `IDimensionTolerance.SetValues` |
+| `IDimension.GetToleranceFitValues` | `IDimensionTolerance.GetHoleFitValue`/`GetShaftFitValue` |
+| `IDimension.SetToleranceFitValues` | `IDimensionTolerance.SetFitValues` |
+
+`IDimension.Tolerance` is the supported entry point and returns
+`IDimensionTolerance`. R23 Phase 8 uses only that route; a contract asserts
+none of the four obsolete names appears in the module.
+
+`GetMinValue2` and `GetMaxValue2` return a STATUS and pass the value back
+through a ByRef argument. A zero value paired with a failed status is not a
+zero tolerance, so both are reported together.
+
+### Tolerance write order is constrained by the Remarks
+
+`IDimensionTolerance.SetValues2(MinValue, MaxValue, WhichConfigurations,
+Config_names)` states that values cannot be set while the tolerance type is
+`swTolType_e.swTolNONE`. `IDimensionTolerance.FitType` states it is only
+available for `swTolFIT`, `swTolFITTOLONLY` and `swTolFITWITHTOL`.
+
+The type is therefore set first, then `SetFitValues(HoleFit, ShaftFit)`,
+then `SetValues2`. `swSetValueInConfiguration_e.swSetValue_NoConfiguration =
+-1` is documented as "ignore configurations in drawing sketches", which is
+what a drawing dimension needs.
+
+`IDimensionTolerance.Type` also carries a caution worth recording: in
+SOLIDWORKS 2016 and later, setting the tolerance type for a hole's display
+dimension with multiple values in a callout must go through
+`ICalloutVariable.ToleranceType`, and `IDimensionTolerance.Type` does not
+override it. Phase 8 sets the type on a plain diameter dimension, not on a
+callout variable, so the caution does not bite - but Phase 6's callout work
+is the place it would.
+
+### Dimension creation requires selection by location
+
+`IModelDoc2.AddDimension2(X, Y, Z)` creates a display dimension for the
+already-selected entities. Its Remarks are explicit that selections must be
+made by LOCATION and not by name: if a name is passed to
+`IModelDocExtension.SelectByID2`, the selection routines use the name and
+ignore the coordinates, and the dimensioning routines then pick a line
+endpoint at random.
+
+`IModelDocExtension.AddDimension(X, Y, Z, Direction)` is the variant to use
+only when the pre-selected entities do NOT unambiguously define what to
+dimension and an extension line is needed; `Direction` is
+`swSmartDimensionDirection_e` (Right 0, Up 1, Left 2, Down 3). Phase 8 uses
+`AddDimension2`, because a section requirement names the two entities whose
+distance it is.
+
+Both note that `swUserPreferenceToggle_e.swInputDimValOnCreate` suppresses
+the value-entry dialog, which any unattended run needs.
+
+### Enum values used
+
+| Enum | Members used |
+|---|---|
+| `swDimensionType_e` | ordinate base 1, linear 2, diameter 6, horizontal ordinate 7, vertical ordinate 8, horizontal linear 11, vertical linear 12, diametric linear 15, angular ordinate 16 |
+| `swTolType_e` | `swTolNONE` 0, `swTolFIT` 7, `swTolFITWITHTOL` 8, `swTolFITTOLONLY` 9 |
+| `swFitType_e` | user 0, clearance 1, transitional 2, press 3 |
+| `swSetValueInConfiguration_e` | `swSetValue_NoConfiguration` -1 |
+| `swDrawingViewTypes_e` | `swDrawingSectionView` 2 |
+
+Note `swTolType_e` lists both `swTolFIT` and `swTolMETRIC` as 7; they are
+aliases, not a parse defect.
+
+### View-scoped readers
+
+`IView.GetDisplayDimensions` and `IView.GetNotes` both return the whole
+array for ONE view. Their obsolete predecessors,
+`GetFirstDisplayDimension5` with `IDisplayDimension.GetNext5` and
+`GetFirstNote` with `INote.GetNext`, are what the Remarks recommend
+replacing. `GetFirstDisplayDimension5` additionally walks the sheet rather
+than the view, which would attribute another view's dimensions to the
+section.
+
+`IAnnotation.GetAttachedEntityTypes` returns `swSelectType_e` values
+positionally matching `GetAttachedEntities3`, and returns EMPTY arrays when
+the annotation is attached to nothing. A dangling attachment appears as
+`swSelNOTHING` with a Nothing in the matching entity slot - which is how
+"associative" is proved rather than assumed.
+

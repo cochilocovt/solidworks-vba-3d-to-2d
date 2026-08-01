@@ -1030,8 +1030,32 @@ was checked, but no line was drawn and no view was cut.
 
 ### Phase 8 — Add a dedicated section-dimension engine
 
-- [ ] **R23-800:** Add `Module10_SectionDimensionEngine.bas`.
-- [ ] **R23-801:** Define these P-0251 requirement keys:
+Implemented in `Module10_SectionDimensionEngine.bas` (28 procedures) with
+the typed record `CSectionRequirement.cls`.
+
+**Mutation boundary.** Two procedures change anything: `ApplyReferenceFit`
+and `CreateSectionDimension`. Both refuse without `allowMutation`, both
+record the mutation on the evidence ledger, and both read the result back
+rather than trusting a return value. `R23_ProbeSectionDimensions` calls
+neither and contains no `AddDimension2`, `SetFitValues` or `SetValues2`.
+
+**The record keeps REQUIRED and OBSERVED apart.** `CSectionRequirement`
+splits what the specification demands from what was read back from the
+drawing, and nothing writes an OBSERVED field from a REQUIRED one. A
+requirement that reports its own nominal back as the observed nominal proves
+nothing, and a contract asserts the assignment never happens.
+
+**Status: source complete, awaiting first live run.** Statically verified
+only.
+
+- [x] **R23-800:** Added `Module10_SectionDimensionEngine.bas`. The plan
+  named the free `Module10` slot and it is taken as named; the other R23
+  modules run 11 to 17.
+- [x] **R23-801:** All seven are defined in `BuildSectionRequirements`,
+  each carrying its nominal in metres, its accepted dimension types, and its
+  R23-808 lane. Only the fit bore carries a tolerance - a contract asserts
+  `ToleranceRequired = True` appears exactly once, because inventing a
+  tolerance for the other six is exactly what the standing policy forbids:
   - overall thickness `18.00`;
   - bore-step depth `12.00`;
   - inner bore `Ø40.00`;
@@ -1039,14 +1063,47 @@ was checked, but no line was drawn and no view was cut.
   - lower wall/step `11.50`;
   - long vertical reference `173.60`;
   - lower vertical reference `104.80`.
-- [ ] **R23-802:** Reconcile imported section dimensions first by source
-  dimension, attached geometry, semantic role, nominal, type, and tolerance.
-- [ ] **R23-803:** Create only missing associative section dimensions.
-- [ ] **R23-804:** Use view-scoped drawing entities for section dimensions and
-  accept the live-proven `swDiameterDimension = 6` type for the imported
-  47/40 diameters; do not require type 15.
-- [ ] **R23-805:** Read back dimension type, nominal, source/attachment, fit,
-  min/max tolerance, and API warning/error status.
+- [x] **R23-802:** `ReconcileSectionDimensions` runs before any creation
+  path and records all six observations on the requirement: source dimension
+  identity (`IDimension.FullName`), attached geometry
+  (`IAnnotation.GetAttachedEntityTypes`), semantic role, nominal
+  (`IDimension.GetSystemValue3`), type (`IDisplayDimension.Type2`) and
+  tolerance (`IDimension.Tolerance`). Nominal and accepted type together
+  decide the match; the rest are recorded so the match can be audited.
+
+  Every match is counted rather than only the first, because R23-811 has to
+  be able to fail on a duplicate instead of quietly dimensioning the same
+  thing twice.
+
+  Per-dimension locals are reset on every iteration. VBA block-scoped locals
+  live for the whole procedure, and that is precisely how the Phase 0
+  section inventory mislabelled eleven of its seventeen dimensions.
+- [ ] **R23-803: written, unrun.** `CreateSectionDimension` refuses when
+  the requirement already matched an imported dimension, refuses when the
+  caller has selected no entities, and verifies the created dimension's
+  nominal and type by read-back before calling the requirement satisfied. A
+  dimension that exists but measures the wrong thing is recorded as
+  `CreatedButRejected`, because a wrong dimension looks finished.
+
+  Entity selection is the caller's job by API contract, not by preference:
+  `IModelDoc2.AddDimension2`'s Remarks state that entities are selected by
+  LOCATION and never by name, since passing a name makes the dimensioning
+  routines pick a line endpoint at random.
+- [x] **R23-804:** Dimensions are read through `IView.GetDisplayDimensions`,
+  which is view-scoped; the obsolete `GetFirstDisplayDimension5` walks the
+  whole sheet by its own Remarks and would attribute another view's
+  dimensions to the section. The diameter requirements accept
+  `swDiameterDimension = 6` and `swDiametricLinearDimension = 15`, and a
+  contract asserts nothing anywhere requires 15.
+- [x] **R23-805:** All of it, through supported members only. All four
+  `IDimension` tolerance members - `GetToleranceValues`,
+  `SetToleranceValues`, `GetToleranceFitValues`, `SetToleranceFitValues` -
+  are marked obsolete by the 2025 Help, each superseded by an
+  `IDimensionTolerance` member, and a contract asserts none of them appears.
+
+  `GetMinValue2` and `GetMaxValue2` return a STATUS and hand the value back
+  through a ByRef argument, so the status is reported beside the value it
+  qualifies. A zero value with a failed status is not a zero tolerance.
 - [x] **R23-806:** H7 authority is **resolved**. The 2026-07-31 corrected-probe
   run read the part source directly and proved H7 is absent:
   `D1@Sketch4@P-0251-14A-001.Part`, nominal `0.047 m`, `toleranceType=0`,
@@ -1060,17 +1117,49 @@ was checked, but no line was drawn and no view was cut.
   - QA must state that the tolerance did not originate in the model; and
   - R23-807 still applies: never substitute free text for a failed real
     dimension.
-- [ ] **R23-807:** Never replace a failed Ø47/H7 dimension with free text.
-- [ ] **R23-808:** Arrange section requirements in dedicated lanes:
+
+  Implemented as stated. `REFERENCE_HOLE_FIT = "H7"`,
+  `REFERENCE_FIT_MIN_M = 0`, `REFERENCE_FIT_MAX_M = 0.000025` and
+  `REFERENCE_FIT_AUTHORITY = "TargetSpecReferenceAuthority.NotModelData"`
+  are stated once each. `ApplyReferenceFit` sets `swTolFITWITHTOL = 8`
+  BEFORE the values, because `SetValues2` refuses while the type is
+  `swTolNONE` by its own Remarks and `FitType` is only available for the fit
+  types. It then reads the tolerance back rather than trusting the two
+  return values, and normalizes both COM booleans.
+
+  `EvaluateTolerance` will not claim model provenance for a tolerance it
+  merely found on the drawing: present-on-drawing is recorded as
+  `PresentOnDrawing.TargetSpecReferenceAuthority.NotModelData`, because
+  Phase 0 proved the part-source dimension carries none.
+- [x] **R23-807:** The module contains no `InsertNote`, no `CreateText` and
+  no `SetText`, and every failure exit from `CreateSectionDimension` carries
+  `policy=NoFreeTextSubstitute`. A note is not a dimension: it does not move
+  with the geometry and cannot be inspected as one.
+- [ ] **R23-808: lanes assigned, placement deferred.** Each requirement
+  carries its lane NAME; a lane is not a coordinate. Turning a lane into a
+  page position needs the finished section's annotation envelope, which is
+  Phase 9's job - deciding it here would repeat the Phase 7 mistake of
+  letting a module that cannot see the layout choose placement. The
+  assignment is:
   - 18 and 12 above;
   - 11.5 below;
   - Ø40 and Ø47 on opposite bore sides;
   - 173.6 and 104.8 on separate exterior vertical lanes.
-- [ ] **R23-809:** Exclude the section from generic auto-arrangement.
-- [ ] **R23-810:** Remove the old free-text Ø47/Ø40 “bore callout” once actual
-  section dimensions provide the definition.
-- [ ] **R23-811:** Prove exactly one dimension per requirement key and no
-  section ordinate.
+- [ ] **R23-809: predicate written, not consulted.**
+  `IsExcludedFromGenericArrangement` returns True for
+  `swDrawingSectionView = 2`. `Module9_LayoutEngine` does not call it yet,
+  because the R23 modules are not wired into the production pipeline - the
+  same deferral as R23-609 and R23-704.
+- [ ] **R23-810: detection only, deliberately.**
+  `DetectLegacyBoreCallout` counts notes in the section view containing
+  `47 H7` - the literal `Module7_TitleBlockEngine.bas:359-361` still writes -
+  and reports `removalBlockedBy=Module7_TitleBlockEngine.PipelineNotSwitched`.
+  Removing it before real dimensions exist would leave the bore undefined.
+- [x] **R23-811:** `VerifySectionDimensions` fails on a missing key, on a
+  duplicate, on an unsatisfied tolerance and on an unattached dimension, and
+  counts ordinate types 1, 7, 8 and 16 in the section separately. An
+  ordinate in a section shares no datum with the Phase 5 groups and reads as
+  a coordinate from an origin the section does not have.
 
 ### Phase 9 — Make final layout content-envelope aware
 

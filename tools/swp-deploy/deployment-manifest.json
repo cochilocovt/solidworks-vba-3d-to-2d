@@ -70,19 +70,19 @@
       "kind": "ClassModule"
     },
     {
+      "name": "CSectionRequirement",
+      "file": "CSectionRequirement.cls",
+      "kind": "ClassModule"
+    },
+    {
       "name": "CViewHoleProjection",
       "file": "CViewHoleProjection.cls",
       "kind": "ClassModule"
     },
     {
-      "name": "SectionBtnHandler",
-      "file": "SectionBtnHandler.cls",
-      "kind": "ClassModule"
-    },
-    {
-      "name": "SectionDlgBtnHandler",
-      "file": "SectionDlgBtnHandler.cls",
-      "kind": "ClassModule"
+      "name": "Module10_SectionDimensionEngine",
+      "file": "Module10_SectionDimensionEngine.bas",
+      "kind": "StdModule"
     },
     {
       "name": "Module11_GeometryIdentity",
@@ -163,6 +163,16 @@
       "name": "Module9_LayoutEngine",
       "file": "Module9_LayoutEngine.bas",
       "kind": "StdModule"
+    },
+    {
+      "name": "SectionBtnHandler",
+      "file": "SectionBtnHandler.cls",
+      "kind": "ClassModule"
+    },
+    {
+      "name": "SectionDlgBtnHandler",
+      "file": "SectionDlgBtnHandler.cls",
+      "kind": "ClassModule"
     }
   ]
 }
