@@ -371,14 +371,14 @@ Private Sub PopulateSchemeLedger( _
         ' credited, including ones whose projection coincides with another.
         bucket.CreditLocation projection.PhysicalInstanceKey, projection
 
-        If Len(projection.CoincidentWithAnchoredKey) > 0 Then
-            CreditCoincidentPartner _
-                graph, scheme, bucket, projection, evidence
-        End If
-
 ContinueProjection:
     Next i
 
+    ' Second pass, and it must be second: the coincidence link runs from the
+    ' UNANCHORED projection to the anchored one, and unanchored projections
+    ' are excluded above, so the partners can only be credited once every
+    ' bucket exists.
+    CreditCoincidentLocations graph, scheme, projections, evidence
     Exit Sub
 
 Failed:
@@ -386,39 +386,99 @@ Failed:
         "|error=" & CStr(Err.Number)
 End Sub
 
+' R23-505. Credits the physical locations whose projection has no anchor of
+' its own because it lands on the SAME drawing entity as another hole.
+'
 ' Phase 3 proved live that two coaxial holes viewed along their shared axis
-' produce ONE drawing entity. The partner location has no anchor of its own
-' and would otherwise vanish from coverage, so it is credited to the bucket
-' its twin occupies.
-Private Sub CreditCoincidentPartner( _
+' produce exactly one drawing entity, and MarkCoincidentProjections records
+' that by setting CoincidentWithAnchoredKey on the UNANCHORED projection,
+' pointing at the anchored twin. The link therefore has to be read from the
+' unanchored end. Reading it from the anchored end finds nothing, because a
+' projection that has an anchor is never marked - which is what silently
+' dropped two of P-0251's four side holes and produced credited=8 of 10.
+'
+' Those locations are real holes that the drawing genuinely does dimension;
+' they are simply dimensioned by the same entity as their twin. Leaving them
+' uncredited would understate coverage, and giving them their own bucket
+' would create a duplicate dimension on one entity.
+Private Sub CreditCoincidentLocations( _
     ByRef graph As CLocationGraph, _
     ByRef scheme As COrdinateScheme, _
-    ByRef bucket As COrdinateBucket, _
-    ByRef projection As CViewHoleProjection, _
+    ByRef projections As Collection, _
     ByRef evidence As CRunEvidence)
 
     On Error GoTo Failed
 
-    Dim partnerKey As String
-    partnerKey = projection.CoincidentWithAnchoredKey
-    If Len(Trim$(partnerKey)) = 0 Then Exit Sub
+    Dim i As Long
+    For i = 1 To projections.Count
+        Dim projection As CViewHoleProjection
+        Set projection = projections(i)
 
-    If bucket.AlreadyCredited(partnerKey) Then Exit Sub
+        If projection Is Nothing Then GoTo ContinueProjection
+        If projection.PhysicalLocation Is Nothing Then GoTo ContinueProjection
 
-    bucket.CreditLocation partnerKey, Nothing
+        Dim partnerKey As String
+        partnerKey = projection.CoincidentWithAnchoredKey
+        If Len(Trim$(partnerKey)) = 0 Then GoTo ContinueProjection
 
-    EmitInfo evidence, "ORDINATE_COINCIDENT_CREDIT|" & _
-        scheme.SchemeKey() & _
-        "|coordinateKey=" & bucket.CoordinateKey & _
-        "|anchoredBy=" & projection.PhysicalInstanceKey & _
-        "|alsoCredits=" & partnerKey & _
-        "|reason=OneDrawingEntityForTwoCoaxialHoles"
+        If StrComp(MachiningFaceKey(projection), _
+            scheme.MachiningFaceKey, vbBinaryCompare) <> 0 Then
+
+            GoTo ContinueProjection
+        End If
+
+        If Not IsSmallHoleLocation(graph, projection.PhysicalLocation) Then
+            GoTo ContinueProjection
+        End If
+
+        ' The twin must already own a bucket in THIS scheme. If it does not,
+        ' the anchored projection was itself excluded and there is nothing
+        ' to credit against.
+        Dim bucket As COrdinateBucket
+        Set bucket = BucketCreditingLocation(scheme, partnerKey)
+        If bucket Is Nothing Then GoTo ContinueProjection
+
+        If bucket.AlreadyCredited(projection.PhysicalInstanceKey) Then
+            GoTo ContinueProjection
+        End If
+
+        bucket.CreditLocation projection.PhysicalInstanceKey, projection
+
+        EmitInfo evidence, "ORDINATE_COINCIDENT_CREDIT|" & _
+            scheme.SchemeKey() & _
+            "|coordinateKey=" & bucket.CoordinateKey & _
+            "|credits=" & projection.PhysicalInstanceKey & _
+            "|sharesEntityWith=" & partnerKey & _
+            "|reason=OneDrawingEntityForTwoCoaxialHoles"
+
+ContinueProjection:
+    Next i
+
     Exit Sub
 
 Failed:
     EmitWarning evidence, "ORDINATE_COINCIDENT_CREDIT_ERROR|error=" & _
         CStr(Err.Number)
 End Sub
+
+' The bucket already crediting a given physical location, or Nothing.
+Private Function BucketCreditingLocation( _
+    ByRef scheme As COrdinateScheme, _
+    ByVal physicalKey As String) As COrdinateBucket
+
+    Dim i As Long
+    For i = 1 To scheme.Buckets.Count
+        Dim candidate As COrdinateBucket
+        Set candidate = scheme.Buckets(i)
+
+        If candidate.AlreadyCredited(physicalKey) Then
+            Set BucketCreditingLocation = candidate
+            Exit Function
+        End If
+    Next i
+
+    Set BucketCreditingLocation = Nothing
+End Function
 
 ' R23-507. Small-hole membership is family size, measured from the graph.
 Public Function IsSmallHoleLocation( _
