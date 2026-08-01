@@ -1045,8 +1045,10 @@ drawing, and nothing writes an OBSERVED field from a REQUIRED one. A
 requirement that reports its own nominal back as the observed nominal proves
 nothing, and a contract asserts the assignment never happens.
 
-**Status: source complete, awaiting first live run.** Statically verified
-only.
+**Status: first live run made, gate NOT satisfied, three defects fixed.**
+The 2026-08-01 run returned `satisfied=0|missing=7` while seven dimensions
+sat in `Section View J-J`, and the cause was in this module rather than in
+the drawing. Awaiting the second run.
 
 - [x] **R23-800:** Added `Module10_SectionDimensionEngine.bas`. The plan
   named the free `Module10` slot and it is taken as named; the other R23
@@ -1089,13 +1091,36 @@ only.
   `IModelDoc2.AddDimension2`'s Remarks state that entities are selected by
   LOCATION and never by name, since passing a name makes the dimensioning
   routines pick a line endpoint at random.
-- [x] **R23-804:** Dimensions are read through `IView.GetDisplayDimensions`,
-  which is view-scoped; the obsolete `GetFirstDisplayDimension5` walks the
-  whole sheet by its own Remarks and would attribute another view's
-  dimensions to the section. The diameter requirements accept
-  `swDiameterDimension = 6` and `swDiametricLinearDimension = 15`, and a
-  contract asserts nothing anywhere requires 15.
-- [x] **R23-805:** All of it, through supported members only. All four
+- [x] **R23-804: revised by the live run.** Dimensions are read through
+  `IView.GetDisplayDimensions`, which is view-scoped; the obsolete
+  `GetFirstDisplayDimension5` walks the whole sheet by its own Remarks and
+  would attribute another view's dimensions to the section.
+
+  The type rule changed. Phase 0 saw type-6 `D1@Sketch4`/`D1@Sketch6` in
+  this fixture; the 2026-08-01 run found a different drawing state - seven
+  dimensions in `Section View J-J`, every one `swLinearDimension = 2` and
+  named `RD1..RD7`, drawing-authored reference dimensions rather than
+  imported model dimensions. Both states are real, so a diameter
+  requirement now accepts type 6, type 15 **and** the linear types, and
+  `IDisplayDimension.Diametric` is recorded to say which of them the drawing
+  actually displays as a diameter. Requiring any single type would reject
+  one of the two real states, which is exactly what R23-804 exists to
+  prevent.
+- [x] **R23-805: corrected after the live run.** The nominal read was the
+  defect that blocked the whole phase. `GetSystemValue3` with
+  `swThisConfiguration` returned nothing for all seven dimensions - a
+  drawing-authored reference dimension has no configuration to ask about -
+  and without a nominal nothing can match, so every requirement reported
+  Missing while its dimension sat in the view.
+
+  `TryReadNominal` now tries `swThisConfiguration`, then
+  `swAllConfiguration`, then the obsolete `GetSystemValue2("")` and
+  `SystemValue` as labelled last resorts, and NAMES the route that answered
+  so a later run can drop whichever proved unnecessary. When every route
+  declines it reports the raw shape of the `GetSystemValue3` result, because
+  "no nominal" and "an empty SafeArray" are different problems.
+
+  Everything else is read through supported members only. All four
   `IDimension` tolerance members - `GetToleranceValues`,
   `SetToleranceValues`, `GetToleranceFitValues`, `SetToleranceFitValues` -
   are marked obsolete by the 2025 Help, each superseded by an
@@ -1156,7 +1181,9 @@ only.
   and reports `removalBlockedBy=Module7_TitleBlockEngine.PipelineNotSwitched`.
   Removing it before real dimensions exist would leave the bore undefined.
 - [x] **R23-811:** `VerifySectionDimensions` fails on a missing key, on a
-  duplicate, on an unsatisfied tolerance and on an unattached dimension, and
+  duplicate, on an unsatisfied tolerance, on an unattached dimension, and on
+  any requirement whose own failure list is non-empty - a requirement that
+  recorded a problem is not satisfied, whatever the counts say. It also
   counts ordinate types 1, 7, 8 and 16 in the section separately. An
   ordinate in a section shares no datum with the Phase 5 groups and reads as
   a coordinate from an origin the section does not have.
@@ -1189,8 +1216,13 @@ their agreement with the view's own documented outline is COUNTED rather
 than asserted, because a contract the Help does not make is not one this
 project states.
 
-**Status: source complete, awaiting first live run.** Statically verified
-only.
+**Status: first live run aborted before any envelope was built.** The probe
+called `Module8_RuntimeSupport.MeasureControlledSheetRegions`, a production
+fail-closed gate that demands an `ITitleBlock` the reference drawing does
+not have - and that SETS `ISheet.SheetFormatVisible`, so a run that promised
+`mutations=0` had already attempted one. The probe now measures the sheet
+itself, read-only, and degrades instead of aborting. Awaiting the second
+run.
 
 - [x] **R23-900:** All eight sources contribute, each counted separately so
   an outline-only rectangle cannot pass as a content envelope
@@ -1209,15 +1241,23 @@ only.
   - section segments;
   - arrow geometry;
   - J-label positions and text heights.
-- [x] **R23-901:** `BuildProtectedRegions` reuses the measurements
-  `Module8_RuntimeSupport.MeasureControlledSheetRegions` already recorded on
-  the evidence ledger; re-deriving them would create a second set of numbers
-  that can drift from the ones the pipeline uses.
+- [x] **R23-901: corrected after the live run.** `MeasureSheetRegions`
+  measures the sheet read-only: `ISheet.GetSize` for the size, and
+  `ISheet.GetZoneMargin` for the content border. An absent title block, an
+  unread one and unmeasurable margins are each REPORTED - `titleBlock=Absent`,
+  `titleBlock=PresentBoundsUnread`, `contentBorder=Unmeasured`,
+  `usableSource=SheetExtentNoBorder` - and only an unusable sheet SIZE stops
+  the probe.
+
+  `BuildProtectedRegions` gates every rectangle on bounds that were actually
+  measured. Emitting one from unset evidence fields would put a degenerate
+  rectangle at the sheet origin and report false `ProtectedIntrusion`
+  violations against it: a boundary that does not exist is not a boundary at
+  zero.
 
   The content border is protected as four STRIPS rather than one rectangle,
   because the drawable area is inside it and a single rectangle would
-  declare every view a violation. The part-identification band is included
-  only when `PartIdentificationBoundsProven` is set.
+  declare every view a violation.
 - [x] **R23-902:** `PlanPlacement` packs rows from the envelopes' own
   widths and centres the whole block in the usable rectangle. A contract
   asserts none of `topBoundary -`, `Bias`, or `rowCenterY` survives - the

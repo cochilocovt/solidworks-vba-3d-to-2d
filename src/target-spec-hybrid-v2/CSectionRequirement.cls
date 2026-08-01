@@ -25,9 +25,15 @@ Public Role As String
 Public NominalM As Double
 
 ' Semicolon-separated swDimensionType_e values this requirement accepts.
-' R23-804: the imported 47/40 records are live-proven swDiameterDimension=6,
-' so 6 is accepted and swDiametricLinearDimension=15 is never required.
+' R23-804: the fixture has been seen in two states - type-6 diameter records
+' in Phase 0, and plain linear records in the 2026-08-01 run - so a diameter
+' requirement accepts both and no single type is ever required.
 Public AcceptedTypes As String
+
+' True for the two bore diameters. The nominal identifies them; this asks
+' the separate question of whether the drawing DISPLAYS the match as a
+' diameter, which IDisplayDimension.Diametric answers.
+Public RequiresDiameterDisplay As Boolean
 
 ' R23-808 lane. The lane NAMES where this requirement belongs; it does not
 ' carry coordinates. Choosing page positions is layout, a later phase.
@@ -63,6 +69,14 @@ Public MatchedToleranceMaxStatus As Long
 Public AttachedEntityCount As Long
 Public AttachedEntityTypes As String
 Public ToleranceProof As String
+Public MatchedDiametric As Boolean
+Public MatchedDiametricKnown As Boolean
+
+' Which of the nominal-read routes actually answered. The supported
+' configuration route declines for drawing-authored reference dimensions,
+' so naming the route that worked is what lets a later run drop the ones
+' that were never needed.
+Public NominalRoute As String
 
 ' --- VERDICT ------------------------------------------------------------
 
@@ -81,6 +95,10 @@ Private Sub Class_Initialize()
     MatchedFitType = -1
     MatchedToleranceMinStatus = -1
     MatchedToleranceMaxStatus = -1
+    MatchedDiametric = False
+    MatchedDiametricKnown = False
+    NominalRoute = "nominalRoute=NotRead"
+    RequiresDiameterDisplay = False
     ToleranceSatisfied = False
     ToleranceProvenance = "NotApplied"
     ToleranceProof = "NotRead"
@@ -98,6 +116,7 @@ Public Function RequirementSummary() As String
         "|role=" & Role & _
         "|nominalM=" & Format$(NominalM, "0.000000") & _
         "|acceptedTypes=" & AcceptedTypes & _
+        "|requiresDiameterDisplay=" & CStr(RequiresDiameterDisplay) & _
         "|lane=" & Lane & _
         "|toleranceRequired=" & CStr(ToleranceRequired) & _
         "|toleranceAuthority=" & ToleranceAuthority
@@ -112,6 +131,9 @@ Public Function ObservationSummary() As String
         "|type2=" & CStr(MatchedTypeCode) & _
         "|nominalAvailable=" & CStr(MatchedNominalAvailable) & _
         "|nominalM=" & Format$(MatchedNominalM, "0.000000") & _
+        "|" & NominalRoute & _
+        "|diametricKnown=" & CStr(MatchedDiametricKnown) & _
+        "|diametric=" & CStr(MatchedDiametric) & _
         "|attachedEntities=" & CStr(AttachedEntityCount) & _
         "|attachedTypes=" & AttachedEntityTypes & _
         "|" & ToleranceProof

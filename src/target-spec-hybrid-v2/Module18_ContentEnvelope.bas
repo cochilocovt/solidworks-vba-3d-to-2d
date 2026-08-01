@@ -14,6 +14,12 @@ Option Explicit
 ' moves a view into a place its annotations do not fit - which is exactly
 ' how the old J-J label ended up in the zone region.
 '
+' R23-901. Sheet regions are measured HERE, read-only.
+' Module8_RuntimeSupport.MeasureControlledSheetRegions is a production
+' fail-closed gate that demands a title block and SETS SheetFormatVisible;
+' calling it from a probe both aborted the 2026-08-01 run and attempted a
+' mutation the run had promised not to make.
+'
 ' R23-902. The fixed P-0251 upward bias is replaced, not adjusted.
 ' Module9_LayoutEngine.bas lines 442-446 pin the source row to the top
 ' boundary - "Bias the P-0251 source row upward" - and a row pinned to a
@@ -69,6 +75,12 @@ Private Const SOURCE_SECTION As String = "Section"
 
 ' MCP corpus value for swDrawingViewTypes_e.swDrawingSectionView.
 Private Const VIEW_TYPE_SECTION As Long = 2
+
+' MCP corpus values for swZoneMargin_e.
+Private Const ZONE_TOP_MARGIN As Long = 0
+Private Const ZONE_BOTTOM_MARGIN As Long = 1
+Private Const ZONE_RIGHT_MARGIN As Long = 2
+Private Const ZONE_LEFT_MARGIN As Long = 3
 
 ' R23-909 seal. Set when layout completes; compared afterwards.
 Private mLayoutSealed As Boolean
@@ -919,10 +931,125 @@ Public Function RectangleEnvelope( _
     Set RectangleEnvelope = result
 End Function
 
-' R23-901. The protected sheet rectangles, taken from the measurements
-' Module8_RuntimeSupport.MeasureControlledSheetRegions already recorded on
-' the evidence ledger. Re-deriving them here would create a second set of
-' numbers that can drift from the first.
+' R23-901, measurement half. STRICTLY READ-ONLY sheet measurement.
+'
+' This deliberately does NOT call
+' Module8_RuntimeSupport.MeasureControlledSheetRegions. That procedure is a
+' production fail-closed gate for a sheet the macro CREATES from the
+' controlled template: it demands an ITitleBlock or a legacy title-block
+' rectangle, and it SETS ISheet.SheetFormatVisible. The reference drawing
+' has neither, so on 2026-08-01 it failed the whole probe with
+' "Controlled sheet has neither an ITitleBlock definition nor a proved
+' legacy title-block rectangle" - and it had already attempted a mutation
+' inside a run that promised not to make one. Both are reasons a read-only
+' probe must measure for itself.
+'
+' Envelopes need only the sheet size. Everything else is measured if it can
+' be and reported as unmeasured if it cannot, because a boundary that does
+' not exist is not the same as a boundary at the origin.
+Public Function MeasureSheetRegions( _
+    ByRef swSheet As SldWorks.Sheet, _
+    ByRef evidence As CRunEvidence, _
+    ByRef proof As String) As Boolean
+
+    On Error GoTo Failed
+
+    proof = "sheet=Unmeasured"
+
+    Dim sheetWidth As Double
+    Dim sheetHeight As Double
+    swSheet.GetSize sheetWidth, sheetHeight
+
+    If sheetWidth <= 0# Or sheetHeight <= 0# Then
+        proof = "sheet=Reject|reason=InvalidSheetSize"
+        Exit Function
+    End If
+
+    evidence.SheetWidth = sheetWidth
+    evidence.SheetHeight = sheetHeight
+
+    Dim topMargin As Double
+    Dim bottomMargin As Double
+    Dim rightMargin As Double
+    Dim leftMargin As Double
+    Dim borderProof As String
+
+    borderProof = "contentBorder=Unmeasured"
+    evidence.LayoutBoundariesProven = False
+
+    On Error Resume Next
+    topMargin = swSheet.GetZoneMargin(ZONE_TOP_MARGIN)
+    bottomMargin = swSheet.GetZoneMargin(ZONE_BOTTOM_MARGIN)
+    rightMargin = swSheet.GetZoneMargin(ZONE_RIGHT_MARGIN)
+    leftMargin = swSheet.GetZoneMargin(ZONE_LEFT_MARGIN)
+    On Error GoTo Failed
+
+    If topMargin > 0# And bottomMargin > 0# And _
+       rightMargin > 0# And leftMargin > 0# Then
+
+        evidence.ContentBorderLeft = leftMargin
+        evidence.ContentBorderBottom = bottomMargin
+        evidence.ContentBorderRight = sheetWidth - rightMargin
+        evidence.ContentBorderTop = sheetHeight - topMargin
+
+        If evidence.ContentBorderRight > evidence.ContentBorderLeft And _
+           evidence.ContentBorderTop > evidence.ContentBorderBottom Then
+
+            evidence.LayoutBoundariesProven = True
+            borderProof = "contentBorder=Measured" & _
+                "|source=ISheet.GetZoneMargin"
+        Else
+            borderProof = "contentBorder=Reject|reason=InvalidBounds"
+        End If
+    End If
+
+    ' The title block is reported, never invented. This build's reference
+    ' drawing has no ITitleBlock at all, and an unread one contributes no
+    ' rectangle rather than a rectangle at the origin.
+    Dim titleProof As String
+    titleProof = "titleBlock=Absent"
+
+    Dim titleBlock As SldWorks.TitleBlock
+    On Error Resume Next
+    Set titleBlock = swSheet.TitleBlock
+    On Error GoTo Failed
+
+    If Not titleBlock Is Nothing Then
+        titleProof = "titleBlock=PresentBoundsUnread"
+    End If
+
+    If evidence.LayoutBoundariesProven Then
+        evidence.UsableLeft = evidence.ContentBorderLeft + VIEW_CLEARANCE_M
+        evidence.UsableRight = _
+            evidence.ContentBorderRight - VIEW_CLEARANCE_M
+        evidence.UsableBottom = _
+            evidence.ContentBorderBottom + VIEW_CLEARANCE_M
+        evidence.UsableTop = evidence.ContentBorderTop - VIEW_CLEARANCE_M
+        proof = "sheet=Measured|usableSource=ContentBorder"
+    Else
+        evidence.UsableLeft = VIEW_CLEARANCE_M
+        evidence.UsableRight = sheetWidth - VIEW_CLEARANCE_M
+        evidence.UsableBottom = VIEW_CLEARANCE_M
+        evidence.UsableTop = sheetHeight - VIEW_CLEARANCE_M
+        proof = "sheet=Measured|usableSource=SheetExtentNoBorder"
+    End If
+
+    proof = proof & "|" & borderProof & "|" & titleProof
+    MeasureSheetRegions = True
+    Exit Function
+
+Failed:
+    proof = "sheet=Error:" & CStr(Err.Number)
+    MeasureSheetRegions = False
+End Function
+
+' R23-901. The protected rectangles, built ONLY from bounds that were
+' actually measured.
+'
+' Every rectangle is gated. Emitting one from unset evidence fields would
+' put a degenerate rectangle at the sheet origin and report false
+' ProtectedIntrusion violations against it - a boundary that does not exist
+' is not a boundary at zero.
 Public Function BuildProtectedRegions( _
     ByRef evidence As CRunEvidence) As Collection
 
@@ -937,33 +1064,55 @@ Public Function BuildProtectedRegions( _
     ' The content border is protected as four strips rather than one
     ' rectangle: the drawable area is INSIDE it, so a single rectangle would
     ' declare every view a violation.
-    result.Add RectangleEnvelope("ContentBorderLeftStrip", _
-        0#, 0#, evidence.ContentBorderLeft, evidence.SheetHeight)
-    result.Add RectangleEnvelope("ContentBorderRightStrip", _
-        evidence.ContentBorderRight, 0#, _
-        evidence.SheetWidth, evidence.SheetHeight)
-    result.Add RectangleEnvelope("ContentBorderBottomStrip", _
-        0#, 0#, evidence.SheetWidth, evidence.ContentBorderBottom)
-    result.Add RectangleEnvelope("ContentBorderTopStrip", _
-        0#, evidence.ContentBorderTop, _
-        evidence.SheetWidth, evidence.SheetHeight)
+    If evidence.LayoutBoundariesProven Then
+        result.Add RectangleEnvelope("ContentBorderLeftStrip", _
+            0#, 0#, evidence.ContentBorderLeft, evidence.SheetHeight)
+        result.Add RectangleEnvelope("ContentBorderRightStrip", _
+            evidence.ContentBorderRight, 0#, _
+            evidence.SheetWidth, evidence.SheetHeight)
+        result.Add RectangleEnvelope("ContentBorderBottomStrip", _
+            0#, 0#, evidence.SheetWidth, evidence.ContentBorderBottom)
+        result.Add RectangleEnvelope("ContentBorderTopStrip", _
+            0#, evidence.ContentBorderTop, _
+            evidence.SheetWidth, evidence.SheetHeight)
+    End If
 
-    result.Add RectangleEnvelope("TitleBlock", _
-        evidence.TitleBlockLeft, evidence.TitleBlockBottom, _
-        evidence.TitleBlockRight, evidence.TitleBlockTop)
+    If IsRealRectangle(evidence.TitleBlockLeft, _
+        evidence.TitleBlockBottom, evidence.TitleBlockRight, _
+        evidence.TitleBlockTop) Then
+
+        result.Add RectangleEnvelope("TitleBlock", _
+            evidence.TitleBlockLeft, evidence.TitleBlockBottom, _
+            evidence.TitleBlockRight, evidence.TitleBlockTop)
+    End If
 
     If evidence.PartIdentificationBoundsProven Then
-        result.Add RectangleEnvelope("PartIdentificationBand", _
-            evidence.PartIdentificationLeft, _
+        If IsRealRectangle(evidence.PartIdentificationLeft, _
             evidence.PartIdentificationBottom, _
             evidence.PartIdentificationRight, _
-            evidence.PartIdentificationTop)
+            evidence.PartIdentificationTop) Then
+
+            result.Add RectangleEnvelope("PartIdentificationBand", _
+                evidence.PartIdentificationLeft, _
+                evidence.PartIdentificationBottom, _
+                evidence.PartIdentificationRight, _
+                evidence.PartIdentificationTop)
+        End If
     End If
 
     Exit Function
 
 Failed:
     Set BuildProtectedRegions = result
+End Function
+
+Private Function IsRealRectangle( _
+    ByVal leftX As Double, _
+    ByVal bottomY As Double, _
+    ByVal rightX As Double, _
+    ByVal topY As Double) As Boolean
+
+    IsRealRectangle = (rightX > leftX) And (topY > bottomY)
 End Function
 
 ' Separating-axis clearance. Positive is a gap; zero or negative means the
@@ -1536,13 +1685,12 @@ Public Sub R23_ProbeContentEnvelope()
         "|fixture=" & Module1_Main.GetFixtureKey(partPath) & _
         "|mode=ReadOnly|creations=0|mutations=0"
 
-    ' The protected rectangles come from the same measurement the
-    ' production pipeline uses, so the probe cannot report a boundary the
-    ' pipeline does not have.
-    If Not Module8_RuntimeSupport.MeasureControlledSheetRegions( _
-        swSheet, evidence) Then
+    ' Measured here, read-only, rather than through the production gate.
+    Dim sheetProof As String
 
-        Debug.Print "R23_ENVELOPE_FATAL|reason=SheetRegionsUnmeasured"
+    If Not MeasureSheetRegions(swSheet, evidence, sheetProof) Then
+        Debug.Print "R23_ENVELOPE_FATAL|reason=SheetSizeUnmeasured" & _
+            "|" & sheetProof
         Exit Sub
     End If
 
@@ -1552,7 +1700,8 @@ Public Sub R23_ProbeContentEnvelope()
         "|usable=" & FormatMetres(evidence.UsableLeft) & _
         "," & FormatMetres(evidence.UsableBottom) & _
         "," & FormatMetres(evidence.UsableRight) & _
-        "," & FormatMetres(evidence.UsableTop)
+        "," & FormatMetres(evidence.UsableTop) & _
+        "|" & sheetProof
 
     Dim viewList As Collection
     Dim envelopes As Collection

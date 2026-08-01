@@ -2,6 +2,74 @@
 
 Date: 2026-08-01
 
+## R23 Phases 8 and 9 first live run: four defects found and fixed
+
+**2026-08-01.** Both probes ran read-only against the P-0251 reference
+drawing. Neither gate is satisfied yet; all four causes were in my code.
+
+### Phase 8: `satisfied=0|missing=7` with seven dimensions in the view
+
+**The nominal never read.** Every one of the seven returned
+`nominalAvailable=False`, and the dimension object was fine - the same
+object answered `toleranceType`, `fitType` and the fit strings on the next
+line. So `GetSystemValue3(swThisConfiguration, Empty)` specifically declined.
+The seven are `RD1..RD7@Drawing View6`: drawing-authored REFERENCE
+dimensions, not model dimensions imported from a sketch, and a reference
+dimension has no configuration to ask about. Phase 0 read `D1@Sketch4`,
+where that route works.
+
+Without a nominal nothing can match, so all seven requirements reported
+Missing while their dimensions sat in the view. `TryReadNominal` now tries
+`swThisConfiguration`, `swAllConfiguration`, then the obsolete
+`GetSystemValue2("")` and `SystemValue` as labelled last resorts, and names
+the route that answered. When all decline it reports the shape of what came
+back.
+
+**The type rule was wrong for this drawing.** All seven are
+`swLinearDimension = 2`. Phase 0's type-6 evidence describes an earlier
+state of the same fixture. A diameter requirement now accepts type 6, 15
+and the linear types, and `IDisplayDimension.Diametric` records which of
+them the drawing displays as a diameter - reported, not used to reject,
+because the nominals are 5.5 mm apart at the closest.
+
+**The log printed everything twice**, because `CRunEvidence.AddInfo` prints
+what it records and the probe printed the same lines again.
+
+**One result worth keeping.** `RD4` carries
+`toleranceType=8|fitType=0|holeFit=H7|minimumM=0.000000|maximumM=0.000025`
+with both statuses 0 and two attached edges. That is H7 +0.025/0.000, live,
+on a drawing reference dimension - independent corroboration of R23-806's
+finding that the fit is drawing-authored and absent from the model.
+
+### Phase 9: aborted before a single envelope was built
+
+```
+QA FAILURE: Controlled sheet has neither an ITitleBlock definition nor a
+proved legacy title-block rectangle.
+R23_ENVELOPE_FATAL|reason=SheetRegionsUnmeasured
+```
+
+I made a read-only probe depend on
+`Module8_RuntimeSupport.MeasureControlledSheetRegions`, which is a
+production fail-closed gate for a sheet the macro CREATES from the
+controlled template. The designer's reference drawing has no `ITitleBlock`,
+so it refused - and it had already attempted `SheetFormatVisible = True`,
+meaning a run that promised `mutations=0` tried to make one. Same shape as
+the Phase 5 `EmitRunEvidence` mistake: a probe leaning on a production gate.
+
+`MeasureSheetRegions` now measures read-only - `ISheet.GetSize` plus
+`ISheet.GetZoneMargin` - and reports what it cannot measure instead of
+aborting. `BuildProtectedRegions` gates every rectangle on measured bounds,
+because unset fields would have produced a degenerate rectangle at the
+origin and false intrusion violations against it.
+
+Nothing about the envelope logic was exercised: no evidence yet on the
+display-data frame, the inverse round trip, the section-line grammar or the
+envelope sizes.
+
+Verification: 345 tests with the same five stale R20 failures. Preflight 35
+components. `MACRO_SOURCE_REVISION` remains `r22`.
+
 ## R23 Phase 9 source complete, awaiting first live run
 
 **2026-08-01.** `Module18_ContentEnvelope.bas` (33 procedures) plus

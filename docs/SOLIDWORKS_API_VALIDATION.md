@@ -1581,3 +1581,70 @@ view changes for the graphics to reflect them.
 R23-907 forbids reducing an approved scale to force a fit - and a contract
 asserts no assignment exists in the module.
 
+## 2026-08-01 live findings: nominal routes, Diametric, and a probe trap
+
+### GetSystemValue3 declines for drawing-authored reference dimensions
+
+Live, on `P-0251-14A-001.SLDDRW`, `Section View J-J`: seven display
+dimensions named `RD1..RD7@Drawing View6`, every one returning no value from
+`IDimension.GetSystemValue3(swThisConfiguration, Empty)`. The dimension
+objects were valid - `IDimension.Tolerance` answered on the same objects,
+returning real `Type`, `FitType`, `GetHoleFitValue`, `GetMinValue2` and
+`GetMaxValue2` results.
+
+The distinction that matters: Phase 0 read `D1@Sketch4`, a MODEL dimension
+imported into a drawing view, and the configuration route worked. A drawing
+REFERENCE dimension has no configuration, and the supported route can
+decline rather than fail.
+
+R23 now tries `swThisConfiguration`, then `swAllConfiguration`, then the
+obsolete `GetSystemValue2("")` and `IDimension.SystemValue`, and records
+which route answered. Both obsolete members are documented as returning
+system units. Which one a reference dimension actually answers is still
+open; the next run settles it, and the routes that prove unnecessary can
+then be removed.
+
+### The same fixture has been seen with two dimension types
+
+| Run | View | Records |
+|---|---|---|
+| Phase 0, 2026-07-31 | `Drawing View3` | 17 dimensions, `D1@Sketch4`/`D1@Sketch6` at `swDiameterDimension = 6` |
+| Phase 8, 2026-08-01 | `Section View J-J` | 7 dimensions, all `swLinearDimension = 2`, named `RD1..RD7` |
+
+Neither reading is wrong; the drawing changed. Any rule that requires a
+single `swDimensionType_e` value for a diameter rejects one of the two real
+states.
+
+`IDisplayDimension.Diametric` is the member that separates them: it gets or
+sets whether the dimension displays as diameter/doubled-distance rather than
+radial/single-distance, and its Remarks say it toggles radial vs diameter
+and radial-linear vs diametric-linear, affecting no other type. R23 records
+it for every section dimension.
+
+### Live H7 readback on a drawing reference dimension
+
+`RD4@Drawing View6`: `toleranceType=8` (`swTolFITWITHTOL`), `fitType=0`
+(`swFitUSER`), `holeFit=H7`, `minimumStatus=0|minimumM=0.000000`,
+`maximumStatus=0|maximumM=0.000025`, two attached entities of type
+`swSelEDGES = 1`.
+
+This is independent corroboration of the R23-806 finding: the H7 fit exists
+on the DRAWING and not in the model, whose `D1@Sketch4` reported
+`toleranceType=0` and `fitType=-1`.
+
+### MeasureControlledSheetRegions is not safe to call from a probe
+
+`Module8_RuntimeSupport.MeasureControlledSheetRegions` is a production
+fail-closed gate. Two properties make it unusable in a read-only run:
+
+- it requires an `ITitleBlock` or a proved legacy title-block rectangle, and
+  fails the whole stage without one - the designer's reference drawing has
+  neither; and
+- it SETS `ISheet.SheetFormatVisible`, recording the mutation on the
+  evidence ledger.
+
+A read-only probe must measure for itself. `ISheet.GetSize` and
+`ISheet.GetZoneMargin` are both read-only.
+`swZoneMargin_e` is `swZoneTopMargin` 0, `swZoneBottomMargin` 1,
+`swZoneRightMargin` 2, `swZoneLeftMargin` 3.
+

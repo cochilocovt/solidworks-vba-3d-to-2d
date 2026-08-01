@@ -14,11 +14,15 @@ Option Explicit
 ' observations about whatever it matched: source dimension identity,
 ' attached geometry, semantic role, nominal, type, and tolerance.
 '
-' R23-804. The imported 47 and 40 records are live-proven
-' swDimensionType_e.swDiameterDimension = 6, read back from the fixture on
-' 2026-07-31 as D1@Sketch4 and D1@Sketch6. swDiametricLinearDimension = 15
-' is recorded when seen and never required; requiring it would reject the
-' real drawing.
+' R23-804. Phase 0 read type-6 D1@Sketch4 and D1@Sketch6 records from this
+' fixture on 2026-07-31. The 2026-08-01 run of THIS module found a different
+' drawing state: seven dimensions in Section View J-J, every one typed
+' swLinearDimension = 2 and named RD1..RD7 - drawing-authored reference
+' dimensions, not imported model dimensions. Both states are real, so the
+' diameter requirements accept type 6, type 15 AND the linear types, and
+' IDisplayDimension.Diametric is recorded to say which of them is displayed
+' as a diameter. Requiring any single type would reject the real drawing,
+' which is what R23-804 exists to prevent.
 '
 ' R23-806 and R23-807. The 47 H7 tolerance does NOT exist in the model.
 ' Phase 0's corrected probe read the part-source dimension directly and got
@@ -54,6 +58,10 @@ Private Const SET_VALUE_NO_CONFIGURATION As Long = -1
 
 ' MCP corpus value for swDrawingViewTypes_e.swDrawingSectionView.
 Private Const VIEW_TYPE_SECTION As Long = 2
+
+' MCP corpus values for swInConfigurationOpts_e.
+Private Const CONFIG_THIS As Long = 1
+Private Const CONFIG_ALL As Long = 2
 
 ' Two nominals are the same when they agree to a micrometre. Every
 ' requirement below is separated from every other by at least 5.5 mm, so
@@ -165,11 +173,16 @@ Public Function BuildSectionRequirements() As Collection
     linearTypes = CStr(DIM_TYPE_LINEAR) & ";" & _
         CStr(DIM_TYPE_HOR_LINEAR) & ";" & CStr(DIM_TYPE_VERT_LINEAR)
 
-    ' R23-804. Diameters accept the live-proven type 6; 15 is accepted too
-    ' where the build happens to produce it, but is never required.
+    ' R23-804. Diameters accept type 6, type 15 and the linear types. The
+    ' live drawing carries its bore dimensions as linear records, so
+    ' demanding 6 or 15 would reject the real thing. Whether a match is
+    ' actually DISPLAYED as a diameter is answered by
+    ' IDisplayDimension.Diametric and recorded on the match - the nominals
+    ' here are 5.5 mm apart at the closest, so type corroborates rather than
+    ' discriminates.
     Dim diameterTypes As String
     diameterTypes = CStr(DIM_TYPE_DIAMETER) & ";" & _
-        CStr(DIM_TYPE_DIAMETRIC_LINEAR)
+        CStr(DIM_TYPE_DIAMETRIC_LINEAR) & ";" & linearTypes
 
     result.Add MakeRequirement(REQ_OVERALL_THICKNESS, _
         "OverallThickness", 0.018, linearTypes, LANE_ABOVE)
@@ -177,12 +190,16 @@ Public Function BuildSectionRequirements() As Collection
         "BoreStepDepth", 0.012, linearTypes, LANE_ABOVE)
     result.Add MakeRequirement(REQ_LOWER_WALL_STEP, _
         "LowerWallStep", 0.0115, linearTypes, LANE_BELOW)
-    result.Add MakeRequirement(REQ_INNER_BORE, _
+    Dim innerBore As CSectionRequirement
+    Set innerBore = MakeRequirement(REQ_INNER_BORE, _
         "InnerBoreDiameter", 0.04, diameterTypes, LANE_BORE_SIDE_A)
+    innerBore.RequiresDiameterDisplay = True
+    result.Add innerBore
 
     Dim fitBore As CSectionRequirement
     Set fitBore = MakeRequirement(REQ_FIT_BORE, _
         "FitBoreDiameter", 0.047, diameterTypes, LANE_BORE_SIDE_B)
+    fitBore.RequiresDiameterDisplay = True
 
     ' R23-806. The only requirement carrying a tolerance, and its authority
     ' is stated in the same breath as the numbers.
@@ -316,8 +333,13 @@ Public Function InventorySectionDimensions( _
 
         Dim nominalM As Double
         Dim nominalAvailable As Boolean
+        Dim nominalRoute As String
         nominalM = 0#
-        nominalAvailable = TryReadNominal(dimension, nominalM)
+        nominalAvailable = TryReadNominal(dimension, nominalM, nominalRoute)
+
+        Dim diametricKnown As Boolean
+        Dim diametric As Boolean
+        diametric = SafeDiametric(displayDimension, diametricKnown)
 
         Dim toleranceType As Long
         Dim fitType As Long
@@ -347,6 +369,9 @@ Public Function InventorySectionDimensions( _
             "|type2=" & CStr(SafeTypeCode(displayDimension)) & _
             "|nominalAvailable=" & CStr(nominalAvailable) & _
             "|nominalM=" & FormatMetres(nominalM) & _
+            "|" & nominalRoute & _
+            "|diametricKnown=" & CStr(diametricKnown) & _
+            "|diametric=" & CStr(diametric) & _
             "|attachedEntities=" & CStr(attachedCount) & _
             "|attachedTypes=" & attachedTypes & _
             "|" & toleranceProof
@@ -405,11 +430,56 @@ End Function
 
 ' IDimension.GetSystemValue3 returns the value in system units - metres.
 ' Config_names matters only for swSpecifyConfiguration, which this is not.
+'
+' The configuration route is not enough on its own. The first live run
+' returned no nominal for any of the seven section dimensions, all of them
+' drawing-authored reference dimensions named RD1..RD7 rather than model
+' dimensions imported from a sketch. A drawing reference dimension has no
+' configuration to ask about, so the supported route can legitimately
+' decline where it succeeds for D1@Sketch4.
+'
+' Every route is therefore tried in turn and the one that produced the value
+' is NAMED in evidence, so a later run can drop whichever proved
+' unnecessary. Two of them are obsolete members kept as labelled last
+' resorts: both are documented as returning system units, and finding out
+' which route a reference dimension answers is exactly the question this run
+' has to settle. When all decline, the raw shape of the GetSystemValue3
+' result is reported, because "no nominal" and "an empty SafeArray" are
+' different problems.
 Private Function TryReadNominal( _
     ByRef dimension As SldWorks.Dimension, _
+    ByRef nominalM As Double, _
+    ByRef route As String) As Boolean
+
+    route = "nominalRoute=NoDimension"
+    If dimension Is Nothing Then Exit Function
+
+    If TryNominalInConfiguration(dimension, CONFIG_THIS, nominalM) Then
+        route = "nominalRoute=GetSystemValue3.ThisConfiguration"
+        TryReadNominal = True
+        Exit Function
+    End If
+
+    If TryNominalInConfiguration(dimension, CONFIG_ALL, nominalM) Then
+        route = "nominalRoute=GetSystemValue3.AllConfigurations"
+        TryReadNominal = True
+        Exit Function
+    End If
+
+    If TryNominalFromObsoleteMembers(dimension, nominalM, route) Then
+        TryReadNominal = True
+        Exit Function
+    End If
+
+    route = "nominalRoute=Unavailable" & _
+        "|nominalShape=" & DescribeNominalShape(dimension)
+End Function
+
+Private Function TryNominalInConfiguration( _
+    ByRef dimension As SldWorks.Dimension, _
+    ByVal whichConfigurations As Long, _
     ByRef nominalM As Double) As Boolean
 
-    If dimension Is Nothing Then Exit Function
     On Error GoTo Failed
 
     Dim configurationNames As Variant
@@ -417,7 +487,7 @@ Private Function TryReadNominal( _
 
     Dim values As Variant
     values = dimension.GetSystemValue3( _
-        swThisConfiguration, configurationNames)
+        whichConfigurations, configurationNames)
 
     If IsArray(values) Then
         If (UBound(values) - LBound(values) + 1) < 1 Then Exit Function
@@ -428,11 +498,99 @@ Private Function TryReadNominal( _
         Exit Function
     End If
 
-    TryReadNominal = True
+    TryNominalInConfiguration = True
     Exit Function
 
 Failed:
-    TryReadNominal = False
+    TryNominalInConfiguration = False
+End Function
+
+' IDimension.GetSystemValue2 and IDimension.SystemValue are both marked
+' obsolete by the 2025 Help. They run ONLY after the supported route has
+' declined, and the route name says so, so no reader can mistake this for
+' the preferred call.
+Private Function TryNominalFromObsoleteMembers( _
+    ByRef dimension As SldWorks.Dimension, _
+    ByRef nominalM As Double, _
+    ByRef route As String) As Boolean
+
+    Dim candidate As Double
+
+    On Error Resume Next
+
+    candidate = 0#
+    candidate = CDbl(dimension.GetSystemValue2(""))
+    If Err.Number = 0 And candidate <> 0# Then
+        nominalM = candidate
+        route = "nominalRoute=Obsolete.GetSystemValue2"
+        TryNominalFromObsoleteMembers = True
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    Err.Clear
+    candidate = 0#
+    candidate = CDbl(dimension.SystemValue)
+    If Err.Number = 0 And candidate <> 0# Then
+        nominalM = candidate
+        route = "nominalRoute=Obsolete.SystemValue"
+        TryNominalFromObsoleteMembers = True
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+' Says WHY no nominal came back rather than only that none did.
+Private Function DescribeNominalShape( _
+    ByRef dimension As SldWorks.Dimension) As String
+
+    On Error GoTo Failed
+
+    Dim configurationNames As Variant
+    configurationNames = Empty
+
+    Dim values As Variant
+    values = dimension.GetSystemValue3(CONFIG_THIS, configurationNames)
+
+    If IsEmpty(values) Then
+        DescribeNominalShape = "Empty"
+    ElseIf IsNull(values) Then
+        DescribeNominalShape = "Null"
+    ElseIf IsArray(values) Then
+        DescribeNominalShape = "Array:" & _
+            CStr(UBound(values) - LBound(values) + 1)
+    Else
+        DescribeNominalShape = "VarType:" & CStr(VarType(values))
+    End If
+    Exit Function
+
+Failed:
+    DescribeNominalShape = "Error:" & CStr(Err.Number)
+End Function
+
+' R23-804 revisited. The first live run found every section dimension typed
+' swLinearDimension=2, including the one carrying H7 - not the
+' swDiameterDimension=6 records Phase 0 saw in an earlier state of this
+' drawing. IDisplayDimension.Diametric is what distinguishes a linear
+' dimension DISPLAYED as a diameter from a plain one, so it is read for
+' every dimension and recorded whether or not it decides anything.
+Private Function SafeDiametric( _
+    ByRef displayDimension As SldWorks.DisplayDimension, _
+    ByRef known As Boolean) As Boolean
+
+    known = False
+    On Error GoTo Failed
+
+    SafeDiametric = Module11_GeometryIdentity.NormalizeSwBoolean( _
+        displayDimension.Diametric)
+    known = True
+    Exit Function
+
+Failed:
+    known = False
+    SafeDiametric = False
 End Function
 
 ' R23-805. Tolerance readback through IDimension.Tolerance.
@@ -587,8 +745,10 @@ Public Sub ReconcileSectionDimensions( _
 
             Dim nominalM As Double
             Dim nominalAvailable As Boolean
+            Dim nominalRoute As String
             nominalM = 0#
-            nominalAvailable = TryReadNominal(dimension, nominalM)
+            nominalAvailable = _
+                TryReadNominal(dimension, nominalM, nominalRoute)
 
             If Not nominalAvailable Then GoTo ContinueDimension
 
@@ -611,7 +771,8 @@ Public Sub ReconcileSectionDimensions( _
             ' counted and reported rather than overwriting it.
             If requirement.MatchCount = 1 Then
                 RecordObservation requirement, displayDimension, _
-                    dimension, typeCode, nominalAvailable, nominalM
+                    dimension, typeCode, nominalAvailable, nominalM, _
+                    nominalRoute
             End If
 
 ContinueDimension:
@@ -653,8 +814,10 @@ Private Sub RecordObservation( _
     ByRef dimension As SldWorks.Dimension, _
     ByVal typeCode As Long, _
     ByVal nominalAvailable As Boolean, _
-    ByVal nominalM As Double)
+    ByVal nominalM As Double, _
+    ByVal nominalRoute As String)
 
+    requirement.NominalRoute = nominalRoute
     requirement.MatchedName = _
         SectionToken(SafeDisplayDimensionName(displayDimension))
     requirement.MatchedFullName = _
@@ -691,9 +854,34 @@ Private Sub RecordObservation( _
         ReadAttachment(displayDimension, attachedCount)
     requirement.AttachedEntityCount = attachedCount
 
+    Dim diametricKnown As Boolean
+    requirement.MatchedDiametric = _
+        SafeDiametric(displayDimension, diametricKnown)
+    requirement.MatchedDiametricKnown = diametricKnown
+
     If attachedCount = 0 Then
         requirement.Failures = AppendFailure( _
             requirement.Failures, "DimensionNotAttached")
+    End If
+
+    ' A diameter requirement matched against a linear record has to say so.
+    ' The nominal is what identified it; whether the drawing DISPLAYS it as
+    ' a diameter is a separate fact, and an unproved one is reported rather
+    ' than assumed in either direction.
+    If requirement.RequiresDiameterDisplay Then
+        If typeCode <> DIM_TYPE_DIAMETER And _
+            typeCode <> DIM_TYPE_DIAMETRIC_LINEAR Then
+
+            If Not diametricKnown Then
+                requirement.Failures = AppendFailure( _
+                    requirement.Failures, _
+                    "DiameterDisplayUnreadable:" & CStr(typeCode))
+            ElseIf Not requirement.MatchedDiametric Then
+                requirement.Failures = AppendFailure( _
+                    requirement.Failures, _
+                    "NotDisplayedAsDiameter:" & CStr(typeCode))
+            End If
+        End If
     End If
 End Sub
 
@@ -785,6 +973,16 @@ Public Function VerifySectionDimensions( _
         ElseIf requirement.AttachedEntityCount = 0 Then
             failures = AppendFailure(failures, _
                 "Unattached:" & requirement.Key)
+        ElseIf Len(requirement.Failures) > 0 And _
+            StrComp(requirement.Failures, "None", vbBinaryCompare) <> 0 Then
+
+            ' Anything reconciliation recorded against this requirement
+            ' keeps it out of the satisfied count. A requirement whose own
+            ' failure list is non-empty is not satisfied, whatever the
+            ' counts say.
+            failures = AppendFailure(failures, _
+                "RequirementFlagged:" & requirement.Key & _
+                ":" & requirement.Failures)
         Else
             satisfied = satisfied + 1
         End If
@@ -1092,11 +1290,12 @@ Public Function CreateSectionDimension( _
 
     Dim nominalM As Double
     Dim nominalAvailable As Boolean
+    Dim nominalRoute As String
     nominalM = 0#
-    nominalAvailable = TryReadNominal(dimension, nominalM)
+    nominalAvailable = TryReadNominal(dimension, nominalM, nominalRoute)
 
     RecordObservation requirement, created, dimension, typeCode, _
-        nominalAvailable, nominalM
+        nominalAvailable, nominalM, nominalRoute
 
     Dim nominalCorrect As Boolean
     nominalCorrect = nominalAvailable And _
@@ -1287,13 +1486,10 @@ Public Sub R23_ProbeSectionDimensions()
 
         ReconcileSectionDimensions requirements, dimensions, evidence
 
-        Dim r As Long
-        For r = 1 To requirements.Count
-            Dim requirement As CSectionRequirement
-            Set requirement = requirements(r)
-            Debug.Print "QA INFO: SECTION_REQUIREMENT|view=" & _
-                SectionToken(viewName) & "|" & requirement.Summary()
-        Next r
+        ' ReconcileSectionDimensions already emitted one line per
+        ' requirement through the evidence ledger, and CRunEvidence.AddInfo
+        ' prints what it records. Printing them again here duplicated every
+        ' requirement line in the first run's log.
 
         Dim verdict As String
         verdict = VerifySectionDimensions(requirements, dimensions)

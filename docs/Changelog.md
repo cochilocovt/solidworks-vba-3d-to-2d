@@ -1,5 +1,81 @@
 # Changelog
 
+## 2026-08-01 - R23 Phases 8 and 9 first live run: four defects fixed
+
+Both probes ran read-only against the P-0251 reference drawing. Neither gate
+is satisfied; every cause was in my code, not the drawing.
+
+### Phase 8 defect 1: the nominal never read
+
+All seven section dimensions returned nominalAvailable=False while the same
+dimension object answered toleranceType, fitType and the fit strings on the
+next line - so GetSystemValue3(swThisConfiguration, Empty) declined
+specifically. The seven are RD1..RD7@Drawing View6: drawing-authored
+REFERENCE dimensions, which have no configuration to ask about. Phase 0 read
+D1@Sketch4, an imported model dimension, where that route works.
+
+Matching needs the nominal, so all seven requirements reported Missing while
+their dimensions sat in the view. TryReadNominal now tries
+swThisConfiguration, then swAllConfiguration, then the obsolete
+GetSystemValue2("") and SystemValue as labelled last resorts, and NAMES the
+route that answered so a later run can drop whichever proved unnecessary.
+When every route declines it reports the raw shape of the GetSystemValue3
+result, because "no nominal" and "an empty SafeArray" are different
+problems.
+
+### Phase 8 defect 2: the type rule rejected the real drawing
+
+Every section dimension is swLinearDimension=2, including the one carrying
+H7. Phase 0's type-6 D1@Sketch4/D1@Sketch6 evidence describes an earlier
+state of the same fixture. Both states are real, so a diameter requirement
+now accepts type 6, type 15 and the linear types, and
+IDisplayDimension.Diametric is recorded to say which the drawing actually
+displays as a diameter. It is reported rather than used to reject: the
+nominals are 5.5 mm apart at the closest, so type corroborates and does not
+discriminate. An unproved diameter display is recorded as
+NotDisplayedAsDiameter or DiameterDisplayUnreadable, and any requirement
+carrying its own failure is kept out of the satisfied count.
+
+### Phase 8 defect 3: every log line printed twice
+
+CRunEvidence.AddInfo prints what it records; the probe printed the same
+requirement lines again.
+
+### Phase 8 result worth keeping
+
+RD4 carries toleranceType=8, fitType=0, holeFit=H7, minimumM=0.000000,
+maximumM=0.000025, both statuses 0, two attached edges. H7 +0.025/0.000,
+live, on a drawing reference dimension - independent corroboration that the
+fit is drawing-authored and absent from the model.
+
+### Phase 9 defect: a probe leaning on a production gate
+
+The run aborted with "Controlled sheet has neither an ITitleBlock definition
+nor a proved legacy title-block rectangle" before building a single
+envelope. R23_ProbeContentEnvelope called
+Module8_RuntimeSupport.MeasureControlledSheetRegions - a fail-closed gate
+for a sheet the macro CREATES from the controlled template, which the
+designer's reference drawing is not. Worse, that procedure SETS
+ISheet.SheetFormatVisible, so a run promising mutations=0 had already
+attempted one. Same shape as the Phase 5 EmitRunEvidence mistake.
+
+MeasureSheetRegions now measures read-only - ISheet.GetSize plus
+ISheet.GetZoneMargin - and REPORTS what it cannot measure
+(titleBlock=Absent, contentBorder=Unmeasured,
+usableSource=SheetExtentNoBorder) instead of aborting. Only an unusable
+sheet size stops the probe.
+
+BuildProtectedRegions now gates every rectangle on measured bounds. Unset
+evidence fields would have produced a degenerate rectangle at the sheet
+origin and reported false ProtectedIntrusion violations against it: a
+boundary that does not exist is not a boundary at zero.
+
+### Verification
+
+Suite 345 tests with the five known-stale R20 failures. Preflight 35
+managed components. MACRO_SOURCE_REVISION unchanged at
+target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phase 9: content-envelope-aware final layout
 
 `Module18_ContentEnvelope.bas` (33 procedures), `CContentEnvelope.cls`.
