@@ -2,7 +2,43 @@
 
 Date: 2026-08-01
 
-## R23 Phase 7 source complete, awaiting first live run
+## R23 Phase 7 read-only gate SATISFIED (first live run)
+
+**2026-08-01.** `resolvedPaths=1|segments=3|columnHoles=3|`
+`crossingsProven=4|sectionFailures=None|creations=0|drawingUnchanged=True`.
+
+The J-J path resolved in `Drawing View4` exactly as the reference approves:
+`w1=0.207331779,0.237414746` (bore centre), `w2=0.207331779,0.167414746`,
+`w3=0.192331779,0.167414746`, `w4=0.192331779,0.087414746`, with
+`distinctColumns=2` and `distinctRows=3`. The other three views correctly
+report `NoAcceptedSingletonBoreProjection` - the bore is not accepted there,
+so no path is invented for them.
+
+**The frame conversion cross-checks against the model, which is the part
+worth trusting.** The arithmetic is exact
+(`0.207331779 - 0.229331779 = -0.022`), but arithmetic only proves the code
+does what it says. The corroboration is that the bore's Plucker moment is
+`(0, 0.062, 0)` and its `viewY` is 0.062 exactly; every counterbore does the
+same, with `viewY` equal to its moment's Y and `viewX` equal to its moment's
+X minus a constant 0.022 - the view's centring offset, identical across all
+seven holes. A wrong transform does not produce one shared offset across
+seven independent points. Phase 8 onward depends on this transform, and it
+has been wrong in this project before.
+
+One evidence defect the run exposed: views rejected before crossings could
+be tested were also reporting `NotAttempted` in `sectionFailures`. That is
+the crossing proof's initial state, not a failure, and listing it beside
+real reasons dilutes them. Now excluded.
+
+**Still open:** R23-705's creation half, R23-706 and R23-707 all require
+mutation and are unrun. R23-704's legacy removal waits on the pipeline
+switch, the same as R23-609.
+
+Verification: 23 Phase 7 contracts, suite 265 tests with the same five stale
+R20 failures. Preflight 31 components. `MACRO_SOURCE_REVISION` remains
+`r22`.
+
+## Historical: R23 Phase 7 source complete
 
 **2026-08-01.** `Module17_SectionPath.bas` (21 procedures) plus
 `CSectionPath.cls`. Statically verified only.

@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 7 read-only gate satisfied
+
+`resolvedPaths=1|segments=3|columnHoles=3|crossingsProven=4|
+sectionFailures=None|creations=0|drawingUnchanged=True`.
+
+### The path resolved as the reference approves
+
+In Drawing View4: w1=0.207331779,0.237414746 (bore centre);
+w2=0.207331779,0.167414746 (same X, highest row); w3=0.192331779,0.167414746
+(minimum-X column, that row); w4=0.192331779,0.087414746 (same column,
+lowest row). distinctColumns=2, distinctRows=3, and crossingsProven=4 - the
+bore plus all three holes on the chosen column.
+
+The other three views report NoAcceptedSingletonBoreProjection, which is
+correct: the bore is not accepted in them, so no path is invented.
+
+### The frame transform cross-checks against the model
+
+The arithmetic is exact (0.207331779 - 0.229331779 = -0.022), but that only
+proves the code does what it says. The corroboration is independent: the
+bore's Plucker moment is (0, 0.062, 0) and its viewY is 0.062 exactly. Every
+counterbore behaves identically - viewY equals its moment's Y (-0.008,
+-0.048, -0.088) and viewX equals its moment's X minus a constant 0.022, the
+view's own centring offset, the same across all seven holes.
+
+A wrong transform does not produce one shared offset across seven
+independent points. This matters because Phase 8 onward depends on this
+conversion and mixed frames have been a real defect in this project before.
+
+### One evidence defect the run exposed
+
+Views rejected before crossings could be tested - no bore, too few columns -
+were also reporting NotAttempted in sectionFailures. That is the crossing
+proof's initial STATE, not a failure of it, and listing it beside reasons
+that are real dilutes them. Now excluded.
+
+### Still unrun
+
+R23-705's creation half, R23-706 and R23-707 all require mutation. The
+selection-order verification and the GetSectionLineInfo2 read-back are
+written and contract-tested but have never executed.
+
+### Verification
+
+23 Phase 7 contracts. Suite 265 tests with the five known-stale R20
+failures. Preflight 31 managed components. MACRO_SOURCE_REVISION unchanged
+at target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phase 7: J-J section path from model intent
 
 `Module17_SectionPath.bas` (21 procedures), `CSectionPath.cls`. Statically

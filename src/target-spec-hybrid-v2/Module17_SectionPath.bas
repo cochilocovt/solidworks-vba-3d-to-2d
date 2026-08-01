@@ -860,7 +860,15 @@ Public Function VerifySectionGeometry( _
         failures = AppendFailure(failures, "NoColumnHoles")
     End If
 
-    If StrComp(path.CrossingFailures, "None", vbBinaryCompare) <> 0 Then
+    ' "NotAttempted" is the initial STATE of the crossing proof, not a
+    ' failure of it. A path rejected before crossings could be tested - no
+    ' bore, too few columns - already reported why; appending NotAttempted
+    ' alongside those reasons dilutes them, which is the opposite of what
+    ' R23-610-style field-specific reporting is for.
+    If StrComp(path.CrossingFailures, "None", vbBinaryCompare) <> 0 And _
+        StrComp(path.CrossingFailures, "NotAttempted", _
+            vbBinaryCompare) <> 0 Then
+
         failures = AppendFailure(failures, path.CrossingFailures)
     End If
 

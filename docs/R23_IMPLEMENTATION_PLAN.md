@@ -970,19 +970,31 @@ section view's placement is a caller argument, not a default: defaulting it
 to a point on the source view would stack the section on the view it was cut
 from, and choosing where a view sits is layout, a later phase.
 
-**Status: source complete, awaiting first live run.** Statically verified
-only.
+**Phase 7 read-only gate SATISFIED** (first live run). Final run:
+`resolvedPaths=1|segments=3|columnHoles=3|crossingsProven=4|`
+`sectionFailures=None|creations=0|initialSelectionCount=0|`
+`finalSelectionCount=0|drawingUnchanged=True`.
 
-- [ ] **R23-700:** Split graph/projection discovery from ordinate creation so
+Everything provable without cutting a section is proved. R23-705 to R23-707
+are proved to the limit a read-only run allows: the frame conversion ran and
+was checked, but no line was drawn and no view was cut.
+
+- [x] **R23-700:** Split graph/projection discovery from ordinate creation so
   section construction can consume proved locations first.
-- [ ] **R23-701:** Resolve one stepped-bore centre and a 2×3 face-hole family.
-- [ ] **R23-702:** Build the P-0251 J-J page-coordinate path:
-  1. stepped-bore centre;
-  2. same X at the highest face-hole row;
-  3. minimum-X face-hole column at that row;
-  4. same column at the lowest face-hole row.
-- [ ] **R23-703:** Prove the path crosses the stepped bore and all three holes
-  in the chosen column.
+- [x] **R23-701:** In `Drawing View4`, `distinctColumns=2` and
+  `distinctRows=3` - the 2x3 face-hole family - with the stepped-bore
+  centre resolved as the largest singleton-family location. The other three
+  views correctly report `NoAcceptedSingletonBoreProjection`, because the
+  bore is not accepted there.
+- [x] **R23-702:** Built live, in the approved order:
+  `w1=0.207331779,0.237414746` (bore centre);
+  `w2=0.207331779,0.167414746` (same X, highest row);
+  `w3=0.192331779,0.167414746` (minimum-X column, that row);
+  `w4=0.192331779,0.087414746` (same column, lowest row).
+- [x] **R23-703:** `crossingsProven=4|columnHoles=3|failures=None` - the
+  bore plus all three holes on the chosen column. Each is judged against
+  its own projected radius, and the point-to-segment distance is clamped to
+  the finite segment.
 - [ ] **R23-704: half met, deliberately.** The new path contains none of
   it - no `extension`, no `topY`/`bottomY`, no `leftX`/`rightX`, and none of
   the fractions `15/72`, `90/196`, `15.84/24` or `0.1 *`. A contract
@@ -991,14 +1003,30 @@ only.
   the reachable production path and Module17 is not wired into `main`.
   Removing them now would break the deployable macro while its replacement
   is disconnected - the same situation as R23-609.
-- [ ] **R23-705:** Convert page coordinates to source-view sketch coordinates
-  exactly once before `CreateLine`.
-- [ ] **R23-706:** Create exactly three view-owned segments and verify their
-  selection order before `CreateSectionViewAt5`.
-- [ ] **R23-707:** Parse `GetSectionLineInfo2` after creation and after every
-  later view move.
-- [ ] **R23-708:** Fail `SECTION_GEOMETRY` rather than approximate the cut when
-  required feature identities or path intersections are unproved.
+- [ ] **R23-705: conversion proved, creation unrun.** The read-only frame
+  probe returned `pageX=0.207331779 -> viewX=-0.022000000` and
+  `pageY=0.237414746 -> viewY=0.062000000` against
+  `originX=0.229331779|originY=0.175414746|scale=1|angle=0`, which is exact
+  arithmetic.
+
+  It also cross-checks against the model, which matters more than the
+  arithmetic: the bore's Plucker moment is `(0, 0.062, 0)` and its `viewY`
+  is 0.062 exactly. Every counterbore behaves the same - `viewY` equals its
+  moment's Y (-0.008, -0.048, -0.088), and `viewX` equals its moment's X
+  minus a constant 0.022, the view's own centring offset, identical across
+  all seven holes. A wrong transform does not produce one shared offset
+  across seven independent points.
+- [ ] **R23-706: unrun.** It creates sketch segments. The selection-order
+  verification is written and contract-tested but has never executed.
+- [ ] **R23-707: unrun.** There is nothing created to read back yet.
+- [x] **R23-708:** Proved by the three views that failed. Each reported
+  its own specific reasons - `NoAcceptedSingletonBoreProjection`,
+  `NoBoreProjection`, `NoColumnHoles` - and no path was approximated into
+  existence.
+
+  The first run also appended `NotAttempted`, the crossing proof's initial
+  STATE, alongside those reasons. A state is not a failure and reporting it
+  as one dilutes the reasons that are real, so it is now excluded.
 
 ### Phase 8 — Add a dedicated section-dimension engine
 
