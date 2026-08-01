@@ -1163,7 +1163,44 @@ only.
 
 ### Phase 9 — Make final layout content-envelope aware
 
-- [ ] **R23-900:** Build one page-coordinate content envelope per view from:
+Implemented in `Module18_ContentEnvelope.bas` (33 procedures) with the typed
+record `CContentEnvelope.cls`.
+
+**Mutation boundary.** One procedure changes anything: `ApplyPlacementPlan`,
+which refuses without `allowMutation`. `PlanPlacement` computes target
+centres and moves nothing, so the decision and the action are separable and
+the plan is fully inspectable before a view has been touched.
+
+**Frames.** Every coordinate in a `CContentEnvelope` is PAGE frame, and the
+sources do not agree on that by default:
+
+| Source | Frame |
+|---|---|
+| `IView.GetOutline` | page, documented |
+| `IAnnotation.GetPosition` | sheet-relative in drawings, documented |
+| `INote.GetExtent` | sheet space, documented |
+| `IView.GetSectionLineInfo2` | VIEW-SKETCH, proved by Phase 0 |
+| `IDisplayData` points | **not stated by the Remarks** |
+
+Section geometry is converted through `ViewSketchToPage`, the exact inverse
+of Module17's `PageToViewSketch`, and the pairing is round-trip checked
+before any point is contributed. Display-data points are contributed and
+their agreement with the view's own documented outline is COUNTED rather
+than asserted, because a contract the Help does not make is not one this
+project states.
+
+**Status: source complete, awaiting first live run.** Statically verified
+only.
+
+- [x] **R23-900:** All eight sources contribute, each counted separately so
+  an outline-only rectangle cannot pass as a content envelope
+  (`HasAnnotationContent`). Two traps handled explicitly:
+  `IDisplayData.GetTextPositionAtIndex` is an OFFSET from the display-data
+  origin, not a coordinate - used absolutely it drags every envelope towards
+  the sheet origin - and leader points are consumed as XYZ triples from the
+  returned array rather than from `GetLeaderStyle`, whose value is OR-ed
+  with attachment bitmask flags that the corpus returns mangled. The
+  envelope sources are:
   - model outline;
   - display-dimension primitives and text;
   - note extents;
@@ -1172,23 +1209,56 @@ only.
   - section segments;
   - arrow geometry;
   - J-label positions and text heights.
-- [ ] **R23-901:** Include title block, part-identification band, general notes,
-  content border, and zone-number regions as protected sheet rectangles.
-- [ ] **R23-902:** Replace the fixed P-0251 upward bias with a constraint-based
-  placement using complete envelopes.
-- [ ] **R23-903:** Move views by the difference between envelope centre and
-  assigned cell centre.
-- [ ] **R23-904:** Rebuild, reacquire all geometry, and allow at most one
-  correction pass.
-- [ ] **R23-905:** Require explicit clearance between every view envelope and
-  every other view/protected rectangle.
-- [ ] **R23-906:** Require at least 2 mm clearance for J-J arrows and labels from
-  the content border and part-identification band.
-- [ ] **R23-907:** Do not reduce an approved view scale to force a fit.
-- [ ] **R23-908:** Fail and request a larger sheet when the complete content
-  cannot fit.
-- [ ] **R23-909:** Ensure no annotation, dimension, note, callout, or view is
-  created after final layout.
+- [x] **R23-901:** `BuildProtectedRegions` reuses the measurements
+  `Module8_RuntimeSupport.MeasureControlledSheetRegions` already recorded on
+  the evidence ledger; re-deriving them would create a second set of numbers
+  that can drift from the ones the pipeline uses.
+
+  The content border is protected as four STRIPS rather than one rectangle,
+  because the drawable area is inside it and a single rectangle would
+  declare every view a violation. The part-identification band is included
+  only when `PartIdentificationBoundsProven` is set.
+- [x] **R23-902:** `PlanPlacement` packs rows from the envelopes' own
+  widths and centres the whole block in the usable rectangle. A contract
+  asserts none of `topBoundary -`, `Bias`, or `rowCenterY` survives - the
+  tokens `Module9_LayoutEngine.bas:442-446` uses to pin the source row to
+  the top boundary. A row pinned to a boundary has nowhere to put the
+  annotations that hang above it, which is the whole defect.
+- [ ] **R23-903: written, unrun.** The delta is
+  `cellCentre - envelope.Centre`, applied to `IView.Position`. A contract
+  asserts `GetOutline` does not appear in that procedure at all, because
+  moving by the OUTLINE centre is what `Module9_LayoutEngine` does and is
+  exactly why annotations end up outside the region the layout believed it
+  was filling.
+- [ ] **R23-904: written, unrun.** `EditRebuild3`, then every envelope is
+  rebuilt from scratch, then clearances are re-verified;
+  `MAX_CORRECTION_PASSES = 1`. A view move relocates the section line and
+  every attached annotation, so nothing read before the move still describes
+  the sheet. A failed rebuild is reported rather than swallowed.
+- [x] **R23-905:** `VerifyClearances` checks every view-view pair and
+  every view-protected pair, naming each violation, and reports the check
+  count so a silently empty loop cannot read as a pass. Clearance is a
+  separating-axis measure on both axes, so touching rectangles score zero
+  rather than passing.
+- [x] **R23-906:** `SECTION_CLEARANCE_M = 0.002`, applied by
+  `RequiredClearance` when the view is `swDrawingSectionView = 2` and the
+  other rectangle is protected. The section envelope already includes the
+  arrows and both label points with their text height, so the 2 mm is
+  measured from the geometry that actually overshot.
+- [x] **R23-907:** The module contains no `ScaleDecimal =`, no
+  `ScaleRatio` and no `SetScale`, and contracts assert each absence.
+  `CaptureViewScales` photographs every approved scale before the moves and
+  `VerifyScalesUnchanged` proves none changed.
+- [x] **R23-908:** `PlanPlacement` returns
+  `plan=Reject|reason=LargerSheetRequired` with the required and available
+  width and height stated. Because R23-907 forbids shrinking a view, this is
+  a failure and a request rather than a fallback.
+- [x] **R23-909:** `SealLayout` photographs the evidence ledger's
+  mutation sequence when layout completes and
+  `VerifyNothingCreatedAfterLayout` compares it afterwards, reporting the
+  sealed and current sequence and the last operation on each side. Anything
+  created after the seal changes the envelopes the layout was proved
+  against.
 
 ### Phase 10 — Replace count-based QA
 

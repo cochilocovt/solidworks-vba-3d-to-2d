@@ -1,5 +1,81 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 9: content-envelope-aware final layout
+
+`Module18_ContentEnvelope.bas` (33 procedures), `CContentEnvelope.cls`.
+Statically verified only; no live run yet.
+
+### What an envelope is
+
+Everything that travels with a view: model outline, display-dimension lines
+and text boxes, note extents, leader points, section segments, arrow
+geometry, and both J-labels with their text heights. Each source is counted
+separately, and HasAnnotationContent refuses to call an outline-only
+rectangle a content envelope - that is the old behaviour wearing a new name.
+
+### Frames, which is the real work
+
+Four sources document their frame and one does not. GetOutline is page
+frame; IAnnotation.GetPosition is sheet-relative in drawings;
+INote.GetExtent is sheet space; GetSectionLineInfo2 is VIEW-SKETCH frame,
+proved by Phase 0's payloadSegmentFrame=ViewSketchProved; and the
+IDisplayData Remarks state no frame at all.
+
+Section geometry is converted through ViewSketchToPage, the exact inverse of
+Module17's PageToViewSketch, and ProveInverseTransform round-trips a real
+page point through both before anything is contributed. Two functions that
+claim to be inverses either agree to floating-point noise or one is wrong.
+
+Display-data points are contributed and their agreement with the view's own
+documented outline is COUNTED, not asserted. Claiming a frame the Help does
+not state would be the same confident guess that cost this project the
+swInsertDimensionsMarkedForDrawing bug.
+
+### Three specific traps
+
+GetTextPositionAtIndex is an OFFSET from the display-data origin, not a
+coordinate; used absolutely it drags every envelope towards the sheet
+origin. Leader points are consumed as XYZ triples from the returned array
+rather than derived from GetLeaderStyle, whose value is OR-ed with
+attachment bitmask flags that the corpus returns with mangled values. And
+GetSectionLineInfo2's grammar is ambiguous between its Remarks and
+GetSectionLineCount2's - one layer double or one per section line - so both
+readings are walked in a dry run and the one whose consumption matches the
+array length exactly is the one used.
+
+### The fixed upward bias is replaced, not adjusted
+
+Module9_LayoutEngine lines 442-446 pin the P-0251 source row to the top
+boundary. PlanPlacement packs rows from the envelopes' own widths and
+centres the block in the usable rectangle; contracts assert topBoundary -,
+Bias and rowCenterY are all absent. A row pinned to a boundary has nowhere
+to put the annotations that hang above it.
+
+Placement and movement are separate procedures. PlanPlacement returns target
+centres and touches nothing, so the whole plan is inspectable before a view
+moves.
+
+### Clearance and the things layout may not do
+
+Every view-view and view-protected pair is checked with a separating-axis
+measure, so touching rectangles score zero rather than passing, and the
+check count is reported so an empty loop cannot read as a pass. Section
+views get 2 mm from protected regions. The content border is protected as
+four strips, not one rectangle - the drawable area is inside it.
+
+No ScaleDecimal assignment, no ScaleRatio, no SetScale anywhere: R23-907
+forbids shrinking a view to force a fit, so content that does not fit is
+LargerSheetRequired with the required and available sizes stated. SealLayout
+photographs the mutation ledger when layout completes so R23-909 can prove
+nothing was created afterwards.
+
+### Verification
+
+Procedure blocks balanced 33/33 and 11/11. ANSI-only bytes, CRLF, no BOM,
+max line 76. 32 Phase 9 contracts. Suite 334 tests with the five known-stale
+R20 failures. Preflight 35 managed components. MACRO_SOURCE_REVISION
+unchanged at target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phase 8: semantic section-dimension engine
 
 `Module10_SectionDimensionEngine.bas` (28 procedures),

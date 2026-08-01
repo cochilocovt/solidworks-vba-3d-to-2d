@@ -20,6 +20,11 @@
       "kind": "ClassModule"
     },
     {
+      "name": "CContentEnvelope",
+      "file": "CContentEnvelope.cls",
+      "kind": "ClassModule"
+    },
+    {
       "name": "CDatumProof",
       "file": "CDatumProof.cls",
       "kind": "ClassModule"
@@ -117,6 +122,11 @@
     {
       "name": "Module17_SectionPath",
       "file": "Module17_SectionPath.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module18_ContentEnvelope",
+      "file": "Module18_ContentEnvelope.bas",
       "kind": "StdModule"
     },
     {

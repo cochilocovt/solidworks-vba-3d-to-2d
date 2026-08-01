@@ -1510,3 +1510,74 @@ the annotation is attached to nothing. A dangling attachment appears as
 `swSelNOTHING` with a Nothing in the matching entity slot - which is how
 "associative" is proved rather than assumed.
 
+## 2026-08-01 R23 Phase 9 envelope and layout contracts
+
+### Which sources state their frame, and which do not
+
+| Member | Frame stated by the Remarks |
+|---|---|
+| `IView.GetOutline` | Yes - bounding box in metres on the drawing page, `[Xmin, Ymin, Xmax, Ymax]` |
+| `IAnnotation.GetPosition` | Yes - in a drawing, relative to the sheet origin at the lower-left corner |
+| `INote.GetExtent` | Yes - six doubles, lower-left and upper-right, in sheet space |
+| `IAnnotation.GetLeaderPointsAtIndex` | No, but computed from the text and attachment points |
+| `IDisplayData.GetLineAtIndex3` | **No** |
+| `IDisplayData.GetTextPositionAtIndex` | Offset only - see below |
+| `IView.GetSectionLineInfo2` | **No**; Phase 0 proved VIEW-SKETCH frame |
+
+R23 Phase 9 converts section geometry through the inverse of Module17's
+transform and COUNTS whether display-data points agree with the view's own
+outline rather than asserting a frame the corpus does not state.
+
+### GetTextPositionAtIndex is an offset, not a coordinate
+
+Its Remarks say the returned values "are actually offset values from the
+origin of this display data". Treated as absolute coordinates they pull
+every envelope towards the sheet origin, which looks like a plausible
+rectangle and is wrong. Phase 9 adds them to the annotation position and
+skips the text contribution entirely when that position is unavailable.
+
+### GetLeaderStyle carries bitmask flags the corpus mangles
+
+`swLeaderStyle_e` returns its base members correctly - `swNO_LEADER` 0,
+`swSTRAIGHT` 1, `swBENT` 2, `swUNDERLINED` 3, `swSPLINE` 4, `swVDA` 8 - but
+every attachment flag comes back with `value: "0"` and a description reading
+`x100 or 256`, `x200 or 512`, `x400 or 1024`, `x800 or 2048`, `x1004 or
+4100`. That is the same leading-`0x` parse defect recorded for
+`swAutoInsertCenterMarkTypes_e`: the real values are 256, 512, 1024, 2048
+and 4100.
+
+Because `GetLeaderStyle` returns the base style OR-ed with those flags, the
+documented point-count rule (0 for no leader, 2 for straight/underlined, 3
+for bent) cannot be applied without masking. Phase 9 sidesteps it entirely
+and consumes whole XYZ triples from the array `GetLeaderPointsAtIndex`
+actually returns.
+
+### GetSectionLineInfo2's grammar is ambiguous
+
+Its Remarks give
+`[numSectionLines, layer, {numSegments, {lineType, startPt[3], endPt[3]},
+arrowStart1[3], arrowEnd1[3], arrowWidth1, arrowHeight1, arrowStyle1,
+arrowStart2[3], arrowEnd2[3], arrowWidth2, arrowHeight2, arrowStyle2,
+textPt1[3], textPt2[3], textHeight}]` - one `layer` double overall.
+`IView.GetSectionLineCount2`'s Remarks say its `Size` "includes the layer-ID
+double for each section line".
+
+Both readings are walked in a dry run and the one whose consumption matches
+the array length exactly is used; neither is assumed. `textHeight` is in
+metres and `IView.GetSectionLineStrings` supplies the actual label text.
+
+### Layout members
+
+`IView.Position` gets or sets the X and Y of the view's geometric centre
+relative to the sheet origin. Its Remarks carry two constraints worth
+recording: alignments are honoured exactly as in the UI, so an aligned view
+moves only along its alignment vector and drags its aligned children with
+it; and `IView::SetViewPosition` is the member for moving a view
+independently of its children. `IModelDoc2.EditRebuild3` is needed after
+view changes for the graphics to reflect them.
+
+`IView.ScaleDecimal` gets or sets the view scale as a decimal
+(`ScaleRatio` 3:2 is `ScaleDecimal` 1.5). Phase 9 only ever READS it -
+R23-907 forbids reducing an approved scale to force a fit - and a contract
+asserts no assignment exists in the module.
+

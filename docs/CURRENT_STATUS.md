@@ -2,6 +2,62 @@
 
 Date: 2026-08-01
 
+## R23 Phase 9 source complete, awaiting first live run
+
+**2026-08-01.** `Module18_ContentEnvelope.bas` (33 procedures) plus
+`CContentEnvelope.cls`. Statically verified only.
+
+A content envelope is everything that travels with a view - model outline,
+dimension primitives and text boxes, note extents, leader points, section
+segments, arrows, and the J-labels with their text heights. Layout that
+reasons about the model outline alone moves a view into a place its
+annotations do not fit, which is how the old J-J label reached the zone
+region in the first place.
+
+**The frame work is the part that matters here.** Four sources document
+their frame and one does not:
+
+- `IView.GetOutline` - page frame, documented;
+- `IAnnotation.GetPosition` - sheet-relative in drawings, documented;
+- `INote.GetExtent` - sheet space, documented;
+- `IView.GetSectionLineInfo2` - VIEW-SKETCH frame, proved by Phase 0;
+- `IDisplayData` points - **the Remarks state no frame at all**.
+
+Section geometry therefore goes through `ViewSketchToPage`, the exact
+inverse of Module17's forward transform, and the two are round-trip checked
+against each other before a single point is contributed. Display-data points
+are contributed and their agreement with the view's own outline is COUNTED,
+not asserted - `displayDataFramePageConsistent` and
+`displayDataFrameInconsistent` are the fields to read on the first run.
+Claiming a frame the Help does not state would be exactly the kind of
+confident guess this project has paid for before.
+
+Two more traps handled explicitly: `GetTextPositionAtIndex` is an OFFSET
+from the display-data origin rather than a coordinate, and leader points are
+consumed as triples from the returned array instead of via `GetLeaderStyle`,
+whose value is OR-ed with attachment bitmask flags the corpus returns
+mangled.
+
+`GetSectionLineInfo2`'s grammar is ambiguous between its own Remarks and
+`GetSectionLineCount2`'s - one layer double, or one per section line. Both
+readings are walked in a dry run and the one whose consumption matches the
+array length exactly is used. A parse that consumes the wrong number of
+doubles produces plausible coordinates, which is the worst kind of wrong.
+
+**The fixed upward bias is gone.** `PlanPlacement` packs rows from the
+envelopes' own sizes and centres the block in the usable rectangle;
+contracts assert `topBoundary -`, `Bias` and `rowCenterY` are all absent.
+Nothing is pinned to a boundary, because a row pinned to a boundary has
+nowhere to put the annotations that hang above it.
+
+**Still unrun:** R23-903 and R23-904 both require mutation.
+`ApplyPlacementPlan` is the only procedure that moves anything and refuses
+without `allowMutation`.
+
+Verification: 32 Phase 9 contracts, suite 334 tests with the same five stale
+R20 failures. Preflight 35 components. `MACRO_SOURCE_REVISION` remains
+`r22`.
+
 ## R23 Phase 8 source complete, awaiting first live run
 
 **2026-08-01.** `Module10_SectionDimensionEngine.bas` (28 procedures) plus
