@@ -1,5 +1,63 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 5 read-only gate satisfied
+
+Final run: `schemes=4|horizontalSchemes=2|verticalSchemes=2|`
+`creditedLocations=10|expectedLocations=10|coverageFailures=None|creations=0|`
+`initialSelectionCount=0|finalSelectionCount=0|drawingUnchanged=True`.
+
+### Proven live
+
+- **R23-500** four schemes, keyed by view role + machining face + datum
+  policy + direction. The top-face and side-face families separated without
+  any view name being read, because machining face comes from the location's
+  sign-normalized axis.
+- **R23-501** `Drawing View4` horizontal datum is the stepped bore's
+  projected centre, chosen by the CentreBoreProjectedCentre policy rather
+  than by fallback, and proved selectable with ownership confirmed after the
+  fact through ISelectionMgr.GetSelectedObjectsDrawingView2.
+- **R23-503 / R23-504** two X buckets and three Y buckets in the primary
+  view, every bucket anchored.
+- **R23-505** all four side holes credited across two page positions.
+- **R23-507** profileEntries=1; the stepped bore never enters a bucket.
+- **R23-509** ten small-hole locations, ten credited, no coverage failures.
+
+### Open, and stated as open
+
+- **R23-502 is NOT met.** The vertical datum resolves to the lowest
+  projected hole and is recorded as datumKind=ProjectionDerived. The task
+  asks for bottom outline geometry, which is a different kind of entity.
+  Recording the kind separately from the policy is what keeps this visible
+  instead of letting a weaker datum satisfy the requirement quietly.
+- **R23-506 half met**: four side locations resolved and credited, none
+  dimensioned.
+- **R23-508 unrun**: it mutates.
+
+### Two defects the runs found
+
+The probe called Module6_QAEngine.EmitRunEvidence, the production gate whose
+RequireCoreStages demands fourteen pipeline stages a read-only probe never
+performs. It failed closed and reported RESULT: FAIL for a run that had
+resolved every scheme and datum it found.
+
+Then the coverage gate reported credited=8 of an expected 10.
+MarkCoincidentProjections sets CoincidentWithAnchoredKey on the UNANCHORED
+projection - it explicitly skips anything that already has an anchor - and
+the ledger read that field off the projection it was bucketing, which is by
+definition the anchored one. The unanchored twin holding the link had
+already been filtered out by the Accepted guard, so it was unreachable from
+either side. Two of P-0251's four side holes went silently uncredited.
+
+Both are now pinned by contracts, including one that asserts which end of
+the coincidence link Module13 writes, so an inversion fails statically
+rather than surfacing as a coverage shortfall.
+
+### Verification
+
+25 Phase 5 contracts. Suite 215 tests with the five known-stale R20
+failures. Preflight 27 managed components. MACRO_SOURCE_REVISION unchanged
+at target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phase 5: ordinate schemes and the transaction (source)
 
 `Module15_OrdinateScheme.bas` (36 procedures), `COrdinateScheme.cls`,

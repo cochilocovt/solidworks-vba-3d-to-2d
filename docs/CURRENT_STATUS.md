@@ -2,7 +2,43 @@
 
 Date: 2026-08-01
 
-## R23 Phase 5 source complete, awaiting first live run
+## R23 Phase 5 read-only gate SATISFIED (third live run)
+
+**2026-08-01.** `schemes=4|horizontalSchemes=2|verticalSchemes=2|`
+`creditedLocations=10|expectedLocations=10|coverageFailures=None`.
+Read-only throughout: `creations=0`, `initialSelectionCount=0`,
+`finalSelectionCount=0`, `drawingUnchanged=True`.
+
+Proven live: R23-500 (four measured schemes), R23-501 (stepped-bore centre
+datum, selection and ownership proved), R23-503 (two X buckets), R23-504
+(three Y buckets), R23-505 (all four side holes credited across two page
+positions), R23-507 (`profileEntries=1`, stepped bore held out by family
+size not radius), R23-509 (10 of 10).
+
+**Still open, and stated as open:**
+
+- **R23-502 is NOT met.** The vertical datum is the lowest projected hole,
+  recorded `datumKind=ProjectionDerived`. The task asks for the part's
+  bottom outline geometry. Not claimed on a weaker datum.
+- **R23-506 is half met.** All four side locations are resolved and
+  credited; none is dimensioned yet.
+- **R23-508 is unrun.** It creates dimensions, so it needs authorization and
+  a target that is not the manual reference drawing.
+
+Two defects were found by the run rather than by me. The QA gate popped
+`RESULT: FAIL` because the probe called `Module6_QAEngine.EmitRunEvidence`,
+the production gate demanding fourteen pipeline stages a probe never runs.
+Then the coverage gate reported `credited=8, expected=10`: I read
+`CoincidentWithAnchoredKey` from the anchored end, where
+`MarkCoincidentProjections` never sets it, and the unanchored twin holding
+it had already been filtered out. Two of P-0251's four side holes were
+silently uncredited. Both fixed, both now pinned by contracts.
+
+Verification: 25 Phase 5 contracts, suite 215 tests with the same five stale
+R20 failures. Preflight 27 components. `MACRO_SOURCE_REVISION` remains
+`r22`.
+
+## Historical: R23 Phase 5 source complete
 
 **2026-08-01.** `Module15_OrdinateScheme.bas` (36 procedures) plus typed
 records `COrdinateScheme.cls` and `COrdinateBucket.cls`. Statically verified

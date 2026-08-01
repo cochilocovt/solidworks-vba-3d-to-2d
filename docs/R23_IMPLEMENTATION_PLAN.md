@@ -815,21 +815,54 @@ records, `COrdinateScheme.cls` and `COrdinateBucket.cls`.
 `AddOrdinateDimension` call at all, and reports selection counts before and
 after, so it can be run against the manual reference drawing.
 
-**Status: source complete, awaiting first live run.** Statically verified
-only. No claim below is runtime-proven yet.
+**Status: read-only gate SATISFIED (three live runs).** Final run:
+`schemes=4|horizontalSchemes=2|verticalSchemes=2|creditedLocations=10|`
+`expectedLocations=10|coverageFailures=None|creations=0|`
+`initialSelectionCount=0|finalSelectionCount=0|drawingUnchanged=True`.
 
-- [ ] **R23-500:** Replace feature-family ordinate grouping with:
-  `view role + machining face + datum-policy ID + direction`.
-- [ ] **R23-501:** Prove a selectable centre datum for P-0251 X locations.
-- [ ] **R23-502:** Prove selectable bottom geometry for P-0251 Y locations.
-- [ ] **R23-503:** Create face-hole X coverage for the two symmetric columns.
-- [ ] **R23-504:** Create face-hole Y coverage for the three rows.
-- [ ] **R23-505:** Deduplicate equal projected coordinates per direction while
-  crediting every represented physical location.
-- [ ] **R23-506:** Resolve and dimension all four side tapped-hole locations
-  using the reference-approved side-location scheme.
-- [ ] **R23-507:** Keep profile/reference dimensions such as `R36`, outer
-  limits, centre height, and thickness separate from the small-hole ledger.
+Everything the probe can prove without creating a dimension is proven. What
+remains open is exactly what requires mutation - R23-506 and R23-508 - plus
+R23-502, which is **not met** and is marked so below rather than being
+claimed on a weaker datum.
+
+- [x] **R23-500:** Scheme key is `view role + machining face + datum policy
+  + direction`, every part measured. Four schemes resolved live, two
+  horizontal and two vertical, across `Drawing View4` and `Drawing View7`.
+  Machining face comes from the location's sign-normalized axis, so the
+  top-face and side-face families landed in separate schemes without any
+  view name being read.
+- [x] **R23-501:** `Drawing View4` horizontal datum resolved to the stepped
+  bore's projected centre (`x=0.207332`, source moment `0,0.062,0`) by the
+  `CentreBoreProjectedCentre` policy rather than by fallback, and was proved
+  selectable: `selection=True|selectedCount=1|ownershipProven=True` via
+  `ISelectionMgr.GetSelectedObjectsDrawingView2`.
+- [ ] **R23-502: NOT MET.** The vertical datum resolves to the lowest
+  projected hole (`y=0.087415` in `Drawing View4`), recorded as
+  `datumKind=ProjectionDerived`. This task asks for the part's bottom
+  **outline** geometry, which is a different kind of entity and has not been
+  proved. The distinction is carried in evidence precisely so a
+  projection-derived datum can never be read as an outline datum.
+- [x] **R23-503:** `Drawing View4` horizontal scheme resolved `buckets=2`,
+  `anchoredBuckets=2`, at `x=0.222332` and `x=0.192332`, crediting three
+  counterbores each - the two symmetric columns. Creation is R23-508.
+- [x] **R23-504:** `Drawing View4` vertical scheme resolved `buckets=3`,
+  `anchoredBuckets=3`, at `y=0.087415`, `y=0.127415` and `y=0.167415`,
+  crediting two counterbores each - the three rows. Creation is R23-508.
+- [x] **R23-505:** Proven live, and the coverage gate caught a real defect
+  doing it. The four side holes occupy two page positions in
+  `Drawing View7`; `ORDINATE_COINCIDENT_CREDIT` now credits all four while
+  the horizontal scheme holds a single bucket. First run reported
+  `credited=8, expected=10` because the coincidence link was read from the
+  anchored end, where it is never set.
+- [ ] **R23-506: half met.** All four side tapped-hole locations are
+  **resolved and credited** - `creditedLocations=4` in both `Drawing View7`
+  schemes, with a proven selectable anchor. They are not yet **dimensioned**;
+  that is the mutating half and is unrun.
+- [x] **R23-507:** `profileEntries=1` in both `Drawing View4` schemes - the
+  stepped bore is held apart from the small-hole ledger and never enters a
+  bucket. Membership is family size read from the graph
+  (`rule=FamilySize>=2`), not a radius threshold: the bore is excluded for
+  being a singleton, not for being large.
 - [ ] **R23-508:** For each ordinate transaction:
   - activate and verify the view;
   - bind `ISelectData.View`;
@@ -841,8 +874,10 @@ only. No claim below is runtime-proven yet.
   - call `SetPickMode`;
   - clear selections on every exit;
   - enumerate and verify created display dimensions.
-- [ ] **R23-509:** Prove exactly ten P-0251 small-hole locations and complete
-  required directional coverage.
+- [x] **R23-509:** `smallHoleLocations=10|totalLocations=11|families=3`, and
+  `creditedLocations=10|expectedLocations=10|coverageFailures=None` with two
+  horizontal and two vertical schemes. Coverage is counted per distinct page
+  position and credited to locations, per the Phase 3 finding.
 
 ### Phase 6 — Reconcile native callouts and controlled fallback
 
