@@ -1522,7 +1522,14 @@ ContinueSchemeView:
         "|drawingUnchanged=" & _
         CStr(drawingSaveBefore = drawingSaveAfter)
 
-    Module6_QAEngine.EmitRunEvidence evidence
+    ' Deliberately NOT Module6_QAEngine.EmitRunEvidence. That is the
+    ' production gate: RequireCoreStages demands fourteen pipeline stages -
+    ' CONTROLLED_SHEET, LAYOUT, TITLE_PROPERTIES, FINAL_QA and the rest -
+    ' that a read-only probe never runs, so it fails closed and reports
+    ' RESULT: FAIL for a probe that in fact succeeded. The Phase 3 and
+    ' Phase 4 probes do not call it either. Evidence still reaches the
+    ' Immediate window: CRunEvidence.AddInfo/AddWarning/AddFailure each
+    ' Debug.Print their own line.
     Exit Sub
 
 Failed:

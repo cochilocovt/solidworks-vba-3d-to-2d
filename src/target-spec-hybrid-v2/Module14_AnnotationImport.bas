@@ -1097,7 +1097,7 @@ ContinueAttachment:
         ' Proven live: 38 of 38 annotations, every attachment, error 0. The
         ' call does not fail, it declines. This is a PART drawing and the
         ' member is documented as returning the entity "in the underlying
-        ' part or subassembly" — there is no underlying component to descend
+        ' part or subassembly" - there is no underlying component to descend
         ' into, which matches componentContext=DrawingContextOnly.
         verdict = "reverse=UnavailableNoModelCounterpart"
     Else
