@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "projectName": "Fable",
+  "targetSwp": "../../test_assets/iteration_evidence/r23/20260730-075811/live-probes/R23_Phase0ImportProbe.swp",
+  "sourceDirectory": "./import-transaction-source",
+  "bootstrapModule": "Module0_SourceDeployment",
+  "bootstrapProcedure": "DeployFromRequest",
+  "compileProbeProcedure": "CompileProbe",
+  "revisionSourceFile": "Module1_Main.bas",
+  "revisionPattern": "target-spec-hybrid-v2-20[0-9]{2}-[0-9]{2}-[0-9]{2}-r[0-9]+",
+  "components": [
+    {
+      "name": "Module1_Main",
+      "file": "Module1_Main.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module2_DrawingPipeline",
+      "file": "Module2_DrawingPipeline.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module4_ModelItemImporter",
+      "file": "Module4_ModelItemImporter.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module_R23Phase0DrawingProbes",
+      "file": "Module_R23Phase0DrawingProbes.bas",
+      "kind": "StdModule"
+    }
+  ]
+}

@@ -13,6 +13,691 @@ The MCP corpus identifies itself as **SOLIDWORKS 2026**, while this project targ
 
 No VBA source file was edited, renamed, moved, or deleted during this analysis. The protected baseline remains unchanged.
 
+## R23 Phase 0 live fixture evidence (2026-07-31)
+
+This section records installed-build behavior separately from the MCP corpus.
+It is from the read-only P-0251 probe log
+`test_assets/iteration_evidence/r23/20260730-075811/live-probes/R23_FEATURE_20260731_040539.log`
+on SOLIDWORKS 2025 SP1.2 (`RevisionNumber=33.1.2`).
+
+- `GetTypeName2="ICE"` plus `GetTypeName="Cut"` was observed for
+  `Cut-Extrude1`, `Cut-Extrude3`, and `Cut-Extrude4`. Each successfully exposed
+  typed `IExtrudeFeatureData2` selection access and release.
+- The CBORE Hole Wizard yielded six sketch points, M6, an 11 mm counterbore,
+  and a 6 mm counterbore depth. The M5 Hole Wizard yielded two source points,
+  M5x0.8, 5 mm thread diameter, and 10 mm thread depth. `Mirror1` owned
+  cylindrical faces whose seed feature was the M5 Hole Wizard.
+- `IsSuppressed2(swSpecifyConfiguration, Array("Defualt"))` returned Empty for
+  every feature in this VBA run. `IFeature.IsSuppressed` then reported active
+  state for the active configuration. This fallback is sufficient only for
+  active-model diagnostics; R23 must continue to fail closed if a drawing
+  view's referenced configuration cannot be proved.
+- On complete counterbore, tapped, mirrored, and cut-cylinder boundaries, both
+  tested orders preserved `Curve.IsCircle=True` and complete
+  `Edge.GetCurveParams3` evidence (`UMin=0`, `UMax=2pi`, coincident endpoints).
+  The probe's `CircleParams` helper nevertheless emitted `SkippedNotCircle`
+  despite true predicates before and after. R23 therefore must not make
+  `CircleParams` a load-bearing production dependency.
+- `InsertModelAnnotations4` with mask `18055274` and `DuplicateDims=True`
+  returned 25 unique identities in each tested transaction. A selected-primary
+  `AllViews=True` call placed 8 in the primary and 17 in the section, but 0 in
+  the side. Explicit section, side, then primary calls with `AllViews=False`
+  placed 17, 2, and 6 respectively, with 0 in the isometric. This installed
+  build evidence selects the explicit per-view transaction for R23.
+- The import produced one M5 Hole Wizard callout in the section, including
+  4.2 mm tap-drill diameter, 12.4 mm drill depth, `M5x0.8`, and 10 mm thread
+  depth. No M6 counterbore callout, H7 fit, or nonzero tolerance was imported.
+  Native import is therefore a first-priority request, not proof that every
+  required manufacturing callout will be present.
+
+## R23 Phase 2 live catalog evidence (2026-08-01)
+
+Read-only `R23_ProbeFeatureCatalog` run on P-0251, configuration `Defualt`
+(the model's own spelling), SOLIDWORKS 2025 SP1.2. `modelUnchanged=True`;
+47 features visited, 6 accepted, 0 warnings, 0 failures.
+
+- `IWizardHoleFeatureData2.HoleFit` returned `1` for the M6 counterbore and
+  `-1` for the M5x0.8 tapped hole. The 2025 Help states the property returns
+  `swWzdHoleScrewClearanceTypes_e` and "applies to counterbore and
+  countersink Hole Wizard features only"; the MCP corpus gives that enum as
+  exactly close `0`, normal `1`, loose `2`. `-1` is therefore outside the
+  enum and means not applicable, **not** a fit value. R23 records
+  out-of-enum codes as absent.
+- `IFace2.GetSeedFeature` resolved every mirrored face to the M5 Hole Wizard
+  seed. It supplies the seed **identity only** — no manufacturing values —
+  so a pattern instance's semantics must be read from the seed through the
+  same typed readers.
+- The axial interval separated two coaxial pairs of M5 tap-drill cylinders
+  (radius `0.0021`, i.e. the 4.2 mm tap drill) that share a line key but
+  occupy `-0.036..-0.0236` and `0.0236..0.036`. These are opposite blind
+  holes on one axis and correctly resolved to four distinct physical
+  locations rather than two. This is the case the Plücker line key alone
+  cannot decide.
+- 18 qualifying cylindrical faces consolidated to 11 physical locations
+  through 7 merges: six M6 counterbores (radii `0.0055`/`0.0033`, two faces
+  each), one Ø47/Ø40 stepped bore (radii `0.0235`/`0.0200`, two faces), and
+  four single-face M5 tap drills.
+- `ICosmeticThreadFeatureData` features `Hole Thread1`/`Hole Thread2` own no
+  faces and were rejected `NoOwnedGeometry`. Their thread data is already
+  carried by the owning Hole Wizard feature, so nothing is lost, but R23
+  must not expect cosmetic threads to contribute geometry.
+- **`ObjPtr` is not a stable feature identity across a traversal.** Two runs
+  over the unchanged part visited 47 then 46 features, and the sketches
+  visited twice differed between runs. A feature reached both as a tree
+  entry and as a consuming feature's subfeature can arrive through two COM
+  wrappers at different addresses. Combined with the earlier finding that
+  wrapper addresses are also *reused* across distinct objects, `ObjPtr` is
+  unusable as an identity component in either direction. `IFeature.Name`
+  plus `GetTypeName2` is the exact-once key within a part document.
+
+## R23 Phase 3 first live drawing run (2026-08-01)
+
+Read-only `R23_ProbeViewProjections` on the P-0251 drawing. Installed-build
+behaviour, recorded separately from the MCP corpus.
+
+- `ISheet.GetViews` returned **14 views**, six of which are the sheet's
+  standard-view placeholders (`*Left`, `*Bottom`, `*Current`, `*Isometric`,
+  `*Dimetric`, `*Trimetric`). All six returned zero entities from
+  `GetVisibleEntities2`. Any per-view pass must expect them.
+- `IView.GetVisibleComponents` returned exactly one component for every real
+  view of this **part** drawing, named `P-0251-14A-001-67` for
+  `Drawing View4` and `P-0251-14A-001-69` for `Drawing View7`.
+  `IView.GetVisibleDrawingComponents` returned nothing on every view, which
+  matches the 2025 Help limiting it to assembly drawings.
+- `Section View J-J` reported its visible component as
+  `P-0251-14A-001-SectionAssembly-3-1/P-0251-14A-001-1`. A section view is
+  backed by a synthetic section assembly, consistent with the Help's note
+  that section views have no `ReferencedDocument`.
+- `GetVisibleEntities2(component, swViewEntityType_Edge)` returned 64, 68 and
+  53 edges for `Drawing View4`, `Section View J-J` and `Drawing View7`.
+- `IView.ReferencedConfiguration` returned `Defualt` with
+  `configurationProven=True` on all 14 views, including the placeholders.
+- **`IEdge.GetCurveParams3` returns an `ICurveParamData` OBJECT**, not an
+  array of doubles — unlike `ICurve.CircleParams` and
+  `ISurface.CylinderParams`, which do return 7-element double arrays. It
+  must be bound with `Set`; a `Let` assignment into a Variant raises **error
+  438** because `ICurveParamData` has no default member. Its seven members
+  are `CurveTag`, `CurveType`, `EndPoint`, `Sense`, `StartPoint`,
+  `UMaxValue`, `UMinValue`, and the 2025 Help requires `IEdge::GetCurve` to
+  be called first. Complete-circle proof therefore comes from
+  `.StartPoint`/`.EndPoint` coincidence plus `.UMinValue`/`.UMaxValue`, which
+  is what Phase 0 recorded as `UMin=0, UMax=2pi`.
+- `swDrawingViewTypes_e` observed on this build: the ten sheet placeholders
+  report `7` (`swDrawingNamedView`) with zero visible entities; real
+  projected views report `4` (`swDrawingProjectedView`) and the section view
+  `2` (`swDrawingSectionView`). The sheet has four real views —
+  `Drawing View2` (65 edges), `Drawing View4` (64), `Section View J-J` (68)
+  and `Drawing View7` (53).
+### Third run: correspondence and selection proved (2026-08-01)
+
+- **`IView.GetCorrespondingEntity` works on a model reached through
+  `IView.ReferencedDocument` with the drawing active.** 26 anchors resolved
+  through route A, each identity-confirmed against the view's
+  `GetVisibleEntities2` inventory by `ISldWorks.IsSame`. Route B was never
+  needed. The earlier hypothesis that correspondence required the part as
+  the active document is disproved.
+- Mapping is per-edge **and view-dependent**: the same location yielded
+  `mappedEdges` of 0 to 4 out of the same 4 candidate edges in different
+  views. Production must try every edge of every contributing face in every
+  view independently, never caching a per-location result across views.
+- **Hidden geometry does not map.** In the side view only the near column of
+  counterbores (`py = -0.015`) and the near pair of tapped holes resolved;
+  the far ones returned Nothing from route A rather than being filtered by
+  route C.
+- **A section view maps nothing.** All 11 locations returned
+  `mappedEdges=0` in `Section View J-J`, whose visible component is the
+  synthetic `…-SectionAssembly-3-1/…`. Model edges of the original part have
+  no correspondent there; section-view annotation needs a different route.
+- **`ISelectData.View` raised error 91 on all 26 selection attempts**,
+  confirming the deviation this repository recorded for
+  `Module2_DrawingPipeline.CreatePrimarySection` on a fresh code path. With
+  the binding skipped, `IEntity.Select4(False, selectData)` still selected
+  into the correct view every time:
+  `ISelectionMgr.GetSelectedObjectsDrawingView2(1, -1)` returned the
+  expected view for 26 of 26. Proving ownership after the fact is therefore
+  a sufficient substitute for the unavailable binding.
+- `ICurve.IsCircle` plus `IEdge.GetCurveParams3` reproduced the Phase 0
+  proof exactly on drawing-mapped model edges: `uMin=0`,
+  `uMax=6.283185307`, endpoint gap `0.000000000`.
+
+### Fourth run: axis normality and a VBA out-parameter trap (2026-08-01)
+
+- **Normal-axis classification confirmed against four views.**
+  `IView.ModelToViewTransform`, applied to two model points and differenced,
+  classified 7 Z-axis holes as normal in the front view, 4 Y-axis tapped
+  holes as normal in both the side and section views, and **0 in the
+  isometric**. The isometric result is the strongest check available: an
+  isometric has no hole axis normal to the sheet, and the test agreed.
+- **VBA trap, not a SOLIDWORKS one, but it corrupts API evidence.** A class
+  module's `Public` variable is exposed as a property, so passing
+  `projection.ProjectedAxisX` as a `ByRef` out-parameter gives the callee a
+  temporary that is discarded on return. The run logged
+  `projectedAxis=0,0,0` on every line while the function's return value was
+  correct. Any R23 code taking geometry out of a helper must use locals and
+  assign the class field explicitly.
+- `IView.GetDisplayMode2` returns `swDisplayMode_e`, where `swHIDDEN=2` is
+  Hidden Lines Removed and `swHIDDEN_GREYED=1` is Hidden Lines Visible.
+  Under HLR a far-side hole has no drawing entity, so
+  `GetCorrespondingEntity` returns Nothing and no search strategy can anchor
+  it. This must be read before attributing an unanchored location to a
+  mapping defect.
+- Anchor selection preferred the Ø6.6 through hole (`edgeRadiusM=0.0033`)
+  over the Ø11 counterbore mouth on all six counterbores, confirming that
+  the smallest coaxial radius is the right primary-diameter rule for a
+  manufacturing callout.
+
+### Fifth run: coincident projections are one drawing entity (2026-08-01)
+
+- **`IView.GetCorrespondingEntity` maps at most one model edge per drawing
+  entity.** Where two coaxial holes are viewed along their common axis they
+  occupy ONE page point and SOLIDWORKS holds ONE edge, so only one of the
+  two model edges maps. On P-0251's side view the six counterbores collapse
+  to three page points and the four tapped holes to two; the observed
+  mapped counts were exactly 3 and 2. **No search strategy can produce more
+  anchors than the drawing has entities**, so a coverage requirement must be
+  expressed per distinct page position, not per physical location.
+- **This is not a hidden-line effect.** `IView.GetDisplayMode2` reported
+  `HiddenLinesVisible` for both `Drawing View4` and `Drawing View7`, so the
+  far-face holes are drawn and still do not map. An earlier entry in this
+  document hypothesised Hidden Lines Removed as the cause; that hypothesis
+  is **disproved**. Observed modes on this drawing: the two projected views
+  `HiddenLinesVisible`, `Drawing View2` and `Section View J-J`
+  `HiddenLinesRemoved`, and all ten sheet placeholders `Shaded`.
+- **`IView.ModelToViewTransform` verified against a known-answer case.** The
+  isometric view returned a projected axis of
+  `0.707107, 0.408204, -0.577382` for a model Z axis — exactly
+  (1/√2, 1/√6, −1/√3) with magnitude 1.000, the standard isometric direction
+  cosines. Orthographic views returned clean `0,0,±1` and `±1,0,0`.
+
+## R23 Phase 3 contract checks (2026-08-01)
+
+Corpus evidence, checked before the projection engine was written. Not
+runtime proof.
+
+- **`ISldWorks.IsSame` returns `System.Int32` as `swObjectEquality`, not a
+  Boolean.** Members are exactly `swObjectNotSame=0`, `swObjectSame=1`,
+  `swObjectUnsupported=2` ("unable to determine if the specified objects are
+  the same object"). Any Boolean coercion makes `2` truthy and turns an
+  undecidable comparison into a false identity match. R23 compares to `1`
+  explicitly and defaults unreadable comparisons to not-same.
+  **Amended 2026-08-01:** defaulting `2` to not-same is correct behaviour but
+  silently discards a distinction that matters in diagnosis. Reconciliation
+  compares an entity resolved out of a drawing view against faces and edges
+  held from the part document; if that comparison is *undecidable* rather
+  than negative, every match fails for a reason no evidence line was
+  reporting. `RecordEquality` in `Module14_AnnotationImport.bas` keeps the
+  raw code and publishes the strongest one seen as `eqMax`. Whether `2`
+  actually occurs on this build is **not yet established** — the next live
+  run decides it.
+- **`IView.GetVisibleDrawingComponents` is documented as "unobscured drawing
+  components in this drawing view of an *assembly* drawing"**, returning
+  `IDrawingComponent`, whose `.Component` gives "a component object that
+  fully supports all of the `IComponent2` methods and properties". A part
+  drawing is therefore expected to supply the `GetVisibleComponents` handle
+  and not this one; R23 records that as `DrawingContextOnly` context rather
+  than a failure.
+- `swViewEntityType_e` is exactly edge `1`, vertex `2`, face `3`, silhouette
+  edge `4`.
+- `IView.GetCorrespondingEntity(Object)` accepts "a vertex, face, or edge
+  entity in the part or assembly" and returns "null or Nothing if none
+  found". The Phase 0 per-edge finding stands: accepting the documented face
+  route without trying edges would fail every counterbore.
+- `ISelectionMgr.GetSelectedObjectsDrawingView2(Index, Mark)` is 1-based with
+  `Mark = -1` meaning all selections regardless of marks. Index `-1` is
+  reserved for the dynamically highlighted view and is not used here.
+
+## R23 Phase 4 first live reconciliation run (2026-08-01)
+
+Read-only run on the manual reference drawing. `mutations=0`,
+`drawingUnchanged=True`.
+
+- **`IDimension.GetSystemValue3` returns 0 for a DRAWING dimension.** All 38
+  inventoried annotations reported a nominal of 0 when read with
+  `GetSystemValue3(swThisConfiguration, Empty)`. These are drawing-owned
+  reference dimensions (`RD4@Drawing View6@P-0251-14A-001.Drawing`) and a
+  drawing document has no configurations, so a configuration-scoped read has
+  nothing to resolve. `IDimension.SystemValue`, which takes no configuration,
+  is the correct member for drawing dimensions.
+- **The Ø47 H7 fit exists only in the drawing.** `RD4@Drawing View6` in
+  `Section View J-J` returned `swTolFITWITHTOL` (8) with a nonzero tolerance
+  and fit data, while Phase 0's direct read of the model's `D1@Sketch4` found
+  neither. Fits on this drawing set are drafting-stage, not model-derived.
+- **The reference drawing authors section diameters as `swLinearDimension`
+  (2)**, including the H7 one. Phase 0 showed *imported* section diameters
+  arrive as `swDiameterDimension` (6). The two authoring routes produce
+  different types for the same physical measurement, so dimension type alone
+  must never be used to decide that something is a diameter.
+- `IView.GetAnnotations` per view on this drawing: 2, 20, 8, 8. Types seen:
+  display dimension 4, cosmetic thread 1, note 6, and center-mark symbol 13.
+- `IAnnotation.GetAttachedEntities3` works on drawing-owned reference
+  dimensions: one hole callout reconciled to its physical location by
+  attached-entity identity against the projection anchor.
+
+## R23 Phase 4 second run: value and tolerance reads confirmed (2026-08-01)
+
+- **`IDimension.SystemValue` is the correct member for a drawing dimension;
+  `GetSystemValue3` returns 0.** Confirmed across all 30 display dimensions
+  in one run, each reporting both readings side by side. A drawing document
+  has no configurations, so any configuration-scoped value read is empty.
+- **`IDimensionTolerance` reads a named ISO fit correctly.** The reference
+  drawing's `47 H7 +0.025/0` returned `Type=8` (`swTolFITWITHTOL`),
+  `GetMaxValue2` `0.000025000` with status 0, `GetMinValue2` `0.000000000`
+  with status 0, and `GetHoleFitValue` the literal string `H7`. Dimensions
+  without a tolerance returned `Type=0` and status `1/1` on both bounds, so
+  status 1 is the "not applicable" marker.
+- **`IAnnotation.GetAttachedEntities3` returns 1 to 3 entities** for drawing
+  reference dimensions, center marks and cosmetic threads on this drawing;
+  only the free-standing note returned 0.
+- **A native hole callout does not attach to the same drawing entity R23
+  prefers as an anchor.** The counterbore callout attaches to the 11 mm mouth
+  edge; R23's anchor tier picks the 6.6 mm through hole. Both are mapped
+  aliases of one physical location, so reconciliation must test every mapped
+  entity rather than the anchor alone.
+- Ordinate chains read as `swOrdinateDimension` (1) with the chain's base and
+  one `swVertOrdinateDimension` (8); the zero members return a nominal of 0,
+  which is a genuine value rather than a failed read.
+
+## R23 Phase 4: forward correspondence is partial (2026-08-01)
+
+- **`IView.GetCorrespondingEntity` returns a SUBSET of a location's drawing
+  edges.** For each P-0251 counterbore it mapped 2 of the 4 model boundary
+  edges. The drawing edge that SOLIDWORKS' own native hole callout attaches
+  to — confirmed as `swSelEDGES` by `IEntity.GetType` — was **not** among the
+  18 aliases the forward route produced for `Drawing View4`. Forward
+  correspondence therefore cannot be used to reconcile pre-existing
+  annotations to geometry.
+- In `Section View J-J` the forward route produced **no** anchors or aliases
+  at all, so every annotation there is unreachable that way.
+- **`IModelDocExtension.GetCorrespondingEntity2` is the documented reverse
+  member**: it takes a vertex, face or edge in a drawing view or assembly
+  and returns the corresponding entity in the underlying part, or Nothing.
+  The Help for `IView.GetCorrespondingEntity` explicitly points to it for
+  this direction. It requires no drawing-view anchor, so it remains
+  available where the forward route fails.
+  **Live result, 2026-08-01 — the reverse route does not work in a part
+  drawing.** Across all 38 annotations of the P-0251 reference drawing and
+  every attached entity, the call returned Nothing with **error 0**:
+  `outcomes=draw1:unresolved:err0`, `resolved=0`. It declines rather than
+  raising. This holds for clean `swSelEDGES` attachments in ordinary
+  projected views, not only in the section view, so it is not a section-cut
+  artefact. Reading the contract again against that result: the member
+  returns the entity "in the **underlying part or subassembly**", i.e. it
+  descends a component level. A part drawing has no component to descend
+  into — matching the `componentContext=DrawingContextOnly` this project
+  already records — so there is nothing for it to return. Retained in
+  `Module14_AnnotationImport.bas` because it is the documented direction and
+  is expected to work in assembly drawings; it now reports
+  `reverse=UnavailableNoModelCounterpart` so the distinction is explicit in
+  evidence.
+  **Corollary:** `eqMax=-1` on every annotation means no `IsSame` comparison
+  ever executed, which closes the `swObjectEquality` Unsupported (2)
+  hypothesis raised earlier the same day. Cross-document comparison was
+  never reached and is not implicated.
+- `IEntity.GetType` returns `swSelectType_e`; values observed on attached
+  entities were 1 (`swSelEDGES`) and 0 (`swSelNOTHING`, for attachments that
+  do not resolve to geometry).
+
+## R23 Phase 4 contract checks (2026-08-01)
+
+Corpus evidence, checked before the import engine was written. Not runtime
+proof.
+
+- **The Phase 0 mask `18055274` decomposes with no unaccounted bit** against
+  `swInsertAnnotation_e`: `swInsertDatums` 2, `swInsertDimensions` 8,
+  `swInsertGTols` 32, `swInsertNotes` 64,
+  `swInsertDimensionsMarkedForDrawing` 32768,
+  `swInsertHoleWizardProfileDimensions` 65536,
+  `swInsertHoleWizardLocationDimensions` 131072, `swInsertholeCallout`
+  1048576, `swInsertTolerancedDims` 16777216. The callout member is spelled
+  with a lowercase h.
+- **`InsertModelAnnotations4` is on `IDrawingDoc`, not
+  `IModelDocExtension`.** No `InsertModelAnnotations3` exists on the
+  extension. It takes eight arguments — Option, Types, AllViews,
+  DuplicateDims, HiddenFeatureDims, UsePlacementInSketch,
+  InsertAllAnnotations, InsertAllReferenceGeometry — and returns an **array
+  of inserted `IAnnotation` objects**, not a count. `DuplicateDims=True`
+  means *eliminate* duplicates.
+- **`IDimensionTolerance.GetMinValue2` and `GetMaxValue2` return the status**
+  (`swDimensionToleranceWarning_e`) and deliver the value through an out
+  parameter. The out parameter must be a local variable: a class `Public`
+  field is exposed as a property and the write-back would be discarded, the
+  same trap recorded for the fourth Phase 3 run.
+- **`swTolType_e` gives `swTolFIT` and `swTolMETRIC` the SAME value, 7.** A
+  tolerance type of 7 therefore cannot be reported as one rather than the
+  other. Fit-bearing types are 7, `swTolFITWITHTOL` 8 and `swTolFITTOLONLY`
+  9.
+- `GetAttachedEntities3` is a member of `IAnnotation`, not
+  `IDisplayDimension`; reach it via `IDisplayDimension.GetAnnotation` or
+  from an inventory that already holds the annotation.
+- `IDimension.GetSystemValue2` is marked **obsolete**; `GetSystemValue3`
+  takes `swInConfigurationOpts_e` (`swThisConfiguration` = 1) and returns a
+  Variant.
+- `swAnnotationType_e` values used: display dimension 4, GTol 5, note 6,
+  datum tag 2, datum origin 16, cosmetic thread 1.
+
+### Installed-contract checks for the final R23 probes
+
+The final Phase 0 probe source was checked against installed SOLIDWORKS 2025
+SP1.2 interop `33.1.2.4`. This is installed-interface evidence, not runtime
+proof:
+
+- `IModelDocExtension.AddOrdinateDimension(Int32, Double, Double, Double)`
+  returns `Int32`; installed `swAddOrdinateDims_e` values are vertical `2` and
+  horizontal `3`.
+- Installed `swCreateOrdDimError_e` values are success `0`, general failure
+  `1`, no internal dimensions `2`, bad selection `3`, model not loaded `4`,
+  same-part-only `5`, extra selection `6`, ordinate failure `7`, duplicate
+  `8`, bad direction `9`, and undefined `-1`.
+- `IEntity.Select4(Boolean, ISelectData)` returns `Boolean`;
+  `IModelDoc2.SetPickMode()` returns `Void`; and
+  `ISelectionMgr.GetSelectedObjectCount2(Int32)` plus
+  `GetSelectedObjectType3(Int32, Int32)` expose cleanup/selection readback.
+- `IView.GetVisibleComponents()`, `GetCorrespondingEntity(Object)`,
+  `GetDisplayDimensions()`, `GetSection()`,
+  `GetSectionLineCount2(Int32 ByRef)`, and `GetSectionLineInfo2()` are present.
+- Installed dimension types include linear `2`, diameter `6`, horizontal
+  ordinate `7`, vertical ordinate `8`, and diametric-linear `15`.
+  `IDimension.Tolerance` exposes type, fit type/style, hole/shaft fit, and
+  min/max status/value; `IDimension.GetToleranceFitValues()` returns `String`.
+  `IDisplayDimension.GetDisplayData()` exposes the line/arrow/text primitives
+  used by the probe.
+- `IDrSection.GetLabel()`, `GetName()`, `IsAligned()`, `SectionDepth`,
+  `GetLineInfo()`, `GetArrowInfo()`, and `GetTextInfo()` are present.
+- `IDisplayData.GetLineAtIndex3(Int32)`,
+  `GetArrowHeadAtIndex2(Int32)`, `GetTextAtIndex(Int32)`,
+  `GetTextPositionAtIndex(Int32)`, `GetTextHeightAtIndex(Int32)`, and
+  `GetTextAngleAtIndex(Int32)` match the probe's readback calls.
+
+The local `solidworks-api` MCP was not callable in this session. The probe uses
+the already recorded official selection-order/`SetPickMode` contract and the
+installed signatures/numeric values above; live compilation and execution
+remain mandatory.
+
+### Final drawing-contract probe runtime (2026-07-31)
+
+The user compiled and ran both disposable final-probe entry points on the
+authorized P-0251 fixture. These observations are installed-build runtime
+evidence; they do not replace official API contracts or production acceptance.
+
+- The ordinate entry point obtained the primary view's visible component and
+  then stopped with `CounterboreLocationsUnavailable`. No datum/entity
+  selection and no `AddOrdinateDimension` call occurred. Consequently,
+  `IView.GetCorrespondingEntity` behavior and the ordinate transaction remain
+  unproved. The next read-only diagnostic must expose each face/edge rejection
+  and compare direct active-part mapping, component-mediated mapping, and
+  `IView.GetVisibleEntities2(component, Edge)`.
+- The imported 47 mm item is `D1@Sketch4` and the imported 40 mm item is
+  `D1@Sketch6`; both report installed dimension type `6`
+  (`swDiameterDimension`). Neither reports H7 or a nonzero tolerance. The
+  source model's `D1@Sketch4` tolerance must be read directly before choosing
+  whether model data or an explicitly approved target/reference specification
+  is authoritative.
+- `GetSectionLineCount2` reported one line with size 49 and
+  `GetSectionLineInfo2` returned 49 items, so the flattened payload passed the
+  structural count/size check. The probe's per-dimension loop did not reset all
+  target and nominal fields, however, and its later derived labels are not
+  accepted evidence.
+- The live values show that the three J-J segment endpoints are expressed in
+  source-view sketch coordinates, while the arrow and label positions are in
+  page coordinates. This coordinate-frame conclusion is an inference from the
+  installed runtime payload, the section-creation path, and the full-sheet
+  screenshot; the unavailable MCP did not independently confirm it. Production
+  `Module6_QAEngine` currently compares the raw segment values with a
+  page-coordinate part-identification extent, so that clearance check is
+  invalid until the segment endpoints are transformed to page coordinates
+  exactly once.
+
+The accepted logs, hashes, screenshots, and required probe corrections are
+indexed in `docs/R23_PHASE0_PROBE_FINDINGS_AND_NEXT_STEPS.md`.
+
+### 2026-07-31 corrected-probe MCP contract lookups
+
+The local `solidworks-api` MCP was callable again in this session. The
+corrected disposable drawing-contract probes rely on the following MCP
+contracts (compatibility-snapshot evidence; numeric values remain subject to
+installed-build confirmation, and live compilation/execution remain
+mandatory):
+
+- `IView.GetCorrespondingEntity(Entity)` accepts a vertex, face, or edge
+  entity in the part or assembly and returns the corresponding drawing-view
+  entity, or Nothing when none is found. Its Remarks point to
+  `IModelDocExtension.GetCorrespondingEntity2` for the reverse direction.
+- `IComponent2.GetCorrespondingEntity(Entity)` returns the corresponding
+  entity in the context of the component; the corrected probe uses it as the
+  component-mediated mapping route before view correspondence.
+- `IView.GetVisibleEntities2(LpViewComponent, EntityType)` requires a
+  `Component2` plus `swViewEntityType_e`; visible entities are entities not
+  completely obscured in the view.
+- `ISldWorks.IsSame(Object1, Object2)` returns `swObjectEquality`:
+  `swObjectNotSame=0`, `swObjectSame=1`, `swObjectUnsupported=2`. The probe
+  logs the raw value so an unsupported comparison is distinguishable from a
+  negative identity.
+- `IModelDoc2.Parameter(StringIn)` accepts the fully qualified dimension
+  name (for example `D1@Sketch4`) and returns the `IDimension`; this is the
+  read-only route for the direct part-source H7 readback.
+- `IDimension.FullName` returns `<Dimension>@<Feature>@<Model>`.
+- `IView.GetXform` returns three doubles: view X/Y location relative to the
+  sheet origin plus the drawing-view scale. Together with `IView.Angle`
+  this defines the page-to-view-sketch conversion whose exact inverse the
+  corrected probe applies exactly once to returned section segments.
+- `INote.GetExtent` returns six doubles describing the note's lower-left
+  and upper-right box extents in sheet space, relative to the drawing
+  origin at the lower-left corner. The probe measures the template's
+  `*P-0251-14A-001*` part-identification note with it.
+- `IDisplayDimension.GetText(WhichText)` accepts `swDimensionTextParts_e`
+  (`swDimensionTextPrefix=1`, `swDimensionTextSuffix=2`, callout parts 3-8;
+  `swDimensionTextAll=0` is SetText-only) and does not support hole
+  callouts.
+- `IFeature.GetFirstDisplayDimension` requires
+  `IModelDoc2.SetUserPreferenceToggle` with `swDisplayFeatureDimensions`
+  before feature display dimensions are returned, and may not return the
+  same display dimension on every call. Because toggling a document
+  preference would mutate fixture document state, the corrected probe does
+  not traverse model display dimensions; it reads the model `IDimension`
+  through `IModelDoc2.Parameter` instead.
+- `swTolType_e` returned a suspect duplicated table row
+  (`swTolFIT=7` alongside `swTolMETRIC=7`), so the probe logs raw
+  tolerance-type numbers and treats any name decoding as informational
+  only.
+
+### 2026-07-31 fifth run: ordinate transaction proved on the installed build
+
+Installed-build runtime evidence. Both datum-first ordinate groups completed
+against the authorized P-0251 fixture.
+
+- `IModelDocExtension.AddOrdinateDimension` returned `0`
+  (`swCreateOrdDimError_Success`) for both the horizontal request
+  (`swAddOrdinateDims_Horizontal = 3`) and the vertical request
+  (`swAddOrdinateDims_Vertical = 2`).
+- Selection counts were exact: datum + 2 = 3 for X, datum + 3 = 4 for Y.
+  The X datum selected as type `1` (edge) and the Y datum as type `3`
+  (vertex).
+- Display-dimension counts moved 6 → 8 and 8 → 11, matching the two and
+  three appended coordinates.
+- `IModelDoc2.SetPickMode` plus `ClearSelection2` left zero selections after
+  each group, and the fixture save flag was unchanged.
+
+#### `ISelectData.View` is unavailable — confirmed, with a working substitute
+
+Both groups logged `viewBinding=UnboundAfterError:91` and then completed
+normally. This confirms the earlier inference: the documented get/set
+assignment raises runtime error 91 on this build, while activating the view
+with `IDrawingDoc.ActivateView` beforehand and verifying each selection with
+`ISelectionMgr.GetSelectedObjectsDrawingView2` is sufficient. Every selection
+in both groups returned `ownerView=Drawing View1`.
+
+#### Created ordinate `Type2` values are `1` and `7`
+
+`IDisplayDimension.Type2` readback of the five created ordinates:
+
+| Creation enum | Observed `Type2` | Page positions |
+|---|---:|---|
+| `swAddOrdinateDims_Horizontal = 3` | `1` (`swOrdinateDimension`) | `(0.080932, 0.048942)`, `(0.110932, 0.048942)` |
+| `swAddOrdinateDims_Vertical = 2` | `7` (`swHorOrdinateDimension`) | `(0.041996, 0.077060 / 0.117060 / 0.157060)` |
+
+The observed values do not follow the enum names, and no interpretation is
+offered here beyond the measurement. The operational rule for production QA
+is to accept `1`, `7` and `8` when classifying ordinate display dimensions;
+a filter limited to `7` and `8` would have missed both X ordinates.
+
+Geometry is correct in both cases: the X ordinates sit on a horizontal
+baseline below the view at the two column coordinates, and the Y ordinates on
+a vertical baseline left of the view at the three row coordinates.
+
+### 2026-07-31 fourth run: entity-correspondence route settled
+
+Installed-build runtime evidence. The Boolean normalization cleared the
+qualification gates and the run exercised all three mapping routes for the
+first time.
+
+| Route | Result |
+|---|---|
+| A: `IView.GetCorrespondingEntity(modelEdge)` | **works** — returns a drawing entity, `error=0` |
+| B: `IComponent2.GetCorrespondingEntity(modelEdge)` | returns `Nothing` on every attempt, `error=0` |
+| C: `IView.GetVisibleEntities2(component, Edge)` | model edge never identity-matches (`-1`), as expected |
+
+Counts: route A mapped 12 of 24 counterbore edges and 114 of 154 body
+vertices; route B mapped 0 of either.
+
+Route C nevertheless provides the decisive cross-check. Each entity returned
+by route A **does** identity-match an entry in the visible-edge inventory
+(`chosenVisibleIndex` 7, 19, 29-38, 44 via `ISldWorks.IsSame`), proving route
+A returns genuine drawing-context entities and not a model-context alias.
+
+Production R23 contract: use route A. Do not use `IComponent2` mediation for
+part drawing views on this build. Retain `GetVisibleEntities2` as an
+independent identity cross-check rather than as an acquisition path.
+
+Note that mapping is per-edge, not per-face: for each counterbore only one of
+the two owned circular edges maps. Production must attempt every owned edge
+before failing a location, exactly as the probe does.
+
+#### `ICurve.CircleParams` works
+
+With the guard defect removed, `CircleParams` returned seven values on every
+tested edge with a radius matching the owning cylinder exactly
+(`0.005500000`, `0.003300000`, `0.023500000`). The R23-006 exclusion was an
+artifact of the probe's `If Not <SOLIDWORKS Boolean>` guard, and the property
+itself behaves correctly on this build. It remains non-load-bearing in the
+probe; production may now treat it as available evidence.
+
+#### `ISelectData.View` cannot be assigned in this VBA host
+
+Both ordinate groups failed with runtime error 91, "Object variable or With
+block variable not set", before any selection occurred
+(`datumSelected=False`, `appended=0`). `ISelectionMgr.CreateSelectData`
+returned a live object, so the failing statement is the documented get/set
+assignment `Set selectData.View = swView`.
+
+This reproduces the behaviour already recorded in
+`Module2_DrawingPipeline.CreatePrimarySection`, whose comment states the same
+assignment raises error 91 for section sketch segments and which works around
+it by activating the source view first and proving ownership after `Select4`.
+
+The MCP documents `ISelectData.View` as `View {get; set;}`, so this is an
+installed-build deviation from the published contract, not a misuse. The
+supported substitute is `ISelectionMgr.GetSelectedObjectsDrawingView2(Index,
+Mark)`, which returns the drawing view for a selected object with `Index`
+starting at 1.
+
+The probe now attempts the binding inside a guarded helper, records
+`viewBinding=Bound` or `UnboundAfterError:91`, and logs each selection's
+owning view. Production R23 must not depend on the assignment succeeding.
+
+### 2026-07-31 third run: the exact SOLIDWORKS Boolean contract
+
+The `rejectGate` instrumentation isolated the mechanism precisely. For the
+counterbore boundary edges the probe logged, from one call:
+
+```text
+isCircle=True ... rejectGate=IsCircleFalse ... completeCircle=False
+```
+
+`CStr(circleFlag)` rendered `True` while `If Not circleFlag` fired on that
+same variable in the same procedure.
+
+Established behaviour of installed SOLIDWORKS 2025 SP1.2 COM Booleans in this
+VBA host:
+
+| Construct | Safe? |
+|---|---|
+| `If value Then` | yes |
+| `If value = False Then` | yes |
+| `CStr(value)` | yes, renders `True` |
+| `If Not value Then` | **no** — yields `-2`, which VBA treats as True |
+| `CBool(rawVariant)` then `Not` | worked for `ISurface.IsCylinder` |
+| `CBool(comCall)` then `Not` | **failed** for `ICurve.IsCircle` |
+
+`CBool` is therefore not a dependable normalization: applied directly to the
+method-call expression it can preserve the raw representation. The only
+representation-independent form is an explicit numeric comparison,
+`(CDbl(rawValue) <> 0#)`, which the probe now centralizes in
+`NormalizeSwBoolean` and applies to `IsCircle`, `IsCylinder`, `ActivateView`,
+both `Select4` calls, and `GetSaveFlag`.
+
+Production R23 must use the same rule. This supersedes the narrower guidance
+in the preceding subsection.
+
+#### The `CircleParams` exclusion rests on this same defect
+
+`docs/R23_IMPLEMENTATION_PLAN.md` R23-006 and `CURRENT_STATUS.md` record that
+`ICurve.CircleParams` returned the probe's `SkippedNotCircle` sentinel while
+`IsCircle` was true before and after, and conclude that production must not
+depend on `CircleParams`.
+
+`tools/r23-probes/Module_R23Phase0FeatureProbe.bas` line 611 shows the cause:
+
+```vba
+If Not isCircle Then
+    ReadCircleState = "SkippedNotCircle"
+    Exit Function
+End If
+```
+
+That is the same `If Not <SOLIDWORKS Boolean>` construct. `CircleParams` was
+never called on those edges, so no anomalous behaviour was ever observed. The
+exclusion is not supported by evidence.
+
+This does not establish that `CircleParams` is reliable — its behaviour on
+this fixture remains untested. The corrected probe now reads it as
+non-load-bearing evidence (`circleParams=` on each edge record) so the next
+run settles the question rather than leaving a disproved exclusion in force.
+
+### 2026-07-31 corrected-probe runtime: Boolean normalization is load-bearing
+
+Installed-build runtime evidence from probe build `20260731.2`.
+
+`ISurface.IsCylinder` is documented as returning `System.Boolean`, but the
+installed VBA/COM path returns a raw `VARIANT_BOOL` whose True value does not
+survive VBA's `Not` operator. The corrected drawing probe used
+`If Not surface.IsCylinder Then` and rejected all 18 faces owned by
+`CBORE for M6 Socket Head Cap Screw1` as `NotCylindrical`, while the accepted
+feature probe reads the same faces as cylinders (radius `0.0055` and
+`0.0033`) using `CBool(swSurface.IsCylinder)`.
+
+The same run supplies its own control: `CBool(ICurve.IsCircle)` returned a
+mixed True/False distribution across the 64 visible drawing edges in the same
+document.
+
+Rule for production R23: assign a SOLIDWORKS COM Boolean to a typed `Boolean`
+or wrap it in `CBool` before any negation or compound logic. Assignment to a
+declared `Boolean` (as `Select4` results already are) normalizes correctly;
+an inline `Not <COM call>` does not. This restates the R20 repair and is now
+backed by a direct installed-build reproduction.
+
+`IView.GetXform` and the section payload were also cross-validated at
+runtime. The inverse view-sketch-to-page conversion derived from
+`GetXform` (origin `0.095932223, 0.165060000`, scale `1.0`) plus
+`IView.Angle` (`-1.570796327`) reproduced page X values that match the
+independently returned `GetSectionLineInfo2` arrow endpoints exactly
+(`0.095932223` and `0.071467223`). The returned segment endpoints matched the
+values passed to `CreateLine` at `deltaM=0`, proving the payload segment frame
+is the source-view sketch frame.
+
+`IModelDoc2.Parameter("D1@Sketch4")` returned the model dimension read-only
+and reported `toleranceType=0`, `fitType=-1`, empty hole/shaft fit and empty
+`GetToleranceFitValues`. H7 is not present in the P-0251 model source.
+
 ## Source inventory
 
 Both snapshots contain the same 13 exported VBA components.
@@ -136,13 +821,13 @@ MCP enum `swCreateOrdDimError_e`:
 |---|---:|---|
 | `swCreateOrdDimError_Undefined` | -1 | Undefined |
 | `swCreateOrdDimError_Success` | 0 | Success |
-| `swCreateOrdDimError_OrdFailure` | 1 | Ordinate failure |
+| `swCreateOrdDimError_GenFailure` | 1 | General failure |
 | `swCreateOrdDimError_GenNoInternalDims` | 2 | No internal dimensions |
 | `swCreateOrdDimError_GenBadSel` | 3 | Bad selection |
 | `swCreateOrdDimError_GenNeedModelLoaded` | 4 | Model must be loaded |
 | `swCreateOrdDimError_GenSamePartOnly` | 5 | Selections must be from same part |
 | `swCreateOrdDimError_GenExtraSelection` | 6 | Extra selection |
-| `swCreateOrdDimError_GenFailure` | 7 | General failure |
+| `swCreateOrdDimError_OrdFailure` | 7 | Ordinate failure |
 | `swCreateOrdDimError_OrdDupInGroup` | 8 | Duplicate in ordinate group |
 | `swCreateOrdDimError_OrdBadDir` | 9 | Invalid ordinate direction |
 
@@ -570,3 +1255,164 @@ fallback: pointer identity first, then equality of nonempty annotation names.
 These checks establish E3 API/type-library compatibility only. The guarded SWP
 deployment, full VBA Editor compile, authorized fixture run, QA, and
 visual/manufacturing comparison remain separate gates.
+
+## 2026-07-30 R23 Phase 0 preparation
+
+R23 re-queried the local `solidworks-api` compatibility MCP and reflected the
+installed SOLIDWORKS 2025 SP1.2 interop assemblies (`33.1.2.4`) before
+preparing the read-only Phase 0 feature/curve probe. No live SOLIDWORKS
+behavior is claimed by this subsection.
+
+### Instant3D feature normalization and typed definitions
+
+- `IFeature.GetTypeName2` identifies an Instant3D wrapper as `ICE`.
+- `IFeature.GetTypeName` is the required source for the underlying type when
+  `GetTypeName2="ICE"`.
+- `IFeature.GetDefinition` returns a feature-data object when that feature
+  type is supported; callers must reject `Nothing` or an unexpected interface.
+- `IFeature.GetFaces` returns all faces owned by the feature. Its Remarks also
+  state that `IFace2.GetFeature` returns only the oldest owner, so that method
+  cannot be the sole ownership proof.
+- `IExtrudeFeatureData2.AccessSelections(TopDoc, Component)` returns Boolean
+  and places the model in rollback. A successful read-only access must end
+  with `ReleaseSelectionAccess`; `ModifyDefinition` is not appropriate.
+- Installed interop confirms `IsBossFeature() As Boolean`,
+  `GetDepth(Forward) As Double`, and
+  `GetEndCondition(Forward) As Long`.
+- The same access/release contract applies to
+  `IWizardHoleFeatureData2`. Its installed interface exposes
+  `GetSketchPointCount` and `GetSketchPoints`.
+- MCP and installed `swconst` agree that
+  `swSpecifyConfiguration=3` for configuration-specific
+  `IFeature.IsSuppressed2` calls.
+
+The prepared probe therefore records both raw type values, normalizes `ICE`
+before typed routing, proves the exact feature-data interface, records the
+specified-configuration suppression result, and releases every successful
+selection access. Feature names remain diagnostics only.
+
+### Circular-edge read-order probe
+
+- `IEdge.GetCurveParams3` returns `ICurveParamData`, not a Variant array.
+- Its Remarks require `IEdge.GetCurve` first.
+- `ICurve.IsCircle` remains the curve-type predicate.
+- `ICurve.CircleParams` returns seven doubles:
+  `[center xyz, axis xyz, radius]`.
+
+`tools/r23-probes/Module_R23Phase0FeatureProbe.bas` reacquires the edge curve
+and compares these two installed-build transactions:
+
+1. `GetCurve -> GetCurveParams3 -> IsCircle -> CircleParams`;
+2. `GetCurve -> IsCircle -> CircleParams -> GetCurveParams3`.
+
+Source preparation does not select either transaction for production. The
+P-0251 live output remains required.
+
+### Drawing-component context correction
+
+The R23 plan originally described `IView.GetVisibleComponents` as returning a
+real/full `Component2`. The MCP Remarks explicitly contradict that wording:
+the returned object is incomplete and, for example, does not support
+`IComponent2.GetBodies3`.
+
+The corrected R23 contract is:
+
+- pass the exact limited `Component2` returned by
+  `IView.GetVisibleComponents` to `IView.GetVisibleEntities2`;
+- obtain visible `IDrawingComponent` objects through
+  `IView.GetVisibleDrawingComponents`;
+- use `IDrawingComponent.Component` when a component that fully supports
+  `IComponent2` methods/properties is required; and
+- runtime-prove that the limited drawing-context handle and full component
+  converge on the same represented component and referenced configuration.
+
+Installed interop confirms all four members. This is E3 interface evidence
+only; the identity/convergence behavior remains a Phase 0 live probe.
+
+### First installed-build feature-probe attempt
+
+The first authorized P-0251 run reached
+`R23_PROBE_END|visitedFeatures=15|status=COMPLETE`, but it is not accepted as
+R23-004 through R23-006 evidence. The traversal guard used only
+`ObjPtr(feature)`. In the installed VBA/COM runtime, transient feature wrappers
+reused that address, so distinct tree features were incorrectly treated as
+already visited. The transcript skipped the Hole Wizard, ICE, extrusion,
+mirror, and most other relevant features even though they were present in the
+active model tree.
+
+That rejected transcript is preserved at:
+
+`test_assets/iteration_evidence/r23/20260730-075811/live-probes/R23_FEATURE_PROBE_ATTEMPT2_BROKEN_TRAVERSAL.log`
+
+The same run also established a binding detail that the probe must preserve:
+`IFeature.IsSuppressed2(swSpecifyConfiguration, Array(configurationName))`
+returned a scalar Boolean through SOLIDWORKS 2025 VBA rather than a Variant
+array. Installed interop declares the return as `System.Object`, so the
+correct VBA reader must accept both a nonempty scalar Boolean and an array.
+The current R23 probe source now reports the shape explicitly as
+`Active:Scalar`, `Suppressed:Scalar`, `Active:Array`, or
+`Suppressed:Array`.
+
+The corrected probe additionally:
+
+- combines feature name, `GetTypeName2`, and wrapper address in its recursion
+  key so wrapper-address reuse cannot suppress differently named features;
+- includes base `EXTRUSION` features in the typed
+  `IExtrudeFeatureData2` probe; and
+- records installed `IExtrudeFeatureData2.GetContoursCount` plus the
+  `Contours` return shape and owned `ProfileFeature` subfeature count; and
+- mirrors every structured record to a timestamped evidence log so the
+  Immediate Window buffer is not the sole transcript;
+- remains read-only and pairs successful selection access with release.
+
+The corrected exported source still requires a user-operated full-project
+compile and P-0251 rerun. Until that transcript includes the three ICE
+features, both Hole Wizard families, mirror evidence, and the target cylinder
+families, the production Phase 0 gate remains closed.
+
+### Expanded import-transaction harness
+
+The local API MCP was not callable after the workstation outage. The prepared
+import harness therefore uses the earlier recorded MCP contract together with
+fresh installed-interop reflection; it does not present the compatibility
+snapshot as installed-build runtime proof.
+
+Installed SOLIDWORKS 2025 SP1.2 interop `33.1.2.4` confirms:
+
+- `IDrawingDoc.InsertModelAnnotations4(Int32, Int32, Boolean, Boolean,
+  Boolean, Boolean, Boolean, Boolean) -> Object`;
+- `IView.GetAnnotations() -> Object` and
+  `IView.GetDisplayDimensions() -> Object`;
+- `IDisplayDimension.GetDimension2(Int32) -> IDimension`;
+- `IDisplayDimension.IsHoleCallout() -> Boolean` and
+  `GetHoleCalloutVariables() -> Object`;
+- `IAnnotation.GetAttachedEntities3() -> Object`,
+  `GetAttachedEntityTypes() -> Object`, and `GetPosition() -> Object`;
+- `IDimension.GetSystemValue3(Int32, Object) -> Object`;
+- `IDimensionTolerance.Type`, `FitType`, `FitDisplayStyle`,
+  `GetHoleFitValue`, `GetShaftFitValue`, `GetMinValue2`, and
+  `GetMaxValue2`; and
+- `IDisplayData` line, arrow, text, arc, ellipse, and polyline readback
+  members used for raw display-geometry evidence.
+
+Installed `swconst` confirms `swInsertDimensions=8`,
+`swInsertDimensionsMarkedForDrawing=32768`,
+`swInsertHoleWizardProfileDimensions=65536`,
+`swInsertHoleWizardLocationDimensions=131072`,
+`swInsertHoleCallout=1048576`, and
+`swInsertTolerancedDimensions=16777216`. With datums, GTols, and notes, the
+prepared full comparison mask is `18055274` (`0x113806A`).
+
+The guarded disposable harness has two independent fresh-drawing entry points:
+
+1. selected primary anchor, `AllViews=True`, `DuplicateDims=True`;
+2. deterministic section, side, and primary calls,
+   `AllViews=False`, `DuplicateDims=True`.
+
+It records per-view before/after deltas, returned-to-final annotation
+ownership, source dimension identities, nominal/tolerance/fit fields, Hole
+Wizard callout variables, attachments, exact duplicate identities, and raw
+display primitives. The three-source custom manifest passed read-only
+deployment preflight against the copied macro. Full-project VBA compilation,
+both installed-build import runs, screenshots, and visual-overlap judgment
+remain pending, so R23-007 and R23-008 are still open.
