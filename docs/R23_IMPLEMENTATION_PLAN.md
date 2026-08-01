@@ -881,6 +881,19 @@ claimed on a weaker datum.
 
 ### Phase 6 — Reconcile native callouts and controlled fallback
 
+Implemented in `Module16_CalloutDefinition.bas` (20 procedures) with the
+typed record `CCalloutDefinition.cls`.
+
+**Mutation boundary.** One procedure creates anything:
+`CreateNativeCalloutForFamily`, which refuses without `allowMutation` and
+again without a proven anchor. `IDrawingDoc.AddHoleCallout2` attaches to
+whatever edge is selected, so selecting an unproven entity would produce an
+associative callout pointing at the wrong hole and looking correct on the
+sheet. `R23_ProbeCalloutDefinition` contains no `AddHoleCallout2` call.
+
+**Status: source complete, awaiting first live run.** Statically verified
+only.
+
 - [ ] **R23-600:** Always request native callouts when the configuration enables
   them.
 - [ ] **R23-601:** Traverse display dimensions and require
@@ -896,8 +909,16 @@ claimed on a weaker datum.
 - [ ] **R23-607:** Build counterbore/thread fields from typed feature data.
 - [ ] **R23-608:** Build fit/tolerance fields only from source model dimension
   data.
-- [ ] **R23-609:** Remove hardcoded P-0251 callout text and radius/name scoring
-  from the production path.
+- [ ] **R23-609: half met, and the remaining half is deliberate.** The new
+  path contains none of it: no part number, no `6X`, no `M5x0.8`, no `H7`,
+  no diameter literal, and no scoring by feature name or by proximity to an
+  expected radius. A contract asserts each of those strings is absent.
+  **The legacy literals are still in `Module7_TitleBlockEngine.bas`** - the
+  callout text at lines 359-371 and the name/radius scoring at 405-435 -
+  because Module7 is still the reachable production path and Module16 is
+  not yet wired into `main`. Deleting them now would degrade the deployable
+  macro while its replacement is disconnected. They come out in the phase
+  that switches the pipeline over, and that switch bumps the revision.
 - [ ] **R23-610:** Fail `MANUFACTURING_DEFINITION` with a field-specific reason
   if a required semantic field is unavailable.
 - [ ] **R23-611:** Prove one six-hole counterbore definition and one four-hole

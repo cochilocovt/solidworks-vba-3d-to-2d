@@ -2,7 +2,48 @@
 
 Date: 2026-08-01
 
-## R23 Phase 5 read-only gate SATISFIED (third live run)
+## R23 Phase 6 source complete, awaiting first live run
+
+**2026-08-01.** `Module16_CalloutDefinition.bas` (20 procedures) plus
+`CCalloutDefinition.cls`. Statically verified only.
+
+A callout definition is either **native** - a SOLIDWORKS hole callout
+carrying the Hole Wizard's own data - or a **controlled fallback** built
+field by field from typed feature data. Never free text. Every field carries
+the source that proved it, so a definition that looks complete can still be
+shown to be unproven.
+
+Design points worth carrying:
+
+- **`IsHoleCallout` is the only classifier.** A native callout reports
+  `Type2 = 6`, but so does an ordinary diameter dimension. No
+  dimension-type constant is declared in the module, so none can be reached
+  for.
+- **Fields come from `GetHoleCalloutVariables`**, not from parsed text -
+  `HoleFit`, `ShaftFit`, `ToleranceType`, `ToleranceMin`, `ToleranceMax`
+  per variable. A rendered string cannot be validated field by field.
+- **Quantity is unique physical locations.** Not features: one Hole Wizard
+  feature plus a mirror makes many holes. Not edges: a counterbore
+  contributes several per hole.
+- **A callout resolving to two families is rejected**, not tie-broken.
+- **Depth is required only when the end condition says the hole is blind**,
+  and an unproven end condition fails on its own terms first.
+- **R23-611 is stated as shapes, not part numbers**: one multi-hole
+  counterbored family and one multi-hole threaded family. P-0251 satisfies
+  it; nothing is keyed to it.
+
+**R23-609 is half met, deliberately.** The new path has none of the
+hardcoded text or name/radius scoring, and contracts assert their absence.
+The legacy literals remain in `Module7_TitleBlockEngine.bas` (callout text
+at 359-371, scoring at 405-435) because Module7 is still the reachable
+production path and Module16 is not yet wired into `main`. Removing them now
+would degrade the deployable macro while the replacement is disconnected.
+
+Verification: 23 Phase 6 contracts, suite 238 tests with the same five stale
+R20 failures. Preflight 29 components. `MACRO_SOURCE_REVISION` remains
+`r22`.
+
+## Historical: R23 Phase 5 read-only gate SATISFIED
 
 **2026-08-01.** `schemes=4|horizontalSchemes=2|verticalSchemes=2|`
 `creditedLocations=10|expectedLocations=10|coverageFailures=None`.

@@ -15,6 +15,11 @@
       "kind": "ClassModule"
     },
     {
+      "name": "CCalloutDefinition",
+      "file": "CCalloutDefinition.cls",
+      "kind": "ClassModule"
+    },
+    {
       "name": "CDatumProof",
       "file": "CDatumProof.cls",
       "kind": "ClassModule"
@@ -75,11 +80,6 @@
       "kind": "ClassModule"
     },
     {
-      "name": "Module15_OrdinateScheme",
-      "file": "Module15_OrdinateScheme.bas",
-      "kind": "StdModule"
-    },
-    {
       "name": "Module11_GeometryIdentity",
       "file": "Module11_GeometryIdentity.bas",
       "kind": "StdModule"
@@ -97,6 +97,16 @@
     {
       "name": "Module14_AnnotationImport",
       "file": "Module14_AnnotationImport.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module15_OrdinateScheme",
+      "file": "Module15_OrdinateScheme.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module16_CalloutDefinition",
+      "file": "Module16_CalloutDefinition.bas",
       "kind": "StdModule"
     },
     {

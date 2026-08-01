@@ -1,5 +1,72 @@
 # Changelog
 
+## 2026-08-01 - R23 Phase 6: callout reconciliation and controlled fallback
+
+`Module16_CalloutDefinition.bas` (20 procedures), `CCalloutDefinition.cls`.
+Statically verified only; no live run yet.
+
+### The shape of a definition
+
+Either a NATIVE SOLIDWORKS hole callout carrying the Hole Wizard's own data,
+or a CONTROLLED FALLBACK assembled field by field from the typed feature
+data Phase 2 proved. Never free text. Every field carries its proof source,
+so a definition that looks complete can still be shown to be unproven, and
+R23-610 reports which field failed rather than that something did.
+
+### Contracts worth carrying
+
+- **R23-601: IsHoleCallout is the only classifier.** A native callout
+  reports Type2 = 6 (swDiameterDimension) and so does an ordinary diameter
+  dimension. No dimension-type constant is declared in the module, so none
+  can be reached for.
+- **R23-603: fields come from IDisplayDimension.GetHoleCalloutVariables**,
+  reading HoleFit, ShaftFit, ToleranceType, ToleranceMin and ToleranceMax
+  per ICalloutVariable. Parsing the rendered string would give something
+  that cannot be validated field by field, which is the point of the task.
+- **R23-602: a callout resolving to two families is rejected**, not
+  tie-broken. Attribution is COM identity against every drawing entity a
+  projection owns - not the anchor alone, because Phase 4 showed the anchor
+  tier prefers the through hole while a counterbore callout attaches to the
+  wider mouth.
+- **R23-606: quantity is unique physical locations.** Not a feature count:
+  one Hole Wizard feature plus a mirror produces many holes. Not an edge
+  count: a counterbore contributes several edges per hole.
+- **Depth is required only for a blind hole.** Demanding it from a through
+  hole would fail every through hole. The stored end-condition code decides,
+  and an unproven end condition fails on its own terms first.
+- **R23-611 is stated as shapes rather than part numbers**: one multi-hole
+  counterbored family and one multi-hole threaded family. P-0251 satisfies
+  it; the rule does not name it.
+
+### R23-609 is half met, and the remaining half is deliberate
+
+The new path contains no part number, no 6X, no M5x0.8, no H7, no diameter
+literal, and no scoring by feature name or by proximity to an expected
+radius. A contract asserts each of those strings is absent.
+
+The legacy literals are still in Module7_TitleBlockEngine.bas - callout text
+at 359-371, name/radius scoring at 405-435 - because Module7 is the
+reachable production path and Module16 is not yet wired into main. Deleting
+them now would degrade the deployable macro while its replacement is
+disconnected. They come out in the phase that switches the pipeline over.
+
+### Mutation boundary
+
+CreateNativeCalloutForFamily is the only procedure that creates anything. It
+refuses without allowMutation, and refuses again without a proven anchor:
+IDrawingDoc.AddHoleCallout2 attaches to whatever edge is selected, so an
+unproven selection would produce an associative callout pointing at the
+wrong hole and looking correct on the sheet.
+
+### Verification
+
+Procedure blocks balanced 20/20 and 6/6. ANSI-only bytes, CRLF, no BOM, max
+line 78. A hygiene contract now asserts every byte is below 0x80, after a
+UTF-8 em dash in Module14 broke SWP readback earlier today. 23 Phase 6
+contracts. Suite 238 tests with the five known-stale R20 failures. Preflight
+29 managed components. MACRO_SOURCE_REVISION unchanged at
+target-spec-hybrid-v2-2026-07-29-r22.
+
 ## 2026-08-01 - R23 Phase 5 read-only gate satisfied
 
 Final run: `schemes=4|horizontalSchemes=2|verticalSchemes=2|`
