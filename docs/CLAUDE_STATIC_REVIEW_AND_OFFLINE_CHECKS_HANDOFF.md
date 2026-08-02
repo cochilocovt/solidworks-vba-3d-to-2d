@@ -381,7 +381,8 @@ Review at least:
 
 `COMPILE_PROBE|status=SUCCESS` proves only that the bootstrap executed. The deployer explicitly records `BOOTSTRAP_EXECUTION_ONLY`; it does **not** prove a full VBE project compile.
 
-The required next gate after a successful deployment is still:
+The required next gate after a successful deployment, **for any run that
+mutates a drawing and for production acceptance**, is still:
 
 1. open the promoted macro in the SOLIDWORKS VBA editor;
 2. run **Debug > Compile Project**;
@@ -389,6 +390,18 @@ The required next gate after a successful deployment is still:
 4. only after compile success, run the agreed authorized fixture;
 5. capture complete Immediate Window output, `QA_REPORT`, settings, and drawing screenshots;
 6. compare the drawing with the manual reference and target specification.
+
+**Read-only probes are exempt from steps 1 to 3** (user-authorized
+2026-08-02). A strictly read-only `R23_Probe*` entry point may be deployed
+and run directly: a probe that does not compile fails at its first
+statement, so the manual gate proved nothing there that the run itself does
+not prove. Steps 4 to 6 are unchanged, and the exemption does not extend to
+any procedure gated behind `allowMutation`.
+
+Programmatic full-project compilation is also authorized, through the VBE
+`CommandBars.FindControl(...).Execute` route that
+`tools/swp-deploy/Module0_SourceDeployment.bas` already uses for Save. See
+[R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md](R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md).
 
 ### 6.4 Independent SWP inventory and readback
 

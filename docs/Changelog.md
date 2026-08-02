@@ -1,5 +1,64 @@
 # Changelog
 
+## 2026-08-02 - Phase 8 gate satisfied; probe automation authorized
+
+### Phase 8 SATISFIED
+
+Third live run: satisfied=7, missing=0, duplicated=0, sectionOrdinates=0,
+requirementFailures=None, mutations=0, drawingUnchanged=True, selection 0
+before and after.
+
+Both bores resolved through diameterDisplaySource=TextPrefix with the
+MOD-DIAM prefix token. The drawing carries the diameter symbol in the
+dimension's text prefix while Diametric stays False - the case the third
+reading of R23-804 was written to distinguish. Both GetText forms return
+the literal token rather than a rendered glyph, so the codepage-216
+comparison is dead code on this build.
+
+### The fixture guard fired, correctly
+
+The preceding attempt returned
+R23_SECTIONDIM_FATAL|reason=UnauthorizedFixture with the part resolved to
+the V: network copy instead of the authorized test_assets copy. Opening the
+local part BEFORE the drawing rebinds it. If earlier runs bound different
+copies, that is an alternative explanation for the Phase 0 versus
+2026-08-01 dimension-state difference, and the part= field on every _BEGIN
+line settles it.
+
+### Compile gate amended for read-only probes
+
+User-authorized. A strictly read-only R23_Probe* entry point may now be
+deployed and run without a preceding manual Debug > Compile Project: a
+probe that does not compile fails at its first statement, so the gate was
+buying nothing there. Mutating runs and production acceptance are
+unchanged, and the exemption does not extend to anything gated behind
+allowMutation.
+
+Programmatic full-project compilation is also authorized. The mechanism is
+already proved here - Module0_SourceDeployment.bas reaches the VBE object
+model and executes a built-in command through CommandBars.FindControl
+because VBProject.SaveAs raises 748 on a host-managed .swp.
+
+Amended: Agents.md, CLAUDE_STATIC_REVIEW_AND_OFFLINE_CHECKS_HANDOFF.md,
+R23_CLAUDE_CODE_IMPLEMENTATION_HANDOFF.md.
+
+### Probe automation planned, not built
+
+docs/R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md: an evidence sink writing
+every probe line to a file as well as the Immediate Window, a runner that
+compiles and executes all nine probes, and one PowerShell command that
+deploys, opens the fixture in the correct order, invokes the runner and
+prints the log path. Two risks are stated rather than assumed away: the
+compile control ID must be proved by enumeration before it is hard-coded,
+and a compile failure raises a modal dialog no VBA-side design can avoid.
+
+### README_IMPORT corrected
+
+Its import instructions still described nine standard modules and three
+data classes, wrong since Phase 1 and flagged by the code review. It now
+defers to tools/swp-deploy/deployment-manifest.json, and the stale 74-test
+figure is now 381.
+
 ## 2026-08-01 - R23 Phase 10: semantic QA replaces count-based checks
 
 `Module19_SemanticQA.bas` (25 procedures). Statically verified only.

@@ -2,6 +2,66 @@
 
 Date: 2026-08-01
 
+## R23 Phase 8 gate SATISFIED; probe automation authorized
+
+**2026-08-02.** Third live run of `R23_ProbeSectionDimensions`:
+`satisfied=7|missing=0|duplicated=0|sectionOrdinates=0|`
+`requirementFailures=None`, `mutations=0`, `drawingUnchanged=True`,
+selection 0 before and after. All seven P-0251 section requirements exist
+in the drawing, are matched to a real dimension, and carry what they claim.
+
+Both bores resolved via `diameterDisplaySource=TextPrefix` with
+`prefix=<MOD-DIAM>`. The drawing shows the diameter symbol in the
+dimension's TEXT PREFIX while `Diametric` stays False - the exact case the
+third reading of R23-804 exists to distinguish. Both `GetText` forms return
+the literal `<MOD-DIAM>` token rather than a rendered glyph, so the
+codepage-216 comparison is dead code on this build and the token match is
+what decides.
+
+`FIT_BORE_D47_H7` reads `toleranceSatisfied=True` with
+`toleranceProvenance=PresentOnDrawing.TargetSpecReferenceAuthority`
+`.NotModelData` against a live `holeFit=H7|maximumM=0.000025`.
+
+### The run before it failed for a reason worth keeping
+
+`R23_SECTIONDIM_FATAL|reason=UnauthorizedFixture` with the part resolved to
+the `V:\VEEMAP\SW_data\` copy. The fixture guard fired correctly: the
+drawing had bound its part reference to the network sibling instead of the
+authorized `test_assets\models\` copy. Opening the local part BEFORE the
+drawing rebinds it.
+
+This matters beyond the one failure. If earlier runs bound different
+copies, that is an alternative explanation for the Phase 0 versus
+2026-08-01 dimension-state difference, and the `part=` field on every
+`_BEGIN` line is what settles it.
+
+### Probe automation authorized
+
+The user authorized programmatic full-project VBA compilation and amended
+the compile gate: **read-only `R23_Probe*` entry points no longer require a
+preceding manual Debug > Compile Project.** Mutating runs and production
+acceptance are unchanged.
+
+The mechanism is already proved in this repo.
+`tools/swp-deploy/Module0_SourceDeployment.bas:214` reaches the VBE object
+model and executes a built-in command through
+`CommandBars.FindControl(1, 3, "", False)`, because `VBProject.SaveAs`
+raises 748 on a host-managed `.swp`. Compile is the same kind of control.
+
+Amended: `Agents.md`,
+`docs/CLAUDE_STATIC_REVIEW_AND_OFFLINE_CHECKS_HANDOFF.md`,
+`docs/R23_CLAUDE_CODE_IMPLEMENTATION_HANDOFF.md`. The build itself is
+planned, not started - see
+[R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md](R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md).
+
+`README_IMPORT.md` was also corrected: its import instructions still
+described a nine-module inventory and three data classes, wrong since
+Phase 1 and flagged by the code review. It now defers to the deployment
+manifest.
+
+**Still open:** Phase 9 and Phase 10 have not been re-run since their
+defect fixes.
+
 ## R23 Phase 10 source complete, awaiting first live run
 
 **2026-08-01.** `Module19_SemanticQA.bas` (25 procedures). Statically

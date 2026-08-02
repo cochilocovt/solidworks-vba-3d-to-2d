@@ -64,6 +64,18 @@ Use evidence appropriate to the work:
 2. **Source change:** run relevant static tests, validate affected API contracts when applicable, update the source revision when deployable behavior changes, and complete guarded deployment/readback checks when the change is deployed.
 3. **Production acceptance:** compile the full VBA project in the SOLIDWORKS VBA editor, run only authorized fixtures, capture complete Immediate Window output, `QA_REPORT.txt`, settings, and an uncropped full-sheet screenshot, then compare the drawing with the manual reference and target specification.
 
+**Read-only probe exception (user-authorized 2026-08-02).** A strictly
+read-only `R23_Probe*` entry point may be deployed and run without a
+preceding manual **Debug > Compile Project**. A probe that fails to compile
+fails loudly at its first statement, so the manual gate was buying nothing
+there. The agent may also perform full-project compilation programmatically
+through the VBE `CommandBars` route already used by
+`tools/swp-deploy/Module0_SourceDeployment.bas`.
+
+This exception is narrow and does not move item 3. Production acceptance,
+and any run that mutates a drawing, still requires the manual full-project
+compile in the VBA editor.
+
 After a narrow correction, use the smallest focused fixture and settings matrix that can prove it. Before production acceptance, complete the full three-fixture regression and the applicable datum, Hole Wizard, arrangement, section, supported-view, duplication, layout, title, notes, barcode, and QA checks defined by the target specification.
 
 Static tests, API reflection, deployment readback, a successful bootstrap probe, nonzero counts, or a `PASS` dialog do not prove embedded compilation, runtime correctness, or manufacturing acceptance. Preserve useful failure evidence under `test_assets/iteration_evidence/` and never overwrite manual references.

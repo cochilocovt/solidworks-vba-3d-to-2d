@@ -1045,7 +1045,21 @@ drawing, and nothing writes an OBSERVED field from a REQUIRED one. A
 requirement that reports its own nominal back as the observed nominal proves
 nothing, and a contract asserts the assignment never happens.
 
-**Status: second live run made, `missing=0`, two requirements flagged.**
+**Phase 8 gate SATISFIED** (third live run, 2026-08-02):
+`satisfied=7|missing=0|duplicated=0|sectionDimensions=7|sectionOrdinates=0|`
+`requirementFailures=None|creations=0|mutations=0|drawingUnchanged=True`,
+selection 0 before and after.
+
+Both bore requirements resolved through `diameterDisplaySource=TextPrefix`
+with `prefix=<MOD-DIAM>`. The drawing does show the diameter symbol; it
+carries it in the dimension's text prefix rather than in the diametric
+flag, which is exactly the case the third reading of R23-804 was added to
+distinguish. Worth recording for later work: BOTH `GetText` forms returned
+the literal `<MOD-DIAM>` token rather than a rendered glyph, so the
+codepage-216 comparison never fires on this build and the token match is
+what decides.
+
+Historical status of the run before it:
 The second run returned `satisfied=5|missing=0|duplicated=0` with every
 nominal exact - 0.018, 0.012, 0.0115, 0.040, 0.047, 0.1736, 0.1048 - so all
 seven requirement keys exist in the drawing and are matched.

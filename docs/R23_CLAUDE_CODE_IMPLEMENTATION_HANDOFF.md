@@ -111,6 +111,9 @@ re-authorizes it for a defined task.
 - Back up `Fable.swp` before its first material R23 change.
 - Use guarded deployment and exact source readback.
 - `COMPILE_PROBE|status=SUCCESS` is not a VBE full-project compile.
+- Read-only `R23_Probe*` entry points may be deployed and run WITHOUT a
+  preceding manual **Debug > Compile Project** (user-authorized
+  2026-08-02). Mutating runs and production acceptance still require it.
 
 The production SWP SHA-256 at this handoff remains:
 

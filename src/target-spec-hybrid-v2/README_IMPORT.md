@@ -132,26 +132,34 @@ control placement is required after the blank forms exist.
 ## Import into a copy of the current macro
 
 1. Make a recoverable copy of the current `.swp` file.
-2. In the copy, remove or replace every existing same-named standard module
-   `Module1_Main` through `Module9_LayoutEngine`. Leave unrelated modules
-   untouched.
-3. Import these class modules:
-   - `CHoleCandidate.cls`
-   - `CDatumProof.cls`
-   - `CRunEvidence.cls`
-4. Import `Module1_Main.bas` through `Module9_LayoutEngine.bas`.
+2. In the copy, remove or replace every existing same-named standard module.
+   As of R23 that is `Module1_Main` through `Module9_LayoutEngine` plus
+   `Module10_SectionDimensionEngine` and `Module11_GeometryIdentity` through
+   `Module19_SemanticQA`. Leave unrelated modules untouched.
+
+   The authoritative list is `tools/swp-deploy/deployment-manifest.json`;
+   this prose is a convenience copy and the manifest wins.
+3. Import every class module listed in the deployment manifest. As of R23
+   that is `CHoleCandidate`, `CDatumProof`, `CRunEvidence`,
+   `CFeatureDefinition`, `CPhysicalHoleLocation`, `CViewHoleProjection`,
+   `CImportedAnnotation`, `CLocationGraph`, `COrdinateScheme`,
+   `COrdinateBucket`, `CCalloutDefinition`, `CSectionPath`,
+   `CSectionRequirement` and `CContentEnvelope`.
+4. Import every standard module listed in the manifest.
 5. Keep the current forms and handler classes only if their code matches the
    r4 snapshots. Otherwise replace the form code using the procedure above and
    replace the handler classes.
-6. Confirm the expected inventory: nine standard modules, `CHoleCandidate`,
-   `CDatumProof`, `CRunEvidence`, both UserForms, all three handler classes, and
-   the project-owned `ThisLibrary` host component.
+6. Confirm the inventory against `tools/swp-deploy/deployment-manifest.json`
+   - the deployment preflight prints the managed-component count - plus both
+   UserForms, all three handler classes, and the project-owned `ThisLibrary`
+   host component, none of which the manifest manages.
 7. Use **Debug > Compile VBAProject** and stop at the first highlighted error.
 
 ## Import into a blank macro project
 
-Import the three data classes, all nine standard modules, and the three handler
-classes. Then use the blank-form and host-component paste procedure above.
+Import every class and standard module named in
+`tools/swp-deploy/deployment-manifest.json`, plus the three handler classes.
+Then use the blank-form and host-component paste procedure above.
 
 ## First focused run (E6/E7)
 
@@ -192,7 +200,8 @@ that is expected to fail fixture QA for the missing J-J section.
 ## Offline validation already completed
 
 Run the complete project-local hybrid companion suite immediately before
-import. It currently passes **74 tests and 13,608 structural subtests**; those
+import. It currently passes **381 tests** with five known-stale R20 failures
+(see the handoff, section 5.2); those
 source-contract, structure, regression, and fake-COM checks establish E2 only.
 Separate installed-interop
 and documentation checks establish E3. The guarded deployment at
