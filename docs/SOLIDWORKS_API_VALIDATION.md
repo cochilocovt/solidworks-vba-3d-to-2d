@@ -2453,3 +2453,41 @@ straight lower outline edges (`Drawing View4` and `Drawing View7`).
 This is installed-build selection and mapping evidence, not proof that an
 ordinate has been created. Creation still requires the separate mutating
 acceptance run and dimension readback.
+
+## 2026-08-06 r8 view classification characterised on the installed build
+
+The §6 caveat in `BASELINE_TO_REFERENCE_DRAWING_GAP.md` — "what each actually
+returns for this pipeline's views has **not** been probed" — is now closed. The
+r8 QA report at
+`test_assets/iteration_evidence/macro_qa/20260806_051241_P-0251-14A-001/QA_REPORT.txt`
+carries the raw returns for every view on the sheet:
+
+```
+Drawing View1   | Type=7 | Orientation=*Front
+Drawing View2   | Type=7 | Orientation=*Bottom
+Drawing View3   | Type=7 | Orientation=*Right
+Drawing View4   | Type=7 | Orientation=*Left
+Drawing View5   | Type=7 | Orientation=*Isometric
+Section View J-J| Type=2 | Orientation=(empty)
+```
+
+Three contracts confirmed on SOLIDWORKS 2025 SP1.2:
+
+- **`IView.Type` cannot separate orientations.** Every view created by
+  `CreateDrawViewFromModelView3` returns `7` (`swDrawingNamedView`) regardless
+  of orientation. The caveat recorded before the probe was correct: `Type`
+  alone is useless for telling a front view from an isometric one.
+- **`IView.GetOrientationName` round-trips exactly.** It returns the same
+  string that was passed to `CreateDrawViewFromModelView3`, leading `*`
+  included. This is the member that carries the classification.
+- **Section views match the documented empty-string case.** `Type=2`
+  (`swDrawingSectionView`) with `GetOrientationName` returning `""`, as the
+  2025 help states for section, detail, projected and unfolded views.
+
+`Module8_ViewClassifier` therefore keys on `Type` for the structural cases
+(sheet, section, detail, projected) and on `GetOrientationName` for the
+orientation cases. The name-substring fallback is retained but was not
+exercised on this build.
+
+This is view-classification evidence only. It says nothing about datum
+selection or ordinate values.

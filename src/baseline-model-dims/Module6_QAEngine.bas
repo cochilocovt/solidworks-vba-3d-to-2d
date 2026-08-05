@@ -67,13 +67,34 @@ Public Function CountAllViewDimensions(ByRef swDraw As SldWorks.DrawingDoc) As L
     Loop
 End Function
 
+' Per-view roster. Carries the raw IView.Type and IView.GetOrientationName
+' returns, not just the classification, so the run doubles as the probe for
+' those two members -- neither has been characterised on this build.
 Private Function BuildPerViewSummary(ByRef swDraw As SldWorks.DrawingDoc) As String
     Dim swView As SldWorks.View
     Set swView = swDraw.GetFirstView
     If Not swView Is Nothing Then Set swView = swView.GetNextView
 
+    BuildPerViewSummary = "View roster:" & vbCrLf
+
     Do While Not swView Is Nothing
-        BuildPerViewSummary = BuildPerViewSummary & swView.Name & ": " & Module4_ModelItemImporter.CountDisplayDimensionsInView(swView) & " dims" & vbCrLf
+        Dim role As Long
+        role = Module8_ViewClassifier.ClassifyView(swView)
+
+        Dim ordinatePolicy As String
+        If Module8_ViewClassifier.AllowsOrdinateDimensions(role) Then
+            ordinatePolicy = "ordinates=allowed"
+        Else
+            ordinatePolicy = "ordinates=skipped"
+        End If
+
+        BuildPerViewSummary = BuildPerViewSummary & "  " & _
+            Module8_ViewClassifier.DescribeView(swView) & _
+            " | " & ordinatePolicy & _
+            " | " & _
+            Module4_ModelItemImporter.CountDisplayDimensionsInView(swView) & _
+            " dims" & vbCrLf
+
         Set swView = swView.GetNextView
     Loop
 End Function

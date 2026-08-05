@@ -1,5 +1,70 @@
 # Changelog
 
+## 2026-08-06 (48) - r8: view classification is API-backed and characterised
+
+`IsIsoView` is deleted. It tested `InStr(viewName, "ISO")` against names
+SOLIDWORKS generates as `Drawing View1`..`View5`, so it never matched and r7
+put ordinate chains on the isometric view. Replaced by
+`Module8_ViewClassifier`, which keys on `IView.Type` for the structural cases
+and `IView.GetOrientationName` for the orientation cases.
+
+### The run is the probe
+
+Rather than a separate read-only probe round-trip, `BuildPerViewSummary` now
+prints the raw API returns next to the derived role, so every run records the
+evidence for its own classification:
+
+```
+Drawing View1 | Type=7 | Orientation=*Front | Role=Front | ordinates=allowed | 9 dims
+Drawing View5 | Type=7 | Orientation=*Isometric | Role=Pictorial | ordinates=skipped | 0 dims
+Section View J-J | Type=2 | Orientation=(empty) | Role=Section | ordinates=skipped | 0 dims
+```
+
+This closes the §6 caveat in the gap doc. All five model views return `Type=7`
+(`swDrawingNamedView`), confirming the pre-probe expectation that `Type` alone
+cannot separate a front view from an isometric. `GetOrientationName`
+round-trips the exact string handed to `CreateDrawViewFromModelView3`.
+
+### Result
+
+| | r7 | r8 |
+|---|---|---|
+| Views ordinated | 4 (incl. isometric) | 1 (front) |
+| Chains | 8 of 12 | **2 of 2** |
+| Chain failures | 4 (`swCreateOrdDimErr_OrdFailure`) | 0 |
+| Front-view dims | — | 9 |
+
+Gaps A5 and A6 closed. `AllowsOrdinateDimensions` refuses pictorial views
+unconditionally but **allows** `VIEW_ROLE_UNKNOWN`: if classification breaks,
+extra ordinates are visible and recoverable, whereas zero ordinates resembles a
+working run that quietly did nothing — the exact failure mode the `Not IsCircle`
+bug had.
+
+### Not fixed, and not claimed fixed
+
+- The four `swCreateOrdDimErr_OrdFailure` chains from r7 were on non-front
+  views. They are **not diagnosed** — this run simply never attempted them.
+- `Set ISelectData.View` still raises error 91. Report still reads
+  `Selection scope: Unscoped(err=91)`.
+
+### New defects, observed on the r8 sheet
+
+1. The horizontal chain carries two spurious `0.00` ordinates alongside the
+   real `0` datum (`0, 0.00, 70.00, 110.00, 0.00, 150.00`). A chain should
+   have one zero.
+2. `Section View J-J` is placed off the right edge of the sheet frame.
+3. The `*Right` and `*Left` views are on the sheet per the roster but not
+   visible inside the frame — consistent with the same placement defect.
+4. The vertical chain reads `23.60 / 15.00 / 15.00 / 23.60` where the
+   reference reads `36 / 15 / 0 / 15 / 36`. The `15` values match. `23.60`
+   against `36` is consistent with gap A4 — only circular edges are
+   candidates, so the chain terminates on the outermost hole rather than the
+   silhouette edge. Consistent with, not proof of.
+5. Both deferred decisions are now visually confirmed on the sheet: the title
+   block shows `MASS(KG): 1296.82`, and the general notes appear twice — once
+   in the sheet-format box, once from `InsertNotes`.
+
+
 ## 2026-08-06 (47) - r7 live: ordinate engine works, 8 chains created
 
 First working ordinate run on the trunk. Four revisions of live diagnosis,

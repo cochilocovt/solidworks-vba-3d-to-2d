@@ -368,6 +368,8 @@ Public Function R23_TouchAllModules() As String
     Module6_QAEngine.R23_CompileTouch
     On Error GoTo M7Failed
     Module7_TitleBlockEngine.R23_CompileTouch
+    On Error GoTo M8Failed
+    Module8_ViewClassifier.R23_CompileTouch
     On Error GoTo M20Failed
     Module20_ProbeRunner.R23_CompileTouch
     On Error GoTo M21Failed
@@ -386,6 +388,7 @@ M5Failed:
     Exit Function
 M6Failed: R23_TouchAllModules = "Module6_QAEngine": Exit Function
 M7Failed: R23_TouchAllModules = "Module7_TitleBlockEngine": Exit Function
+M8Failed: R23_TouchAllModules = "Module8_ViewClassifier": Exit Function
 M20Failed: R23_TouchAllModules = "Module20_ProbeRunner": Exit Function
 M21Failed: R23_TouchAllModules = "Module21_EvidenceSink": Exit Function
 End Function

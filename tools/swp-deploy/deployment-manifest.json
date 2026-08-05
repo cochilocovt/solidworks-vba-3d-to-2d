@@ -60,6 +60,11 @@
       "kind": "StdModule"
     },
     {
+      "name": "Module8_ViewClassifier",
+      "file": "Module8_ViewClassifier.bas",
+      "kind": "StdModule"
+    },
+    {
       "name": "Module20_ProbeRunner",
       "file": "Module20_ProbeRunner.bas",
       "kind": "StdModule"

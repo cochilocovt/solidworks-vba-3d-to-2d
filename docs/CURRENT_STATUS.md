@@ -1,43 +1,73 @@
 # Current Status
 
-Date: 2026-08-05
+Date: 2026-08-06
 
-## r7 live: ordinate engine works; output not yet close to the reference
+## r8 live: ordinates land on the front view only; values still wrong
 
-`MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r7`, deployed, compiled
-`verdict=Clean`, run against P-0251 with ordinate mode selected.
+`MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r8`, deployed (13/13 managed
+components), compiled `verdict=Clean`, run against P-0251 with ordinate mode
+selected. Report at
+`macro_qa/20260806_051241_P-0251-14A-001/QA_REPORT.txt`.
 
 ```
-Total drawing view dimensions: 33
-Ordinate edges seen: 349 (circular: 127)
-Ordinate edge route: ViaComponent
+Total drawing view dimensions: 9
+View roster:
+  Drawing View1 | Type=7 | Orientation=*Front | Role=Front | ordinates=allowed | 9 dims
+  Drawing View2 | Type=7 | Orientation=*Bottom | Role=Bottom | ordinates=skipped | 0 dims
+  Drawing View3 | Type=7 | Orientation=*Right | Role=Right | ordinates=skipped | 0 dims
+  Drawing View4 | Type=7 | Orientation=*Left | Role=Left | ordinates=skipped | 0 dims
+  Drawing View5 | Type=7 | Orientation=*Isometric | Role=Pictorial | ordinates=skipped | 0 dims
+  Section View J-J | Type=2 | Orientation=(empty) | Role=Section | ordinates=skipped | 0 dims
+Ordinate views processed: 1
+Ordinate chains created: 2 of 2 attempted
 Selection scope: Unscoped(err=91)
-Ordinate chains created: 8 of 12 attempted
-WARNING: 4 ordinate chain(s) failed. Last code=1 (swCreateOrdDimErr_OrdFailure)
 PASS: Drawing contains dimensions.
 ```
 
-`SetPickMode` is exercised and holds across 8 successive chains.
+Gaps **A5 and A6 are closed**. `IsIsoView` is deleted;
+`Module8_ViewClassifier` classifies from `IView.Type` +
+`IView.GetOrientationName`, and the §6 caveat in the gap doc is resolved with
+live evidence (all model views `Type=7`; orientation strings round-trip
+exactly). The roster is printed on every run, so the classification carries
+its own evidence.
+
+### Open defects, observed on the r8 sheet
+
+1. **The horizontal chain has three zeros.** It reads
+   `0, 0.00, 70.00, 110.00, 0.00, 150.00`; a chain has one datum.
+2. **`Section View J-J` is placed off the right edge of the sheet frame**, and
+   the `*Right` / `*Left` views are on the sheet per the roster but not
+   visible inside the frame.
+3. **Chain values do not match the reference.** The vertical chain reads
+   `23.60 / 15.00 / 15.00 / 23.60` against the reference's
+   `36 / 15 / 0 / 15 / 36`. The `15`s match; `23.60` against `36` is
+   consistent with gap A4 (circular-edge-only candidates terminate the chain
+   on the outermost hole instead of the silhouette edge). Consistent with,
+   not proof of.
 
 ### Next, in order
 
-1. **Replace `IsIsoView`.** The isometric view is receiving ordinate chains
-   because the name test looks for "ISO" and the views are auto-named
-   `Drawing View1`..`View5`. Use `IView.Type` + `IView.GetOrientationName`;
-   probe what they actually return first.
-2. **Per-view dimension-style policy** (gap A5) - the reference ordinates the
-   front view only.
-3. **Per-axis datum contract** (gaps A2-A4) - X on the centreline, Y on the
+1. **Per-axis datum contract** (gaps A2-A4) - X on the centreline, Y on the
    bottom edge, neither of them a hole, and silhouette edges as candidates.
-4. Diagnose `swCreateOrdDimErr_OrdFailure` on the remaining 4 chains.
-5. `ISelectData.View` error 91 - worked around, not solved.
+   This is what defects 1 and 3 above both sit on.
+2. View placement / section-view position (defect 2, C-series gaps).
+3. Diagnose `swCreateOrdDimErr_OrdFailure`. The 4 failures seen at r7 were on
+   non-front views; r8 never attempted them, so this is **undiagnosed, not
+   fixed**.
+4. `ISelectData.View` error 91 - worked around, not solved.
 
-### Cheap, waiting on a decision
+### Waiting on a user decision - do not default
 
-- Mass reads 1296.82 vs the reference's 1.30 (grams). One line, once it is
-  confirmed that the source property is always grams.
-- General notes duplicated over the title block. `DrawingContainsText` walks
-  per-view notes only and cannot see the template's sheet-format notes.
+Both are now visually confirmed on the r8 sheet. Recorded so they are not
+lost; the user has deferred them.
+
+- **Mass units.** Title block reads `MASS(KG): 1296.82` against the
+  reference's `1.30 kg`. One line, once it is confirmed the source property is
+  always grams.
+- **Duplicate general notes.** The notes appear twice - once in the template's
+  sheet-format box, once from `InsertNotes`. `DrawingContainsText` walks
+  per-view notes only and cannot see sheet-format text, so QA cannot detect
+  this.
 
 ## Historical: trunk moved to baseline; Phase 1 landed, unrun
 

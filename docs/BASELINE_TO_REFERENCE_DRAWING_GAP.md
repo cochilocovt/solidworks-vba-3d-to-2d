@@ -131,8 +131,8 @@ refuse to trust them; they pass. No numeric correction is needed there.
 | A2 | One datum for both axes | `ResolveDatumIndex` `B:161-188`, one `datumIdx` used by both chains `B:86-87` | X datum = centreline, Y datum = bottom edge — different entities, different rules |
 | A3 | Datum must be a circle | candidate array is circles only, `B:44-79` | neither reference datum is a hole |
 | A4 | Only circular edges are candidates | `If Not swCurve.IsCircle Then GoTo NextEdge`, `B:52` | X chain dimensions the `±36` silhouette edges |
-| A5 | Ordinates applied to every non-ISO view | `AddFallbackOrdinateDimensions` `B/Module2_DrawingPipeline.bas:87-92` | ordinates on the front view **only**; section and left views use conventional dims |
-| A6 | View classification by name string | `IsIsoView` `B/Module2_DrawingPipeline.bas:283-285` | use `IView.Type` + `IView.GetOrientationName`; see §6 caveat |
+| A5 | ~~Ordinates applied to every non-ISO view~~ **CLOSED r8** | now `Module8_ViewClassifier.AllowsOrdinateDimensions`, front-only | ordinates on the front view **only**; section and left views use conventional dims |
+| A6 | ~~View classification by name string~~ **CLOSED r8** | `IsIsoView` deleted; `Module8_ViewClassifier.ClassifyView` uses `IView.Type` + `IView.GetOrientationName` | see §6, now resolved with live evidence |
 | A7 | Fixed 15 mm placement offset, no bounds check | `B:243-245` | chains sit clear of the view, inside the frame, clear of the title block |
 | A8 | 2-D proximity test used to dedupe a 1-D chain | `HasNearbyPoint` `B:151-159` used for both axes | a horizontal chain cares only about X; a Y difference must not keep two points that share an X |
 | A9 | 1.5 mm tolerance is an unjustified magic number | `B:154`, `B:221` | derive from model/drawing resolution |
@@ -186,18 +186,30 @@ conclusion.
 | D5 | No read-back verification | `WriteDrawingProperty` `B:69-74` is `On Error Resume Next` with both return values ignored |
 | D6 | Property→title-block linkage unverified | whether the sheet format's fields reference `$PRP:"…"` is template-dependent and has never been checked |
 
-## 6. View classification caveat
+## 6. View classification — RESOLVED r8 (2026-08-06)
 
 `IView.Type` returns `swDrawingViewTypes_e` (Sheet=1, Section=2, Detail=3,
 Projected=4, Auxiliary=5, Standard=6, Named=7, Relative=8, Detached=9,
 AlternatePosition=10). But every view this pipeline creates comes from
-`CreateDrawViewFromModelView3`, so front / top / right / isometric are
+`CreateDrawViewFromModelView3`, so front / top / right / isometric were
 expected to share one `Type`. **`Type` alone will not separate the isometric
 from the front view.** Pair it with `IView.GetOrientationName` ("Gets the
 predefined name of this view").
 
-What each actually returns for this pipeline's views has **not** been probed.
-That is a cheap read-only probe and should be run before A6 is implemented.
+That expectation was confirmed, not assumed. The r8 run printed the raw
+returns for every view: all five model views came back `Type=7`
+(`swDrawingNamedView`), and `GetOrientationName` round-tripped the exact
+string passed to `CreateDrawViewFromModelView3` (`*Front`, `*Bottom`,
+`*Right`, `*Left`, `*Isometric`). `Section View J-J` returned `Type=2` with an
+empty orientation, matching the documented empty-string case.
+
+Implemented in `Module8_ViewClassifier`. Full evidence in
+`SOLIDWORKS_API_VALIDATION.md`, "r8 view classification characterised".
+
+The roster is emitted on **every** run by `Module6_QAEngine.BuildPerViewSummary`
+and carries the raw `Type=` / `Orientation=` values, not just the derived role.
+A build where these contracts differ falsifies itself in the run record rather
+than failing silently.
 
 ## 7. The structural gap that no reordering of the above fixes
 

@@ -110,7 +110,12 @@ Private Sub AddFallbackOrdinateDimensions( _
     If Not swView Is Nothing Then Set swView = swView.GetNextView
 
     Do While Not swView Is Nothing
-        If Not IsIsoView(swView.Name) Then
+        ' Was a substring test for "ISO" in IView.Name. SOLIDWORKS auto-names
+        ' these views "Drawing View1".."Drawing View5", so it never matched and
+        ' the r7 run ordinated the isometric view. Module8 classifies from
+        ' IView.Type and IView.GetOrientationName instead.
+        If Module8_ViewClassifier.AllowsOrdinateDimensions( _
+            Module8_ViewClassifier.ClassifyView(swView)) Then
             Module5_FallbackDimensionEngine.CreateHoleOrdinateDims swDraw, swView, Module1_Main.GlobalConfig.DatumOrigin, status
         End If
         Set swView = swView.GetNextView
@@ -304,11 +309,6 @@ Private Sub GetPrimarySectionSettings(ByRef secLabel As String, ByRef secVertica
         secVertical = Module1_Main.GlobalConfig.SectionVertical
     End If
 End Sub
-
-Private Function IsIsoView(ByVal viewName As String) As Boolean
-    IsIsoView = (InStr(1, viewName, "ISO", vbTextCompare) > 0 Or InStr(1, viewName, "ISOMETRIC", vbTextCompare) > 0)
-End Function
-
 
 ' Compile-failure localisation no-op called by
 ' Module20_ProbeRunner.R23_TouchAllModules.
