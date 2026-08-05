@@ -1,4 +1,3 @@
-Attribute VB_Name = "Module3_ModelAudit"
 
 Option Explicit
 
@@ -288,3 +287,8 @@ SafeExit:
 End Function
 
 
+
+' Compile-failure localisation no-op called by
+' Module20_ProbeRunner.R23_TouchAllModules.
+Public Sub R23_CompileTouch()
+End Sub

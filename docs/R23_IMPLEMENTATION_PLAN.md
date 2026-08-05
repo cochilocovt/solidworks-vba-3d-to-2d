@@ -1,10 +1,61 @@
 # R23 Target-Spec Hybrid Drawing Implementation Plan
 
-**Status:** Production R23 blocked; final probes ran but exposed disposable
-probe defects and unresolved entity-mapping, H7-authority, and coordinate-frame
-contracts
-**Prepared:** 2026-07-30; updated 2026-07-31
-**Target revision:** `target-spec-hybrid-v2-2026-07-30-r23`
+**Status:** Phases 0-8 were satisfied at r29. r37 passed focused read-only
+execution and proves both vertical outline datums with a scoped drawing-view
+selection fallback when SOLIDWORKS returns no polyline-edge array. r31 preserves the user-accepted layout as-is:
+automatic envelope repositioning/rescaling is retired from production and its
+semantic stage is an explicit waiver, not a clearance pass. Production R23
+remains blocked on the non-layout semantic gates, full production mutation
+proof, and the three-fixture regression.
+**Prepared:** 2026-07-30; updated 2026-08-04
+
+## Remaining work at a glance (2026-08-04)
+
+Read this before planning any R23 work. Everything below is open; everything
+not listed here is gated SATISFIED.
+
+| Item | State |
+|---|---|
+| Phase 9 `R23-903`, `R23-904` | closed by user decision: preserve approved layout; no automatic move/rescale |
+| r37 non-layout corrections | 435/435 static; 38/38 deployment/readback; programmatic VBE clean; P-0251 runner complete |
+| Phase 9 layout | diagnostics retained; automatic clearance is waived, never reported as passed |
+| Phase 10 gate | r37 scratch runner: 9 of 10; only creation-dependent model-import coverage remains open |
+| R23-502 outline datum | satisfied: straight lower model edges map by scoped target-view selection when `GetPolylines7` returns no edges |
+| P-0252 semantic section | no graph-backed path defined; production fails closed |
+| P-0252 fixture drawings | no disposable `.SLDDRW` exists under `test_assets/`; three-fixture runtime cannot start |
+| Phase 11 `R23-1100` to `R23-1103` | source wired; VBE compiled and P-0251 read-only evidence retained; production mutation unproved |
+| Phase 12 `R23-1208` to `R23-1211` | r37 focused runner retained; production artifacts remain open |
+| Section 7 acceptance checklist | production drawing and visual acceptance remain open |
+| Accumulated mutating work, Phases 5-9 | only P-0251 layout scale was authorized and saved on scratch |
+
+**Latest read-only runtime proof (r37):**
+`test_assets/iteration_evidence/probe_runs/20260804_164014/probe_log.txt`
+records guarded deployment/readback 38/38, `R23_RUN_COMPILE|verdict=Clean`,
+and all nine probes `Completed` against the saved P-0251 scratch drawing. It
+resolved 44 projections and proved 11/11 projection selections. Every probe
+remained read-only with selection count 0 to 0.
+
+r37 calls `IView.GetPolylines7` first. The installed build returns no
+polyline-edge array for both valid HLV target views. Only this explicit
+no-edge state permits Route D: the model
+edge is selected by `IView.SelectEntity` and the selection manager must read
+its owner back as the requested drawing view. Both vertical schemes are now
+`OutlineDerived`; semantic QA proves 9/10. The remaining failure is
+model-import coverage in `Drawing View4`, which is creation-dependent and
+cannot be passed by a read-only copy of a manual drawing. The r31 user decision
+retires automatic envelope movement/rescaling and treats `FINAL_LAYOUT` as
+`UserAcceptedLayoutAsIs|automaticClearance=DeferredByUser`.
+The scratch began as an exact SHA-256-matched copy at
+`test_assets/scratch_drawings/P-0251-14A-001-R23-layout-scratch.SLDDRW`.
+`Module2_DrawingPipeline.R23_ApplyContentLayoutToScratch` refuses every other
+path, proves the referenced local fixture, records evidence, and never saves.
+Its r28 rescale loop made two measured scale passes, then rejected a third
+request. The user accepted that scratch result; it was saved through the
+installed SW2025 `IModelDoc2.Save3` contract with `errors=0|warnings=0`.
+That human acceptance does not convert `FINAL_LAYOUT=False` into an automatic
+or production gate pass.
+
+**Target revision:** `target-spec-hybrid-v2-2026-08-04-r37`
 **Production source:** `src/target-spec-hybrid-v2/`
 **Protected source:** `src/baseline-model-dims/` — read-only
 
@@ -343,26 +394,17 @@ separate gates.
   - end condition;
   - sketch/contour state;
   - owned face count and cylindrical owned-face count.
-- [ ] **R23-006:** Compare both circular-curve read orders on one counterbore,
-  tapped hole, mirrored hole, and resolved cut cylinder:
+- [x] **R23-006:** Compared both circular-curve read orders on one
+  counterbore, tapped hole, mirrored hole, and resolved cut cylinder:
   - R22 order: `GetCurve → GetCurveParams3 → IsCircle → CircleParams`;
   - retained-probe order:
     `GetCurve → IsCircle → CircleParams → GetCurveParams3`.
-  - The July 31 live run proves the shared `IsCircle` and `GetCurveParams3`
-    portions of both orders are stable.
-  - **`CircleParams` works — exclusion closed 2026-07-31.** With the guard
-    defect removed it returned seven values on every tested edge with radii
-    matching the owning cylinders exactly (`0.005500000`, `0.003300000`,
-    `0.023500000`). Production may treat it as available evidence.
-  - The original withdrawal reasoning, retained for provenance: the
-    `SkippedNotCircle` result came from
-    `Module_R23Phase0FeatureProbe.ReadCircleState` line 611, which guards the
-    call with `If Not isCircle Then` — the same
-    `If Not <SOLIDWORKS Boolean>` defect that rejected every cylindrical face
-    and every circular edge in the later runs. `CircleParams` was never
-    invoked, so no anomaly was ever observed. Its behaviour remains untested;
-    the corrected probe now reads it as non-load-bearing evidence. Production
-    must not depend on it until a run actually exercises it.
+  - `probe_runs/20260804_125350/` records all four `status=Pass`, with
+    `IsCircle=True`, seven `CircleParams` values, equal radius, and zero
+    closure for each order: 5.5 mm counterbore, 2.1 mm M5 tapped, 2.1 mm
+    mirrored, and 20 mm extruded-cut cylinder.
+  - `R23_CURVE_ORDER_END|failures=None`, `catalogFailures=None`,
+    `modelUnchanged=True`, and the nine-probe runner remained read-only.
 - [x] **R23-007:** Compare expanded-mask import on a disposable P-0251 drawing:
   - one selected view with `AllViews=True`;
   - deterministic selected-view calls with `AllViews=False`;
@@ -821,9 +863,7 @@ after, so it can be run against the manual reference drawing.
 `initialSelectionCount=0|finalSelectionCount=0|drawingUnchanged=True`.
 
 Everything the probe can prove without creating a dimension is proven. What
-remains open is exactly what requires mutation - R23-506 and R23-508 - plus
-R23-502, which is **not met** and is marked so below rather than being
-claimed on a weaker datum.
+remains open is exactly what requires mutation - R23-506 and R23-508.
 
 - [x] **R23-500:** Scheme key is `view role + machining face + datum policy
   + direction`, every part measured. Four schemes resolved live, two
@@ -836,12 +876,12 @@ claimed on a weaker datum.
   `CentreBoreProjectedCentre` policy rather than by fallback, and was proved
   selectable: `selection=True|selectedCount=1|ownershipProven=True` via
   `ISelectionMgr.GetSelectedObjectsDrawingView2`.
-- [ ] **R23-502: NOT MET.** The vertical datum resolves to the lowest
-  projected hole (`y=0.087415` in `Drawing View4`), recorded as
-  `datumKind=ProjectionDerived`. This task asks for the part's bottom
-  **outline** geometry, which is a different kind of entity and has not been
-  proved. The distinction is carried in evidence precisely so a
-  projection-derived datum can never be read as an outline datum.
+- [ ] **R23-502:** The vertical datum must be the lowest visibility-qualified
+  horizontal model edge in each ordinate-bearing view, not a hole centre or
+  the view rectangle. r29 Route D evidence is historical only: r30 live
+  evidence found no mapped bottom edge in the visible-entity inventory, so no
+  vertical datum is presently accepted. `IView.GetOutline` remains an
+  enclosing view bound, not silhouette geometry.
 - [x] **R23-503:** `Drawing View4` horizontal scheme resolved `buckets=2`,
   `anchoredBuckets=2`, at `x=0.222332` and `x=0.192332`, crediting three
   counterbores each - the two symmetric columns. Creation is R23-508.
@@ -934,16 +974,11 @@ creation half is unrun because it mutates.
   `toleranceSource=IWizardHoleFeatureData2.HoleFit=1`. Families with no
   source fit report `Unproven` rather than an invented value, and no
   drawing-authored tolerance is promoted here.
-- [ ] **R23-609: half met, and the remaining half is deliberate.** The new
-  path contains none of it: no part number, no `6X`, no `M5x0.8`, no `H7`,
-  no diameter literal, and no scoring by feature name or by proximity to an
-  expected radius. A contract asserts each of those strings is absent.
-  **The legacy literals are still in `Module7_TitleBlockEngine.bas`** - the
-  callout text at lines 359-371 and the name/radius scoring at 405-435 -
-  because Module7 is still the reachable production path and Module16 is
-  not yet wired into `main`. Deleting them now would degrade the deployable
-  macro while its replacement is disconnected. They come out in the phase
-  that switches the pipeline over, and that switch bumps the revision.
+- [x] **R23-609:** The R23 production route uses Module16 family definitions;
+  `Module7_TitleBlockEngine.PopulateTitleBlock` remains title-only. The old
+  fixed P-0251 callout strings and feature-name/radius selection are absent
+  from the reachable route. The r28 scratch runner reads
+  `legacyBoreCallout=0|removalStatus=PipelineSwitched`.
 - [x] **R23-610:** Proved by the failures it produced before the fixes
   landed - `NominalDiameter`, `Depth`, `CounterBoreDepth`, `Attachment`,
   each named individually. Depth is demanded only from a blind hole
@@ -995,14 +1030,10 @@ was checked, but no line was drawn and no view was cut.
   bore plus all three holes on the chosen column. Each is judged against
   its own projected radius, and the point-to-segment distance is clamped to
   the finite segment.
-- [ ] **R23-704: half met, deliberately.** The new path contains none of
-  it - no `extension`, no `topY`/`bottomY`, no `leftX`/`rightX`, and none of
-  the fractions `15/72`, `90/196`, `15.84/24` or `0.1 *`. A contract
-  asserts each is absent. **The literals remain in
-  `Module2_DrawingPipeline.bas` (lines 1525-1556)** because that is still
-  the reachable production path and Module17 is not wired into `main`.
-  Removing them now would break the deployable macro while its replacement
-  is disconnected - the same situation as R23-609.
+- [~] **R23-704:** P-0251's R23 route resolves J-J through Module17; the
+  retired P-0251 section path fails named rather than creating a section.
+  The older generic fallback remains for fixtures without a graph-backed
+  semantic section and is not production-proven.
 - [ ] **R23-705: conversion proved, creation unrun.** The read-only frame
   probe returned `pageX=0.207331779 -> viewX=-0.022000000` and
   `pageY=0.237414746 -> viewY=0.062000000` against
@@ -1205,16 +1236,12 @@ now in place. Awaiting the third run.
   - 11.5 below;
   - Ø40 and Ø47 on opposite bore sides;
   - 173.6 and 104.8 on separate exterior vertical lanes.
-- [ ] **R23-809: predicate written, not consulted.**
-  `IsExcludedFromGenericArrangement` returns True for
-  `swDrawingSectionView = 2`. `Module9_LayoutEngine` does not call it yet,
-  because the R23 modules are not wired into the production pipeline - the
-  same deferral as R23-609 and R23-704.
-- [ ] **R23-810: detection only, deliberately.**
-  `DetectLegacyBoreCallout` counts notes in the section view containing
-  `47 H7` - the literal `Module7_TitleBlockEngine.bas:359-361` still writes -
-  and reports `removalBlockedBy=Module7_TitleBlockEngine.PipelineNotSwitched`.
-  Removing it before real dimensions exist would leave the bore undefined.
+- [x] **R23-809:** `Module4_ModelItemImporter.AutoArrangeAllDrawingDimensions`
+  consults `IsExcludedFromGenericArrangement`; section views are skipped from
+  generic arrangement. The r28 section probe reports that exclusion.
+- [x] **R23-810:** `DetectLegacyBoreCallout` remains evidence-only and the r28
+  scratch runner reads `legacyBoreCallout=0|removalStatus=PipelineSwitched`.
+  It does not remove notes during a read-only probe.
 - [x] **R23-811:** `VerifySectionDimensions` fails on a missing key, on a
   duplicate, on an unsatisfied tolerance, on an unattached dimension, and on
   any requirement whose own failure list is non-empty - a requirement that
@@ -1251,7 +1278,37 @@ their agreement with the view's own documented outline is COUNTED rather
 than asserted, because a contract the Help does not make is not one this
 project states.
 
-**Status: second live run completed end to end; five defects fixed.** The
+**Status after the third live run (2026-08-04, under the probe runner):**
+the five defects below are fixed and confirmed - the section grammar now
+parses (`arrow` and `section` sources contribute), no line printed twice,
+and rejections carry a coordinate. The probe reported `envelopes=4|`
+`annotationEnvelopes=3|protectedRegions=4|clearanceChecks=22` and
+`plan=RescaleRequired|suggestedScaleFactor=0.527974|`
+`requiredHeightM=0.479190|usableHeightM=0.253000` - the same arithmetic
+that justified reversing R23-907, now measured rather than argued.
+
+**Superseded by user decision (2026-08-04).** R23-903/R23-904 automatic
+envelope movement and rescaling are complete for planning purposes. r31 keeps
+the initial structural grid but cannot call `ApplyR23ContentLayout` from the
+production route or the retired scratch command. `FINAL_LAYOUT` is reported as
+`UserAcceptedLayoutAsIs|automaticClearance=DeferredByUser`, never as a
+clearance pass. The diagnostic probe remains available to measure a layout,
+but its result does not block the remaining semantic work.
+
+**Historical automatic result.** Ten clearance failures stood
+(`ViewOverlap` on four pairs, `ProtectedIntrusion` against the content
+border on all four views). The r28 scratch macro allows two measured rescale
+passes before shared placement. It has exact-path and referenced-part guards,
+but `R23-903`/`R23-904` remain unrun pending the manual VBE compile and
+mutating execution. The three
+high-severity review findings in that path are source-corrected: placement
+refuses an unusable plan, scaling refuses sheet/parent-dependent views, and
+sheet measurement reads title-block extents when present. Their mutating
+runtime evidence remains open.
+
+Historical status of the run before it:
+
+**Second live run completed end to end; five defects fixed.** The
 sheet measured (`A3 0.420 x 0.297`, `contentBorder=Measured`,
 `titleBlock=Absent`), four envelopes built, clearances checked, a plan
 produced. Five defects the run exposed are fixed and it awaits a third run:
@@ -1316,14 +1373,18 @@ are now skipped by name and logged as skipped.
   tokens `Module9_LayoutEngine.bas:442-446` uses to pin the source row to
   the top boundary. A row pinned to a boundary has nowhere to put the
   annotations that hang above it, which is the whole defect.
-- [ ] **R23-903: written, unrun.** The delta is
+- [~] **R23-903: r28 scratch entrypoint executed.** Two scale mutations were
+  applied and saved; no position delta was applied because the re-measured
+  plan never became acceptable. The delta is
   `cellCentre - envelope.Centre`, applied to `IView.Position`. A contract
   asserts `GetOutline` does not appear in that procedure at all, because
   moving by the OUTLINE centre is what `Module9_LayoutEngine` does and is
   exactly why annotations end up outside the region the layout believed it
   was filling.
-- [ ] **R23-904: written, unrun.** `EditRebuild3`, then every envelope is
-  rebuilt from scratch, then clearances are re-verified;
+- [~] **R23-904: r28 scratch entrypoint rebuilt and re-measured after each
+  scale pass.** The saved drawing was then re-verified by the read-only
+  runner; five conservative clearance failures remain. `EditRebuild3`, then
+  every envelope is rebuilt from scratch, then clearances are re-verified;
   `MAX_CORRECTION_PASSES = 1`. A view move relocates the section line and
   every attached annotation, so nothing read before the move still describes
   the sheet. A failed rebuild is reported rather than swallowed.
@@ -1388,13 +1449,21 @@ none into the others. A note-token check is satisfied by free text that has
 drifted from the geometry beside it, and fails on a correct drawing whose
 wording differs. Neither says anything about the part.
 
-**Pipeline wiring is deferred**, the same as R23-609, R23-704 and R23-810.
-`Module6_QAEngine` still runs the count-based checks on the reachable
-production path; switching over is Phase 11's job and would put unproven
-gates in front of a deployable macro.
+**Pipeline wiring is Phase 11 work and is now present.** `Module6_QAEngine`
+requires the shared semantic stages on the reachable production path.
 
-**Status: source complete, awaiting first live run.** Statically verified
-only.
+**Status: r26 read-only runner, 2026-08-04.**
+`R23_SEMANTICQA_END|stages=10|proved=9|failures=1|warnings=8`, with
+`mutations=0` and `drawingUnchanged=True`. The sole failing stage is
+`FINAL_LAYOUT`, whose ten named clearance/protected-region failures require
+the separately authorized Phase 9 mutation path.
+
+The run initially exposed a semantic-QA order defect: directional coverage was
+recorded while building ordinate schemes, but `MODEL_IMPORT_COVERAGE` was
+judged before those schemes. `COrdinateBucket` now records coverage by
+direction, and Phase 10 rebuilds schemes before judging that stage. The r26
+log proves `Drawing View4` at `coveredX=7|coveredY=6` and `Drawing View7` at
+`coveredX=4|coveredY=4`; authored dimensions did not count as import proof.
 
 - [x] **R23-1000:** Required stage `MODEL_INTENT_CATALOG`.
 - [x] **R23-1001:** Required stage `MODEL_IMPORT_COVERAGE`.
@@ -1456,9 +1525,9 @@ only.
 
 ### Phase 11 — Reorder the production pipeline
 
-- [ ] **R23-1100:** Replace the initial `modelHoleFeatures` collection with the
+- [x] **R23-1100:** Replace the initial `modelHoleFeatures` collection with the
   location graph.
-- [ ] **R23-1101:** Implement this order:
+- [x] **R23-1101:** Implement this order:
   1. audit referenced configuration and build feature definitions;
   2. create primary and side views;
   3. perform rough geometry placement;
@@ -1475,19 +1544,24 @@ only.
   14. rebuild and perform final content-envelope layout;
   15. rebuild, clean selection state, and run read-only QA;
   16. emit complete evidence.
-- [ ] **R23-1102:** Verify no final content is added after the final layout pass.
-- [ ] **R23-1103:** Keep UI forms unchanged unless an independent
+- [x] **R23-1102:** Static contract proves no final content is added after the
+  final layout pass. r26 also proved the shared wiring compiles and its
+  read-only P-0251 evidence path runs; production creation remains open.
+- [x] **R23-1103:** Keep UI forms unchanged; no independent
   event/interface defect is demonstrated.
 
 ### Phase 12 — Static verification, deployment, and runtime acceptance
 
-- [ ] **R23-1200:** Update deployment manifest and import documentation for all
+- [x] **R23-1200:** Update deployment manifest and import documentation for all
   added classes/modules.
-- [ ] **R23-1201:** Verify every deployable `.bas`/ordinary `.cls` is
-  Windows-1252/ANSI, CRLF, no BOM, no export metadata, and `Option Explicit`.
-- [ ] **R23-1202:** Run structural checks for procedure balance, duplicate
+- [x] **R23-1201:** The 2026-08-04 source inventory is clean for ASCII bytes,
+  CRLF, no BOM, `Option Explicit`, trailing whitespace, and the 79-character
+  limit across all 38 manifest-managed `.bas` and `.cls` files. r37 passed the
+  full 435-test suite and programmatic VBE compilation.
+- [x] **R23-1202:** Static contracts check procedure structure, public surface,
+  and production call ordering. r37 programmatic VBE compilation is clean.
   public declarations, unresolved references, and call-site arity.
-- [ ] **R23-1203:** Add static assertions rejecting:
+- [x] **R23-1203:** Static assertions reject:
   - unresolved `ICE` classification;
   - `FaceInSurfaceSense` as the hole decision;
   - old J-J extension math;
@@ -1496,30 +1570,41 @@ only.
   - feature-name/radius scoring;
   - final layout before definitions;
   - count-only QA.
-- [ ] **R23-1204:** Update:
+- [x] **R23-1204:** Update:
   - `docs/SOLIDWORKS_API_VALIDATION.md`;
   - `docs/REFERENCE_DRAWING_ANALYSIS_AND_TARGET_SPEC.md`;
   - `docs/CHANGELOG.md`;
   - `docs/CURRENT_STATUS.md`;
   - `src/target-spec-hybrid-v2/README_IMPORT.md`.
-- [ ] **R23-1205:** Synchronize exported source and embedded SWP using the
-  guarded deployment workflow.
-- [ ] **R23-1206:** Verify exact managed-source readback and r23 identity.
-- [ ] **R23-1207:** Compile the entire VBA project in the SOLIDWORKS VBA Editor.
-- [ ] **R23-1208:** Run focused P-0251 and retain:
+- [x] **R23-1205:** r37 synchronized exported source and embedded SWP through
+  guarded deployment (`38/38`, candidate and target `VERIFY: PASS`).
+- [x] **R23-1206:** Exact r37 managed-source readback is retained with the
+  deployment evidence.
+- [x] **R23-1207:** r37 full-project programmatic VBE compilation returned
+  `verdict=Clean` with `firstFailedModule=None` in the focused scratch runner.
+- [~] **R23-1208:** Fresh focused P-0251 r37 read-only runner evidence is
+  retained at `probe_runs/20260804_164014/`,
+  with `verdict=Clean`, `firstFailedModule=None`, and all nine probes
+  completed. Production QA output and uncropped full-sheet screenshot remain
+  open:
   - settings;
   - complete Immediate Window output;
   - QA report;
   - uncropped full-sheet screenshot;
   - relevant feature/type/definition probe evidence.
-- [ ] **R23-1209:** Compare P-0251 semantically and visually against the manual
-  reference.
-- [ ] **R23-1210:** Correct any remaining runtime or visual defects and repeat
-  the focused loop.
+- [~] **R23-1209:** The user accepted the isolated P-0251 scratch layout after
+  the r28 measured-rescale run. Semantic comparison against the manual
+  reference and production acceptance remain open.
+- [~] **R23-1210:** Corrected the live VBE dictionary-scope failure and the
+  semantic coverage ordering defect. The r28 Phase 9 loop completed on the
+  scratch, but its five automatic layout failures remain separately recorded
+  from the user's visual acceptance.
 - [ ] **R23-1211:** After P-0251 passes, compile and run the complete
-  three-fixture regression.
-- [ ] **R23-1212:** Retain failed outputs as regression evidence; do not
-  overwrite manual references.
+  three-fixture regression. As of 2026-08-04, only the P-0251 disposable
+  scratch drawing exists under `test_assets/`; P-0252 disposable drawings
+  must be supplied before their authorized fixtures can be run.
+- [x] **R23-1212:** Failed and successful runner logs are retained under
+  `test_assets/iteration_evidence/`; manual references remain untouched.
 
 ## 7. P-0251 acceptance checklist
 

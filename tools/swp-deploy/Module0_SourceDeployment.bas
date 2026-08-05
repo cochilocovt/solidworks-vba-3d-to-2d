@@ -99,6 +99,19 @@ Public Sub DeployFromRequest()
         ReplaceOneComponent targetProject, CStr(componentLine), logText
     Next componentLine
 
+    ' Shrinking the manifest used to strand components inside the SWP. The
+    ' deployer replaced what the manifest named and left everything else, so
+    ' going from 38 managed components to 12 on 2026-08-05 orphaned 26
+    ' modules that still called members the new source did not define. The
+    ' project stopped compiling and the pre-flight refused the run.
+    If StrComp(ReadRequestValue(requestText, "PRUNE_UNMANAGED"), _
+        "1", vbTextCompare) = 0 Then
+
+        currentStage = "PRUNE_UNMANAGED"
+        PruneUnmanagedComponents targetProject, componentLines, _
+            ReadProtectedNames(requestText), logText
+    End If
+
     currentStage = "SAVE_CANDIDATE_INPUT"
     SaveActiveMacroProject targetProject
 
@@ -306,6 +319,113 @@ Private Sub ReplaceOneComponent( _
     logText = logText & "COMPONENT|name=" & componentName & _
         "|kind=" & componentKind & "|status=CREATED" & vbCrLf
 End Sub
+
+' Removes every standard and class module that the manifest no longer names
+' and that is not explicitly protected.
+'
+' Three guards, because this deletes code:
+'   1. Only VBEXT_CT_STDMODULE and VBEXT_CT_CLASSMODULE are eligible. Forms
+'      and document classes are a different component type and are never
+'      touched, whatever the protected list says.
+'   2. The protected list carries the bootstrap's own name, so this can
+'      never remove the module it is executing from.
+'   3. Every removal is logged by name and kind before it happens.
+Private Sub PruneUnmanagedComponents( _
+    ByRef targetProject As Object, _
+    ByRef componentLines As Collection, _
+    ByRef protectedNames As Collection, _
+    ByRef logText As String)
+
+    Dim keepNames As Collection
+    Set keepNames = New Collection
+
+    Dim componentLine As Variant
+    For Each componentLine In componentLines
+        AddNameIfAbsent keepNames, CStr(Split(CStr(componentLine), "|")(0))
+    Next componentLine
+
+    Dim protectedName As Variant
+    For Each protectedName In protectedNames
+        AddNameIfAbsent keepNames, CStr(protectedName)
+    Next protectedName
+
+    ' Collect first, remove second. Removing while enumerating the live
+    ' VBComponents collection skips entries.
+    Dim doomed As Collection
+    Set doomed = New Collection
+
+    Dim component As Object
+    For Each component In targetProject.VBComponents
+        Dim componentType As Long
+        componentType = CLng(component.Type)
+
+        If componentType = VBEXT_CT_STDMODULE Or _
+           componentType = VBEXT_CT_CLASSMODULE Then
+
+            If Not NameExists(keepNames, CStr(component.Name)) Then
+                doomed.Add CStr(component.Name) & "|" & CStr(componentType)
+            End If
+        End If
+    Next component
+
+    Dim doomedEntry As Variant
+    For Each doomedEntry In doomed
+        Dim doomedName As String
+        doomedName = CStr(Split(CStr(doomedEntry), "|")(0))
+
+        logText = logText & "PRUNE|name=" & doomedName & _
+            "|kind=" & CStr(Split(CStr(doomedEntry), "|")(1)) & _
+            "|status=REMOVING" & vbCrLf
+
+        Dim victim As Object
+        Set victim = TryGetComponent(targetProject, doomedName)
+
+        If victim Is Nothing Then
+            Err.Raise vbObjectError + 7150, "PruneUnmanagedComponents", _
+                "Could not resolve '" & doomedName & "' for removal."
+        End If
+
+        targetProject.VBComponents.Remove victim
+    Next doomedEntry
+
+    logText = logText & "PRUNE|status=COMPLETE|removed=" & _
+        CStr(doomed.Count) & vbCrLf
+End Sub
+
+Private Function ReadProtectedNames(ByVal requestText As String) As Collection
+    Dim result As New Collection
+    Dim lines As Variant
+    lines = Split(Replace(requestText, vbCrLf, vbLf), vbLf)
+
+    Dim lineValue As Variant
+    For Each lineValue In lines
+        If StrComp(Left$(CStr(lineValue), 10), "PROTECTED=", vbTextCompare) = 0 Then
+            result.Add Mid$(CStr(lineValue), 11)
+        End If
+    Next lineValue
+
+    Set ReadProtectedNames = result
+End Function
+
+Private Sub AddNameIfAbsent( _
+    ByRef names As Collection, _
+    ByVal candidate As String)
+
+    If Not NameExists(names, candidate) Then names.Add candidate
+End Sub
+
+Private Function NameExists( _
+    ByRef names As Collection, _
+    ByVal candidate As String) As Boolean
+
+    Dim existing As Variant
+    For Each existing In names
+        If StrComp(CStr(existing), candidate, vbTextCompare) = 0 Then
+            NameExists = True
+            Exit Function
+        End If
+    Next existing
+End Function
 
 Private Function TryGetComponent( _
     ByRef targetProject As Object, _

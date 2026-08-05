@@ -1,4 +1,3 @@
-Attribute VB_Name = "Module4_ModelItemImporter"
 Option Explicit
 
 Private Const swImportModelItemsFromEntireModel As Long = 0
@@ -32,12 +31,17 @@ Public Function ImportModelItemsAcrossDrawing( _
     swDrawModel.ClearSelection2 True
     swDraw.ActivateView ""
 
+    ' Parameter 4 is DuplicateDims. Its documented contract reads backwards
+    ' from its name: "True to eliminate duplicate dimensions, false to allow
+    ' duplicate dimensions" (IDrawingDoc.InsertModelAnnotations4, MCP
+    ' 2026-08-05). Passing False alongside AllViews=True inserted the same
+    ' annotation into every view, which is the repeated-hole-callout defect.
     Dim inserted As Variant
     inserted = swDraw.InsertModelAnnotations4( _
                     swImportModelItemsFromEntireModel, _
                     mask, _
                     True, _
-                    False, _
+                    True, _
                     False, _
                     False, _
                     False, _
@@ -86,12 +90,13 @@ Private Function ImportModelItemsPerView( _
         ok = swDrawModel.Extension.SelectByID2(viewName, "DRAWINGVIEW", 0, 0, 0, False, 0, Nothing, 0)
 
         If ok Then
+            ' DuplicateDims=True, same contract as the whole-drawing call.
             Dim inserted As Variant
             inserted = swDraw.InsertModelAnnotations4( _
                             swImportModelItemsFromEntireModel, _
                             mask, _
                             False, _
-                            False, _
+                            True, _
                             False, _
                             False, _
                             False, _
@@ -146,6 +151,13 @@ Public Sub AutoArrangeDimensionsInView(ByRef swDrawModel As SldWorks.ModelDoc2, 
     vDims = swView.GetDisplayDimensions
     If IsEmpty(vDims) Then GoTo SafeExit
 
+    ' Scope the selection to this view. Passing Nothing leaves the selection
+    ' unscoped, so in a multi-view drawing an annotation can be picked up
+    ' outside the view being arranged.
+    Dim swSelData As SldWorks.SelectData
+    Set swSelData = swDrawModel.SelectionManager.CreateSelectData
+    Set swSelData.View = swView
+
     Dim i As Long
     For i = LBound(vDims) To UBound(vDims)
         Dim swDispDim As SldWorks.DisplayDimension
@@ -154,7 +166,7 @@ Public Sub AutoArrangeDimensionsInView(ByRef swDrawModel As SldWorks.ModelDoc2, 
         If Not swDispDim Is Nothing Then
             Dim swAnn As SldWorks.Annotation
             Set swAnn = swDispDim.GetAnnotation
-            If Not swAnn Is Nothing Then swAnn.Select3 True, Nothing
+            If Not swAnn Is Nothing Then swAnn.Select3 True, swSelData
         End If
     Next i
 
@@ -172,13 +184,24 @@ Public Function GetFirstRealViewName(ByRef swDraw As SldWorks.DrawingDoc) As Str
     If Not swView Is Nothing Then GetFirstRealViewName = swView.Name
 End Function
 
+' Every member below was confirmed against swInsertAnnotation_e via MCP on
+' 2026-08-05. Verify in the SW2025 Object Browser before acceptance.
+'
+' swInsertholeCallout is now gated on the form's ImportHoleCallouts checkbox.
+' It was previously OR-ed in unconditionally, which left that control dead.
 Private Function GetModelItemMask() As Long
-    GetModelItemMask = swInsertDimensions Or _
-                        swInsertGTols Or _
-                        swInsertDimensionsMarkedForDrawing Or _
-                        swInsertHoleWizardProfileDimensions Or _
-                        swInsertHoleWizardLocationDimensions Or _
-                        swInsertholeCallout
+    Dim mask As Long
+    mask = swInsertDimensions Or _
+            swInsertGTols Or _
+            swInsertDimensionsMarkedForDrawing Or _
+            swInsertHoleWizardProfileDimensions Or _
+            swInsertHoleWizardLocationDimensions
+
+    If Module1_Main.GlobalConfig.ImportHoleCallouts Then
+        mask = mask Or swInsertholeCallout
+    End If
+
+    GetModelItemMask = mask
 End Function
 
 Private Function CountVariantItems(ByVal vItems As Variant) As Long
@@ -198,3 +221,8 @@ Failed:
     CountVariantItems = 0
 End Function
 
+
+' Compile-failure localisation no-op called by
+' Module20_ProbeRunner.R23_TouchAllModules.
+Public Sub R23_CompileTouch()
+End Sub

@@ -1,5 +1,1547 @@
 # Changelog
 
+## 2026-08-05 (46) - trunk moved to baseline, hybrid-v2 archived, Phase 1 landed
+
+User decision: `src/baseline-model-dims/` becomes the trunk;
+`target-spec-hybrid-v2` is archived. Revision reset to
+`trunk-2026-08-05-r2`. **No live run yet — everything below is static and
+contract evidence only.**
+
+### r2: the baseline's template path was wrong
+
+`TEMPLATE_PATH` was `V:\SW_data\Custom Templates\VEEMAP DRAWING.DRWDOT`,
+missing the `VEEMAP` segment. User confirmed the archived form
+(`V:\VEEMAP\SW_data\...`) is correct. `GetValidDrawingTemplatePath` checks
+`Dir$()` and falls through on a miss, so the baseline never raised an error —
+it silently built every drawing on the SOLIDWORKS default template instead of
+the controlled one. That alone would explain a missing title block and
+sheet format on any baseline-produced drawing.
+
+### Two defects found by reading MCP contracts against the baseline
+
+- **Ordinate chains never closed their group.**
+  `IModelDocExtension.AddOrdinateDimension` Remarks: selections made after
+  the call keep appending to the open group until `IModelDoc2::SetPickMode`
+  is called. `SetPickMode` did not appear anywhere in the baseline. The
+  horizontal chain ran first, so the vertical chain's `MultiSelect2` appended
+  to the horizontal group instead of starting its own, and every later
+  selection in the run inherited the mode. Leading candidate for the reported
+  "ordinate dims setting breaks the macro". Fixed in
+  `Module5_FallbackDimensionEngine.CreateOneOrdinateChain`, unconditionally,
+  on the failure path too.
+- **Model-item import was told to allow duplicates.**
+  `InsertModelAnnotations4` parameter 4 is `DuplicateDims`, documented "True
+  to eliminate duplicate dimensions, false to allow" — the name reads
+  backwards from the effect. The baseline passed `False` alongside
+  `AllViews=True`, inserting the same annotation into every view. Leading
+  candidate for the repeated hole callouts. Both call sites now pass `True`.
+
+Confirmed correct and left alone: every `swInsertAnnotation_e` mask member
+and every ordinate constant in the baseline matches the MCP enum tables.
+
+### Also in Phase 1
+
+- `ImportHoleCallouts` was a dead checkbox — `GetModelItemMask` OR-ed
+  `swInsertholeCallout` unconditionally. Now gated on the form field.
+- Auto-arrange selected annotations with `Select3 True, Nothing`, i.e.
+  unscoped. Now scoped with `SelectData.View`.
+- Ordinate failures reached only `Debug.Print`, so QA could report `PASS`
+  with every chain failed. Added `OrdinateRunStatus`, a decoded
+  `swCreateOrdDimError_e` message, and a fail-closed QA verdict.
+
+### Trunk plumbing
+
+- Stripped `Attribute` lines from all 10 deployable files. The baseline was
+  **not deployable as it stood** — the deployer's hygiene contract forbids
+  them. Files are pure ASCII, no BOM.
+- Ported `Module21_EvidenceSink` verbatim and a trimmed `Module20_ProbeRunner`
+  (compile gate and production pre-flight only). The nine `R23_Probe*` entry
+  points called archived Module10–19 and were not ported, so **the probe
+  runner's probe stage is inert**; its deploy and compile stages work.
+- Added `MACRO_SOURCE_REVISION`, the three fixture constants,
+  `IsAuthorizedFixture`, and a fail-closed authorization gate in `main` —
+  the baseline had none, and both runners mirror that list.
+- Manifest retargeted: 38 components to 12, `revisionPattern` to `trunk-*`.
+  Same pattern updated in the two probe manifests.
+
+### Test suite
+
+Live suite 34 tests, passing. The 31 files testing archived code moved to
+`archive/target-spec-hybrid-v2-tests/` (585 tests; 22 fail by design — see
+`archive/README.md`). Two hygiene tests and the deployment-tooling test now
+read the manifest instead of hardcoding hybrid-v2's file count.
+
+### Reference-drawing findings
+
+`LONG_VERTICAL_REF_173_6` **is on the reference drawing**, in SECTION J-J.
+Code gap, not spec error. The front view's ordinate datums are per-axis — X
+on the centreline, Y on the bottom edge — and neither is a hole, which
+invalidates the single-`DatumOrigin` design. Full gap list in
+`docs/BASELINE_TO_REFERENCE_DRAWING_GAP.md`.
+
+## 2026-08-05 (45) - r62 live: ANNOTATION_EXTENTS proved, three placement defects opened
+
+Run `macro_qa/20260805_071309_P-0251-14A-001`. Deploy verified at
+`embedded=target-spec-hybrid-v2-2026-08-05-r62`, pre-flight
+`ready=True|verdict=Clean`. Required failing stages **6 to 5**.
+
+- **`ANNOTATION_EXTENTS` is PROVED.** The post-layout clamp did what it was
+  built for: `SECTION_ANNOTATION_CLAMP_PASS|annotations=6|moved=3|`
+  `stillOutside=0`, and RD2 went `fromY=0.289235` to `readbackY=0.275000`
+  with `nowInside=True`. RD3/RD4/RD5 were recorded `AlreadyInside` and left
+  untouched, so the radial/diametric `SetPosition2` refusal documented in
+  the API notes was never exercised. It remains untested live.
+- **The stage passing did not make the sheet right.** The user's screenshot
+  showed what the gate cannot: three placement defects, all introduced by
+  this work.
+- **Defect 1. RD1 and RD2 now sit on the same point.**
+  `ANNOTATION_GEOMETRY` reports `x=0.206692|y=0.275000` for both, so 12.00
+  is hidden underneath 18.00. The clamp drives every violator to the
+  identical boundary point instead of separating them.
+- **Defect 2. RD3 and RD5 also share a point**, `x=0.179752|y=0.160060`.
+  This one predates r62 and is an r61 regression: `LaneTextPoint` handles
+  `LANE_BORE_SIDE_A` and `LANE_EXTERIOR_VERTICAL_INNER` in one `Case`, so
+  giving each lane its own ordinal made them identical. The r60 global
+  counter had been separating them by accident.
+- **Defect 3. The SECTION J-J label was moved 52 mm onto the view for no
+  reason.** `DetailItem927` went `y=0.036285` to `0.088749`. It was never in
+  violation: `CONTROLLED_REGIONS|content=0.010000,0.010000,0.410000,`
+  `0.287000`. The clamp uses the **view-usable** box, whose bottom is
+  `TitleBlockTop + margin` - a constraint on views, not on annotations.
+  `ANNOTATION_EXTENTS` enforces the content border and the title-block
+  rectangle, and the label was inside both.
+- Fix direction for r63: clamp against the regions the stage actually
+  enforces (content border inset by `LAYOUT_MARGIN_M`, plus title-block
+  avoidance); step a second annotation along the free axis instead of
+  stacking it on the first; and give `LANE_EXTERIOR_VERTICAL_INNER` its own
+  offset from `LANE_BORE_SIDE_A`.
+- Unchanged: `NATIVE_CALLOUT_COVERAGE`, `VIEW_PROJECTION`,
+  `SECTION_DIMENSIONS` (`satisfied:5/missing:2`),
+  `MANUFACTURING_DEFINITION`, `FINAL_QA`.
+
+## 2026-08-05 (44) - r62 clamps the section annotations after the view is placed
+
+Offline only. 619 offline contracts pass; eleven mutations against the new
+guards were each applied and each failed the suite before being reverted.
+Not yet deployed or run.
+
+- **The r61 clamp was applied at the wrong time, not computed wrongly.**
+  `ClampSectionAnnotationsIntoUsableArea` is a new pass that runs after the
+  structural grid, after auto-arrange and after the title block, and pulls
+  the section view's annotation origins back inside the proved usable box.
+  It is the fourth and last mutating procedure in Module10, refuses without
+  `allowMutation`, and refuses again without `LayoutBoundariesProven`.
+- **It moves annotation origins only.** No view move, no rescale; the
+  content-envelope repositioning and rescaling the 2026-08-04 user decision
+  retired stay uncalled. Scoped to the one section view on the P-0251
+  fixture, whose only annotations are the five this run creates.
+- **The readback is the verdict, not the setter result.**
+  `IAnnotation::SetPosition2` returns sheet coordinates from the lower-left
+  corner - the same frame `GetPosition` reports, so the two compare
+  directly - but the Help says a constrained annotation is placed "as near
+  as possible", and that radial and diametric dimensions cannot be
+  positioned this way at all. Both look like a call that returned. Each
+  annotation records `setterResult`, `readbackX/Y` and `nowInside`, and the
+  pass counts `moved` against `stillOutside`.
+- An annotation already inside is recorded `action=AlreadyInside` and left
+  alone; a needless mutation hides the ones that mattered. The z coordinate
+  is carried through from the read position rather than zeroed.
+- The creation-time clamp stays as a starting bound. It is no longer relied
+  on for the guarantee.
+- One real defect caught offline by an existing guard: the new error
+  handler read `Err.Number` after `SafeAnnotationName`, whose
+  `On Error Resume Next` resets `Err`, so every clamp failure would have
+  reported as error 0. Captured before the name helper now.
+
+## 2026-08-05 (43) - r61 live: the verdict is honest; the clamp box was stale
+
+Run `macro_qa/20260805_070039_P-0251-14A-001`. Deploy verified at
+`embedded=target-spec-hybrid-v2-2026-08-05-r61`, pre-flight
+`ready=True|verdict=Clean`.
+
+- **The verdict defect is fixed and proved.**
+  `R23_SECTION_DIMENSIONS|requirements=7|satisfied=5|missing=2` now agrees
+  with the QA stage exactly. No `RequirementFlagged:...:NoImportedDimension`.
+- **The per-lane ordinal works.** `BoreSideA`, `BoreSideB` and
+  `ExteriorVerticalInner` all report `laneOrdinal=1`, where r60 gave them
+  3, 4 and 5. RD2 recorded `clamped=True` at `textY=0.275000`, which is
+  `UsableTop` to the micron.
+- **`ANNOTATION_EXTENTS` failed anyway, and the r60 diagnosis was wrong.**
+  Auto-arrange never touched this view: `ACTIVATE_VIEW|operation=Dimension
+  arrange` names Drawing View1, Drawing View2 and Drawing View4 only. The
+  mover is `ArrangeViewsInMeasuredGrid`, which runs *after*
+  section-dimension creation:
+
+  ```
+  creation-time outline  0.289060,0.039385,0.318940,0.252265
+  LAYOUT_MOVE readback   0.191752,0.053620,0.221632,0.266500
+  delta                 -0.097308,          +0.014235
+  ```
+
+  RD2 requested `(0.304000, 0.275000)` plus that delta is
+  `(0.206692, 0.289235)` - the violation line to six decimals. RD1 lands at
+  `0.278500`, under `ContentBorderTop` 0.287, which is why only RD2 trips.
+  A usable box measured before the view is placed is stale by construction.
+- Required failing stages unchanged from r60: `NATIVE_CALLOUT_COVERAGE`,
+  `VIEW_PROJECTION`, `SECTION_DIMENSIONS`, `MANUFACTURING_DEFINITION`,
+  `ANNOTATION_EXTENTS`, `FINAL_QA`. `SECTION_DIMENSIONS` holds at
+  `satisfied:5`.
+
+## 2026-08-05 (42) - r61 fixes the two defects r60's own evidence exposed
+
+Offline only. 606 offline contracts pass; the eight mutations covering the
+new guards were each applied and each failed the suite before being
+reverted. Not yet deployed or run.
+
+- **Placement no longer stacks off the drawing.** `LaneTextPoint` counted a
+  *global* ordinal, so the gap grew 12/24/36/48/60 mm across five different
+  lanes and the second entry in `LANE_ABOVE` started above the usable area.
+  Auto-arrange finished the move and RD2 landed at `y=0.290500`,
+  `region=ZonedBorder`. The ordinal is now per lane
+  (`NextLaneOrdinal`, keyed by lane name), and the resulting point is
+  clamped into the proved `evidence.Usable*` box before it is reported.
+  `SECTION_DIM_PLACEMENT` gains `laneOrdinal`, `appliedOrdinal`, `usable=`
+  and `clamped=`.
+- Fails closed: without `LayoutBoundariesProven` the ordinal stops at 1
+  rather than stacking against a boundary nothing measured, and the proof
+  string says `usable=Unproved`.
+- **Module2's verdict line was reading stale requirement state.** It said
+  `R23_SECTION_DIMENSIONS|satisfied=0` with `RequirementFlagged:...:`
+  `NoImportedDimension` while the QA stage independently proved
+  `satisfied:5` on the same drawing. Reconciliation writes
+  `NoImportedDimension` into `Failures` *before* creation runs, creation
+  sets `Matched` without clearing it, and `VerifySectionDimensions` treats
+  a non-empty `Failures` list as unsatisfied whatever the counts say.
+  Re-reading the dimensions alone did not fix it. Module2 now rebuilds the
+  requirements and re-reconciles them against the finished drawing, which
+  is what Module19 already did - hence the two disagreeing numbers.
+- No API contract changed; no new SOLIDWORKS call was introduced.
+
+## 2026-08-05 (41) - r59/r60 live: five section dimensions created and verified
+
+Runs `macro_qa/20260805_062318_P-0251-14A-001` (r59, read-only inventory)
+and `macro_qa/20260805_063139_P-0251-14A-001` (r60, creation).
+
+- **`SECTION_DIMENSIONS` goes `satisfied:0/missing:7` to
+  `satisfied:5/missing:2`.** Five `SECTION_DIM_CREATED` rows, each with the
+  nominal read back and matched: RD1 0.018000, RD2 0.012000, RD3 0.040000,
+  RD4 0.047000, RD5 0.104800. No `CreatedButRejected`.
+- **The r58 arc defect is fixed and it cost exactly what was predicted.**
+  Axis-parallel classification now runs on `Type 0` polyline records only;
+  an arc's tessellated chords are counted as `arcTessellationSegments` and
+  no longer offered as straight-edge coordinates. `LOWER_WALL_STEP_11_5`
+  lost its pair as a result, which is the correct answer: r58 would have
+  attached it to the bore's tessellation and measured the wrong thing while
+  looking right on the sheet.
+- The two missing requirements are honest absences, skipped by name:
+  `LOWER_WALL_STEP_11_5` (no pair once the tessellation stopped counting)
+  and `LONG_VERTICAL_REF_173_6` (no pair of the nineteen distinct Y values
+  differs by 0.1736). Five right dimensions beat seven including a wrong
+  one.
+- **Two defects, both introduced by this work**, each found in the run's
+  own evidence rather than by inspection: the unbounded placement stack
+  that regressed `ANNOTATION_EXTENTS` from PROVED to FAILED, and Module2's
+  stale-state verdict line contradicting the QA stage. Both fixed in r61,
+  entry (42).
+- Required failing stages: `NATIVE_CALLOUT_COVERAGE`, `VIEW_PROJECTION`,
+  `SECTION_DIMENSIONS`, `MANUFACTURING_DEFINITION`, `ANNOTATION_EXTENTS`,
+  `FINAL_QA`.
+
+## 2026-08-05 (40) - r58 live: all ten candidates selectable; an arc is masquerading as a wall edge
+
+Run `macro_qa/20260805_061804_P-0251-14A-001`. Five required stages still
+fail, as expected - r58 creates nothing.
+
+- **Every one of the ten candidate entities selected and proved its
+  owner**: `selectable=True|route=Selectable|owner=Section View J-J` on all
+  ten rows, no `EntityIsNothing`. The entity array is live for these
+  records in a cut view, so the `Null` case the Help warns about did not
+  arise. **Dimension creation is reachable.**
+- **One mapping defect, found by reading the record indices.** Record 25
+  supplies the Ø47 radius (0.023500) *and* the `x=0.008500` side of
+  `LOWER_WALL_STEP_11_5`. Both cannot be true of one entity. The cause is
+  in `InventorySectionGeometry`: an arc record carries a tessellated point
+  array as well as its GeomData, and the axis-parallel classifier walks
+  those points, so a chord of the bore's tessellation that runs parallel to
+  an axis is recorded as a straight-edge coordinate. A linear dimension
+  attached there would dimension the bore, not the wall.
+- Fix identified, not yet made: classify axis-parallel segments from Type 0
+  records only. An arc's tessellated chords approximate a curve; they are
+  not edges. `LOWER_WALL_STEP_11_5` may lose its pair as a result, which
+  would be the correct answer rather than a regression.
+- Record 2 is shared by `OVERALL_THICKNESS_18` and `BORE_STEP_DEPTH_12`,
+  which is plausible for a single long edge bounding both and is not
+  evidence of a fault.
+
+## 2026-08-05 (39) - r58 a measured section coordinate now reaches a selectable entity
+
+Read-only, nothing created; deployed and run the same day, live result in
+entry (40).
+
+- **The blocker is selection, not geometry.** r57 proved six of seven
+  requirements have their measuring geometry in Section View J-J, all
+  `geometryTrusted=True`. `CreateSectionDimension` refuses with
+  `reason=NoEntitiesSelected`, and nothing joined a measured coordinate to
+  a selectable drawing entity.
+- **The join was already in the data.** `GetPolylines7`'s return value is
+  the entity array, positionally paired with the polyline records - r57
+  confirmed it exactly (`records=79|entities=79|recordsMatchEntities=True`).
+  Each distinct coordinate now stores the record that produced it, and that
+  index is the entity index. `AddDistinctValue` appends the value and its
+  record together or not at all; `FindValueNear` and `FindPairWithSpan`
+  return the records they matched.
+- `SECTION_REQ_CANDIDATE` gains `|recordA=|recordB=`, and a new
+  `SECTION_ENTITY_SELECT|view=|key=|side=|record=|selectable=|route=`
+  reports whether each candidate can actually be selected.
+- **`ProveSectionEntitySelection` is Module13's Route D, unchanged in
+  substance**: `IView.SelectEntity(entity, False)`, then
+  `ISelectionMgr.GetSelectedObjectsDrawingView2` to prove the owning view
+  before the object is trusted, `WrongOwner:` when it is not. It refuses a
+  pre-existing selection with `RefusedPreexistingSelection:count`, bounds
+  the record index against the entity array, and clears the selection on
+  every path including the error handler.
+- Attempted only when the requirement's geometry was `found` under a clean
+  decode, so at most twelve selections per run.
+- **`route=EntityIsNothing` is a measurement, not a failure.** The Help
+  says the entity array carries `Null` where a polyline renders something
+  no edge backs, which is expected for section faces in a cut view. Whether
+  the six found requirements land on live entities is the question this
+  iteration exists to answer.
+- The pipeline now passes the drawing `ModelDoc2` - the selection manager
+  lives on that interface, not on `DrawingDoc`.
+- Static verification: **587/587**. Mutation-verified: dropping the record
+  alongside the value, appending instead of replacing the selection,
+  removing the pre-existing-selection refusal, attempting selection on
+  untrusted geometry, removing the entity-array bound, and removing the
+  document hand-off each fail the suite. One test bug was found and fixed
+  in the writing: splitting the selector on `Failed:` matched
+  `SelectEntityFailed:` first, so the error-handler assertions were reading
+  the wrong text.
+
+## 2026-08-05 (38) - r57 live: clean decode, and six of seven requirements have proved geometry
+
+Run `macro_qa/20260805_055822_P-0251-14A-001`, invoked by the user. Stage
+table unchanged: five required stages still fail.
+
+- **First clean decode since the inventory existed.**
+
+  ```text
+  SECTION_GEOM_SUMMARY|decodeStatus=Complete|records=79|entities=79
+    |recordsMatchEntities=True|doubles=2799|consumed=2289|trailing=510
+    |trailingAllZero=True|arcs=18|polylines=61|points=454|error=0
+  ```
+
+  The padding hypothesis is confirmed by measurement rather than assumed:
+  `trailingAllZero=True`. `consumed=2289` matches `9*79 + 12*18 + 3*454`
+  exactly, and the record count matches the entity count.
+- **`geometryTrusted=True` on every requirement row for the first time.**
+  Six of seven have their measuring geometry present in Section View J-J:
+
+  | requirement | nominal | evidence |
+  | --- | --- | --- |
+  | `OVERALL_THICKNESS_18` | 0.018 | X pair -0.009 / 0.009 |
+  | `BORE_STEP_DEPTH_12` | 0.012 | X pair 0.009 / -0.003 |
+  | `LOWER_WALL_STEP_11_5` | 0.0115 | X pair -0.003 / 0.0085 |
+  | `INNER_BORE_D40` | 0.040 | radius 0.020 |
+  | `FIT_BORE_D47_H7` | 0.047 | radius 0.0235 |
+  | `LOWER_VERTICAL_REF_104_8` | 0.1048 | Y pair 0.041 / -0.0638 |
+  | `LONG_VERTICAL_REF_173_6` | 0.1736 | **absent** |
+
+  The radii `0.020000` and `0.023500` are now trusted evidence rather than
+  the output of a walk that had already failed.
+- `LONG_VERTICAL_REF_173_6` has no candidate: the section's extreme Y
+  values are 0.1005 and -0.1005, a span of 0.201, and no pair of the
+  nineteen distinct Y values differs by 0.1736. Open.
+- `SECTION_DIMENSIONS` remains `requirements:7/satisfied:0` with
+  `sectionDimensions:0` - nothing creates them. That is now the blocking
+  work, and its inputs are proved for the first time.
+
+## 2026-08-05 (37) - r57 the array is zero-padded; the r56 reversal was my error
+
+Run `macro_qa/20260805_054951_P-0251-14A-001` settled it, and it reverses
+entry (36). **The r54 entity-count bound was correct and I removed it on a
+bad inference.**
+
+- The r56 window shows **every double from index 2289 to the end of the
+  array reads `0.000000000`**. The unbounded walk parsed 510 zeros as 56
+  phantom records of stride 9 - type 0, GeomDataSize 0, six zero style
+  fields, NumPolyPoints 0 - reaching the reported `records=135`, with 6
+  doubles left over that cannot complete a record. **That is the whole of
+  `Desynchronized:StyleAt2801`**, unexplained since r53.
+- So 79 real records consume exactly 2289 doubles
+  (`9*79 + 12*18 + 3*454`), `entities=79` is the true record count, and the
+  Help's positional pairing holds. The 510 remaining doubles are padding.
+- **My error at r56**: the r55 run stopped at 79 records with 510 doubles
+  left and I read that as proof more records existed, without checking what
+  those doubles contained. The r55 window already printed zeros at index
+  2289 and I did not look at them. The arithmetic I cited was correct and
+  the conclusion drawn from it was not.
+- r57 restores the bound and **verifies the padding instead of assuming
+  it**: `trailingAllZero=` is computed, and a non-zero tail is reported as
+  `TrailingDataAfterEntities` rather than silently trimmed. Assuming the
+  tail is what produced the wrong reversal; a bound that discards real
+  records must be visible.
+- `consumed=` is now reported alongside `trailing=`, so the walk's own
+  arithmetic is in the log rather than reconstructed afterwards.
+- Consequence: `decodeStatus=Complete` should be reachable for the first
+  time, which would make the section coordinates trustworthy -
+  `geometryTrusted=True` - including the radii `0.020000` and `0.023500`
+  that have carried `geometryTrusted=False` since r53.
+- Static verification: **573/573**.
+
+## 2026-08-05 (36) - r55/r56 the decode was never misaligned; my control was wrong
+
+**r55 not deployed as intended - it failed to compile.** `lower` was used
+in `InventorySectionGeometry` without being declared; the pattern was
+copied from `EmitSectionLineDecode`, which does declare it, and the
+original walk here used only `i` and `upper`. `Option Explicit` rejected it,
+`R23_PREFLIGHT_END|ready=False|reason=CompileNotClean` was logged and `main`
+was never invoked. The revision was bumped rather than reused because r54's
+source had already been written into `Fable.swp`. Fixed and run as r55:
+`macro_qa/20260805_054524_P-0251-14A-001`.
+
+**r56 removes the entity-count bound added at r54.** The r55 run disproved
+the reasoning behind it.
+
+- `SECTION_GEOM_DESYNC|status=StoppedAtEntityCount|stoppedAt=2289|recordsDecoded=79`
+  with `trailing=510`, and the arithmetic closes to the double:
+  `9*79 + 12*18 + 3*454 = 2289`. A misaligned walk does not produce a
+  consumption that matches its own record, arc and point counts exactly.
+- The window confirmed it independently. The record at index 2244 reads
+  `type 0, GeomDataSize 0, six style scalars, NumPolyPoints 2`, a stride of
+  15, and the next record begins at 2259 - exactly the reported
+  `lastRecordStarts=2274,2259,2244`.
+- So **alignment was never lost**. A section view simply holds more
+  polyline records than entity-array entries, which is what one expects
+  when cut edges have no model edge behind them. The Help's
+  positional-pairing statement does not extend to a cut view.
+- **The entity count was the wrong control and truncated a correct
+  decode.** It is now reported as context (`recordsExceedEntities=`) and
+  gates nothing. The control is exact consumption: `Complete` requires
+  `trailing=0`, and every field the walk advances over is still
+  range-checked.
+- The r53 `Desynchronized:StyleAt2801` remains unexplained by this and is
+  the thing the next run's window will settle - 2801 is two past the end,
+  so either the final record is truncated in the array or a small slip
+  occurs somewhere after index 2289.
+- Static verification: **572/572**.
+
+## 2026-08-05 (35) - r54 the polyline decoder stops lying and says where it broke
+
+**Not deployed at time of writing.** Read-only. The r53 decode reported
+`Desynchronized:StyleAt2801` with `records=135` against `entities=79`, and
+still printed seven radii and six `found=True` verdicts derived from that
+walk.
+
+- **The walk is bounded by the entity count.** The Help states the polyline
+  data and the returned entity array are positionally paired, so 135
+  records from 79 entities cannot be true. The loop now stops at the entity
+  count and reports `StoppedAtEntityCount` instead of running to the end of
+  the array producing a number that is impossible by construction.
+- **A clean decode must consume the array exactly.** `trailing=` is
+  reported, and `Complete` is downgraded to `RecordCountMismatch` or
+  `TrailingDoubles` when the record count or the consumed length disagrees.
+  Previously only a range guard could contradict the decode.
+- **A failed decode now prints the raw values around the failure**:
+  `SECTION_GEOM_DESYNC|status=|stoppedAt=|recordsDecoded=|lastRecordStarts=`
+  plus two `SECTION_GEOM_WINDOW` dumps of 36 doubles each - one at the
+  third-most-recent record header, one at the stop point. 2799 doubles
+  cannot be dumped whole, and without a window the next iteration would be
+  guessing at the layout again.
+- **Untrusted coordinates are labelled at every consumer.**
+  `SECTION_GEOM_X/Y/R` carry `|decodeStatus=`, and every
+  `SECTION_REQ_CANDIDATE` carries `|geometryTrusted=|decodeStatus=`. In r53
+  only the summary line said the walk had failed, so six `found=True` rows
+  read as findings when they were not.
+- **The layout itself is not in doubt and was not changed.** Against the
+  r50 and r52 arrays it closes to the double: 38 records x 9 fixed fields +
+  6 arcs x 12 GeomData + 3 x 214 points = 1056, exactly the array length.
+  Something in the richer r53 section deviates from it; the window is what
+  will identify that.
+- Static verification: **573/573**. Mutation-verified: removing the
+  entity-count bound, removing the trailing-doubles downgrade, dropping
+  either raw window, and dropping the `geometryTrusted` label each fail the
+  suite.
+
+## 2026-08-05 (34) - r53 live: the bore is in the section; two stages regressed
+
+Run `macro_qa/20260805_051116_P-0251-14A-001`. Failed required stages
+**6 to 5**. `ORDINATE_SCHEME` FAILED to PROVED.
+
+- **The offset option did what the enum said it would.**
+  `SECTION_CREATE_OPTIONS|options=2|offsetSection=True|segments=3`, and the
+  section view roughly doubled: `entities=38` to **79**, `doubles=1056` to
+  **2799**, `arcs=6` to **18**. Those three counts come straight from the
+  API return, not from any decode of ours. The section is now hatched and
+  shows the bore step and the counterbore pockets.
+- **The section's radii now include `0.020000` and `0.023500`** - Ø40 and
+  Ø47 - which never appeared in any previous run, and six of the seven
+  `SECTION_REQ_CANDIDATE` rows report `found=True` against two before.
+  **These numbers are indicative, not proved** - see the decode failure
+  below.
+- **The polyline decoder tripped its own guard**:
+  `decodeStatus=Desynchronized:StyleAt2801|records=135|entities=79|recordsMatchEntities=False|doubles=2799`.
+  It walked off the record layout and stopped rather than inventing
+  geometry, which is the control working as designed, but every coordinate
+  list from this run comes from that walk and cannot be trusted until the
+  desynchronization is diagnosed. The entity and double counts are
+  unaffected.
+- **Two stages regressed and the cause is the same change.**
+  `VIEW_PROJECTION` accepted projections 8 to **6**, locations without 3 to
+  **5**; `NATIVE_CALLOUT_COVERAGE` incomplete 1 to **2**; and
+  `MANUFACTURING_DEFINITION` complete 2 to **1**. The M5 family lost the
+  attachment it gained at r49: the two near-side M5 holes projected in the
+  old projection-section view and do not project in the offset one.
+- `SECTION_DIMENSIONS` is unchanged at `requirements:7/satisfied:0` with
+  `sectionDimensions:0`. Nothing creates them - `ReconcileR23SectionDimensions`
+  only reconciles, and `CreateSectionDimension` is never called from the
+  production route. That is now the largest remaining piece of work, and
+  for the first time the geometry it needs appears to be present.
+
+## 2026-08-05 (33) - r53 the section is cut as an offset section
+
+One argument changed, on the r52 evidence and the user's instruction;
+deployed and run the same day, live result in entry (34).
+
+- `CreateSectionViewAt5` now receives
+  `swCreateSectionView_OffsetSection` (MCP corpus value 2, **verify in the
+  SW2025 Object Browser**) instead of `0`. Documented as: *"If set, then an
+  aligned section view is created (two lines at an angle); if not set, a
+  normal projection section view is created."*
+- The r52 decode is the reason and it is recorded at the constant:
+  `GetSectionLineInfo2` returned exactly the requested three-segment path,
+  including the r51 overshoot, while the section view held the
+  counterbore-column features and no bore. Bore at transverse 0.000,
+  counterbores at -0.015, so the cut in use was segment 3's alone.
+- `SECTION_CREATE_OPTIONS|view=|options=|offsetSection=True|segments=|source=swCreateSectionViewAtOptions_e`
+  is emitted at creation. Which option was used decides what the cut
+  contains and nothing else in the report would show it.
+- **No other option bit was added.** `Partial`, `DisplaySurfaceCut`,
+  `ChangeDirection` and `ScaleWithModel` each change what the section
+  shows; a test asserts only the offset bit is set and that
+  `sectionOptions` is assigned exactly once.
+- The mutation boundary is untouched: still one procedure that can change a
+  drawing, still refusing without explicit authorization and a resolved
+  path.
+- **Unverified**: whether the offset bit alone is enough or
+  `swCreateSectionView_NotAligned` is also needed on this build. The run
+  answers that.
+- Static verification: **569/569**. Mutation-verified: setting the constant
+  to 0, restoring the literal `0` argument, and dropping the evidence line
+  each fail the suite.
+
+## 2026-08-05 (32) - r52 live: the line is exactly right; `Options=0` throws the jog away
+
+Run `macro_qa/20260805_050411_P-0251-14A-001`. Stage table unchanged (six
+failing) as expected - r52 changed no behaviour. **The decode answered the
+question the last two iterations could not.**
+
+- **The drawing holds precisely the path we asked for.** Decoded from
+  `IView.GetSectionLineInfo2`:
+
+  ```text
+  index=1|start=-0.102000000,0.000000000|end=0.008000000,0.000000000
+  index=2|start=0.008000000,0.000000000|end=0.008000000,-0.015000000
+  index=3|start=0.008000000,-0.015000000|end=0.088000000,-0.015000000
+  ```
+
+  Segment lengths 0.110, 0.015, 0.080 match the waypoint spacing exactly,
+  and segment 1 runs 0.040 past the bore centre at -0.062 - the r51
+  overshoot, present in the drawing. **The path was never the defect.**
+- **`CreateSectionViewAt5` is called with `Options = 0`.** MCP corpus,
+  `swCreateSectionViewAtOptions_e`: `swCreateSectionView_OffsetSection = 2`
+  - *"If set, then an aligned section view is created (two lines at an
+  angle); if not set, a normal projection section view is created."* So
+  SOLIDWORKS builds a normal projection section from a three-segment jogged
+  line and cuts at ONE offset. The bore sits at transverse 0.000 and the
+  counterbores at -0.015; the section contains the counterbore-column
+  features and no bore, so the cut being used is segment 3's.
+- That explains r51 exactly: lengthening segment 1 cannot change a section
+  that is not cut along segment 1. The line moved 40 mm and the view was
+  byte-for-byte identical, and now there is a reason rather than a
+  hypothesis.
+- **Two new API facts recorded**: the returned array is 49 doubles where
+  the documented layout wants 53 for three segments, and it **mixes
+  frames** - segment endpoints in view space (`-0.102`), arrow and text
+  points in sheet space (`0.107932223, 0.265060000`, inside Drawing View1's
+  sheet outline). Both in `SOLIDWORKS_API_VALIDATION.md`.
+- Not yet changed: the `Options` argument. It is a semantic change to how
+  the section is cut and is the user's call.
+
+## 2026-08-05 (31) - r52 decode what the drawing did, not what the path asked for
+
+Read-only instrumentation, no behaviour change; deployed and run the same
+day, live result in entry (32).
+
+- `Module17_SectionPath.EmitSectionLineDecode` decodes
+  `IView.GetSectionLineInfo2` for the view that carries the cut, called
+  from `RecordSectionLineAfterLayout` after the layout has settled.
+- **Why it did not exist before is the point.** Every run since the section
+  first appeared read that array and logged only its element count. r50 and
+  r51 both recorded `values=49`. r51 moved waypoint 1 by 40 mm, produced a
+  visibly longer line on the sheet, satisfied the new full-crossing
+  predicate, and yielded a byte-identical section view. Intent was verified
+  on every run; the drawing's result never was.
+- Documented layout, SOLIDWORKS 2025 Help: `[numSectionLines, layer,
+  numSegments, per segment (lineType, startPt[3], endPt[3]), arrow and text
+  tail]`. Three segments account for 53 doubles under that layout and the
+  live array holds **49**, so the tail does not match on this build. The
+  segment block sits at the front and is unaffected by the tail, so
+  segments are decoded and the discrepancy is reported as
+  `tailMatchesDocumented=` rather than hidden.
+- **The raw array is dumped as well** - `SECTION_LINE_RAW|view=|from=|values=`,
+  six doubles per line. 49 doubles is small, and a dump cannot be wrong
+  about the thing a structured decode might be wrong about. The layout
+  becomes decidable from the log instead of from documentation that already
+  disagrees with the array length.
+- `SECTION_LINE_SEGMENT|view=|index=|lineType=|start=|end=|frame=AsReturned`.
+  The frame is **not** claimed: which coordinate system these points use has
+  not been established, and asserting "Page" would be the exact
+  mixed-frame defect this project has already paid for twice.
+- Bounds: the walk refuses an array shorter than three, a segment count
+  outside 1..63, and any segment whose seven doubles would read past the
+  end.
+- Static verification: **562/562**. Mutation-verified: removing the
+  read-past-the-end guard, shifting the per-segment stride from 7 to 6,
+  dropping the documentation comparison, removing the pipeline call, and
+  moving the Err capture after `SafeViewName` each fail the suite.
+
+## 2026-08-05 (30) - r51 live: the line moved, the section did not. Prediction wrong.
+
+Run `macro_qa/20260805_043613_P-0251-14A-001`. Stage table **unchanged from
+r50**: six required stages still fail. **The predicted result did not
+happen and the reason is not yet known.**
+
+- **The waypoint change worked exactly as designed.**
+  `SECTION_PATH_BORE_OVERSHOOT|view=Drawing View1|centreY=0.210324890|projectedRadiusM=0.020000000|overshootM=0.040000000|w1Y=0.250324890|direction=AwayFromRows:PositiveY|reason=CutMustCrossWholeBore`,
+  and the stronger predicate passed on the new geometry -
+  `SECTION_CROSSING|proven=4|columnHoles=3|failures=None`. The section line
+  is visibly longer on the sheet, now starting above the part.
+- **The section view is byte-for-byte identical to r50.** Same
+  `records=38|entities=38|doubles=1056|arcs=6|polylines=32|points=214`,
+  the same three radii `0.002100;0.035000;0.036000`, the same seven X and
+  seven Y coordinates, and the same view outline
+  `0.191752,0.061120,0.221632,0.269000`. Not similar - identical.
+- So `INNER_BORE_D40` and `FIT_BORE_D47_H7` still report `found=False`, and
+  `SECTION_DIMENSIONS` is unchanged at 7 missing.
+- **What this rules out.** The failure is not the crossing predicate and
+  not the waypoint, both of which now do what they were built to do. A
+  drawn section line's extent evidently does not determine what the cut
+  contains - which is consistent with a SOLIDWORKS section cutting through
+  the whole part regardless of the line's drawn length, but that is a
+  hypothesis, not a measurement.
+- **What is missing to answer it.** `IView.GetSectionLineInfo2` is read on
+  every run and only its element count is logged (`values=49`, both runs).
+  The coordinates it returns have never been decoded, so nothing in
+  evidence says where SOLIDWORKS actually placed the cut relative to the
+  four waypoints handed to it. That is the next measurement.
+- The r51 reporting fixes did work as intended: `found=False` rows now read
+  `kind=NoneOfRadiusYPairXPair|a=0.000000|b=0.000000` instead of carrying
+  the previous requirement's coordinates.
+
+## 2026-08-05 (29) - r51 the cut now passes through the whole bore, and has to prove it
+
+Source and static verification when written; deployed and run the same day,
+live result in entry (30). Two defects, both exposed by the r50 geometry
+inventory (`macro_qa/20260805_041027_P-0251-14A-001`).
+
+- **Waypoint 1 sat ON the bore centre**, so the cut removed half the bore
+  and the section contained no bore opening to dimension - measured, not
+  inferred: the section's only arc radii were 0.002100, 0.035 and 0.036,
+  with no 0.020 or 0.023500 anywhere and no 0.040 or 0.047 span on either
+  axis. Waypoint 1 now sits one full radius beyond the far wall:
+  `path.BoreOvershootM = 2# * path.BoreProjection.ProjectedRadiusM`. The
+  overshoot is the bore's **own** size, the same principle as the R23-703
+  crossing slack, and no view outline is read - a contract test asserts
+  `GetOutline`, `outline`, `UsableTop` and `UsableBottom` appear nowhere in
+  the resolver.
+- **The direction is read from the geometry**, not assumed: away from the
+  face-hole rows, whichever side of them the bore is on.
+- **The crossing predicate could not tell the two cases apart, and that is
+  the deeper defect.** `PathCrossesCircle` asks only whether a segment
+  comes *within* the radius, which a segment starting at the centre
+  satisfies trivially. It reported
+  `crossingsProven=4|crossingFailures=None` for the very cut that produced
+  a section with no bore in it. A predicate that passes the case it exists
+  to reject is worse than no predicate. The bore is now held to
+  `PathFullyCrossesCircle`: both intersections of the line with the circle
+  must lie inside the same segment, tested as
+  `footDistance -/+ halfChord` fitting within the segment length.
+  Failure reason `BoreNotCrossed` becomes `BoreNotFullyCrossed`.
+- **Column holes deliberately keep the weaker test.** The first and last
+  hole on the chosen column sit AT the segment's endpoints, so requiring a
+  full crossing there would refuse the correct path. They need to be on the
+  cut; only the bore needs its whole opening shown.
+- Arithmetic check on the real r50 coordinates, bore centre
+  `(0.137812223, 0.210324890)`, `R=0.020`, segment to
+  `(0.137812223, 0.140324890)`: the old waypoint fails the new predicate
+  and the new waypoint passes it. The fix and the guard agree about the
+  case that was wrong.
+- **The two r50 reporting defects are fixed.** `SECTION_REQ_CANDIDATE`
+  resets `a=`/`b=` per requirement instead of printing the previous
+  requirement's coordinates on a `found=False` row, and a diameter
+  requirement is now searched as a radius **and then** as a linear span on
+  both axes - a bore that has been cut open is the gap between two walls,
+  not an arc.
+- Static verification: **552/552**. Mutation-verified: replacing the
+  radius-derived overshoot with a literal, reverting either direction
+  branch, using the weaker predicate for the bore, and loosening the
+  span arithmetic each fail the suite.
+
+## 2026-08-05 (28) - r50 live: LAYOUT proved, and the section does not contain the bore
+
+Run `macro_qa/20260805_041027_P-0251-14A-001`. Failed required stages
+**7 to 6**. `LAYOUT` FAILED to PROVED.
+
+- **The scale fix is confirmed live, exactly as the Help predicted.**
+  `VIEW_SCALE_READBACK|view=Section View J-J|type=2|isIsometric=False|useSheetScale=0|scaleDecimal=1.000000`
+  against `Drawing View1 ... useSheetScale=1|scaleDecimal=1.000000`. The
+  section reports the flag as 0 while drawn at exactly the sheet ratio, so
+  the old check was refusing a correctly scaled view. The isometric view
+  reads `useSheetScale=0|scaleDecimal=0.500000` and remains exempt.
+- **The polyline decode proved itself.**
+  `SECTION_GEOM_SUMMARY|decodeStatus=Complete|records=38|entities=38|recordsMatchEntities=True|doubles=1056|arcs=6|polylines=32|points=214|error=0`.
+  The documented record layout is now live-confirmed on SW2025.
+- **The coordinate frame is answered.**
+  `polylineBox=-0.009000,-0.098000,0.009000,0.098000` against
+  `sheetOutline=0.289060,0.044385,0.318940,0.252265`. `GetPolylines7`
+  returns **view-space** coordinates centred on the view origin, not sheet
+  coordinates. The box is 18 mm by 196 mm - the part's thickness and
+  height.
+- **Five of the seven section requirements cannot be satisfied from this
+  view, because the geometry is not in it.** Measured distinct
+  coordinates: `X=0.008;0.002;-0.008;0.009;0.004;0.003;-0.009`,
+  `Y=0.019;-0.097;0.062;0.098;0.018;0.017;-0.098`,
+  `R=0.002100;0.035000;0.036000`.
+
+  | requirement | nominal | present |
+  | --- | --- | --- |
+  | `OVERALL_THICKNESS_18` | 0.018 | yes, X pair -0.009/0.009 |
+  | `BORE_STEP_DEPTH_12` | 0.012 | yes, X pair -0.008/0.004 |
+  | `LOWER_WALL_STEP_11_5` | 0.0115 | no |
+  | `INNER_BORE_D40` | 0.040 | no |
+  | `FIT_BORE_D47_H7` | 0.047 | no |
+  | `LONG_VERTICAL_REF_173_6` | 0.1736 | no |
+  | `LOWER_VERTICAL_REF_104_8` | 0.1048 | no |
+
+- **The bore is not in the section view at all.** Only three arc radii
+  exist: 0.0021 (the M5 tap drill), 0.035 and 0.036 (the plate's rounded
+  top profile). Neither 0.020 nor 0.0235 appears, and no linear span of
+  0.040 or 0.047 exists in either axis. The bore's walls would sit at
+  Y = 0.062 +/- 0.0235; the only Y near it is 0.062 itself, the bore
+  centre, which is where the section path's first waypoint starts. **The
+  cut begins at the bore centre instead of passing through the whole
+  bore**, so the section shows no bore opening to dimension. This is a
+  section-path waypoint question, not a dimension-engine question.
+- Two reporting defects in this iteration's own new code, found by reading
+  its own output: `SECTION_REQ_CANDIDATE` prints stale `a=`/`b=` values on
+  a `found=False` row because they are not reset per requirement, and the
+  two diameter requirements are searched only as arc radii - in a section a
+  bore diameter is a linear span between the two cut walls, so the pair
+  searches should apply to them as well. Neither changes the finding above
+  (no 0.040 or 0.047 span exists either way), and both are fixed next
+  iteration.
+
+## 2026-08-05 (27) - r50 evidence pass: what does the section view actually offer
+
+Source and static verification when written; deployed and run the same day,
+live result in entry (28). Read-only instrumentation plus one behaviour
+change, the LAYOUT scale check.
+
+- **`Module10_SectionDimensionEngine.InventorySectionGeometry`** (new,
+  read-only) decodes `IView.GetPolylines7` for the section view and reports
+  what geometry exists: arcs with their radii, axis-parallel segments with
+  their distinct X and Y coordinates, the coordinate box, and the view's
+  scale flags. Section View J-J has existed only since r49; nothing has ever
+  measured it, so `SECTION_DIMENSIONS requirements:7/satisfied:0` currently
+  says nothing about whether the geometry to satisfy those seven is even
+  present.
+- **The decode is self-checking.** The record layout is the documented one
+  (SOLIDWORKS 2025 Help, `IView::GetPolylines7`):
+  `[Type, GeomDataSize, GeomData[], LineColor, LineStyle, LineFont,
+  LineWeight, LayerID, LayerOverride, NumPolyPoints, [x,y,z]...]`, with
+  Type 1 carrying `[cx,cy,cz, sx,sy,sz, ex,ey,ez, nx,ny,nz]`. Four
+  range guards stop the walk and report `Desynchronized:<field>` rather
+  than emitting invented coordinates, and `recordsMatchEntities=` compares
+  the decoded record count against the returned entity array, which the
+  Help states is positionally paired. That comparison is the control - the
+  r40/r41 visibility classifiers shipped without one and measured nothing.
+- **`SECTION_REQ_CANDIDATE|key=|nominalM=|kind=|found=|a=|b=`** answers, per
+  requirement, whether the geometry that would measure it exists in the
+  view: a curve of half the nominal radius for a diameter requirement, a
+  pair of parallel curves the nominal apart for a linear one. Match window
+  is 0.01 mm against nominals at least 5.5 mm apart.
+- **The coordinate frame is reported, not assumed.** `SECTION_GEOM_FRAME`
+  prints the polyline bounding box beside `IView.GetOutline` in sheet
+  space, so which frame a section view's polylines live in becomes
+  decidable from the log. It has never been established.
+- **`VIEW_SCALE_READBACK|view=|type=|isIsometric=|useSheetScale=|scaleDecimal=`**
+  is now emitted for every view in the layout validation loop.
+- **The LAYOUT scale check was reading a flag as if it were a ratio, and is
+  fixed** (user instruction, after the MCP evidence below). SOLIDWORKS 2025
+  Help, `IView::UseSheetScale`: *"If the property is 0, then it is possible
+  that the view scale is the same as the sheet scale"* - and
+  `IView::UseParentScale` is the separate member a section view uses, so a
+  section reads 0 while being drawn at exactly the sheet ratio. That single
+  line failed the whole LAYOUT stage in r49.
+  `Module9_LayoutEngine.ValidateLayout` now accepts `UseSheetScale = 1` as
+  before and, only when that does not settle it, compares
+  `IView.ScaleDecimal` against the proved sheet ratio from
+  `ISheet.GetProperties2`. Failure text carries the numbers:
+  `useSheetScale=/viewScale=/sheetScale=/sheetScaleProven=`.
+- **The widened check fails closed.** `ViewScaleMatchesSheet` returns False
+  when the sheet scale was never proved, when the denominator is zero, or
+  on any read error - accepting a view whose scale nobody measured would be
+  the opposite of what the stage is for. A view genuinely drawn at another
+  scale still fails. The detail-view 3:1 rule and the isometric exemption
+  are untouched.
+- A defect in this iteration's own code was caught by the existing r45
+  Err-capture contract: the new failure handler read `Err.Number` after
+  calling `SafeViewName`, whose `On Error Resume Next` resets it. Captured
+  first, as the guard requires.
+- Static verification: **542/542**. The load-bearing new tests were
+  mutation-verified: dropping the entity-count control, removing any one of
+  the four decode guards, adding a mutating call to the inventory, removing
+  the pipeline call, reverting the scale check to the flag, and removing
+  either fail-closed guard from the ratio comparison each fail the suite.
+
+## 2026-08-05 (26) - r49 the section path takes a position-proved bore; the anchor gate is untouched
+
+Deployed and run at the user's instruction. Run
+`macro_qa/20260805_034637_P-0251-14A-001`. User decision on Root 1, taken
+after the r48 evidence in entry (25): "let the section path accept
+position-proved projections, keep anchor gate for dimensions".
+
+**The section exists. Root 1 is closed.**
+`SECTION_PATH|view=Drawing View1|label=J|resolved=True|reason=None|segments=3|boreBasis=PositionProved:ProjectionAnchorUnavailable|distinctColumns=2|distinctRows=3|columnHoles=3|crossingsProven=4|crossingFailures=None`
+then
+`SECTION_CREATED|...|sectionView=Section View J-J|segments=3|selectionsVerified=3|sectionLine=Read|values=49`.
+The prediction in entry (25) held exactly: the bore qualified on the weaker
+proof in Drawing View1 and was still refused in Drawing View2.
+
+Failed required stages **9 to 7**. `SECTION_GEOMETRY`,
+`SECTION_CLEARANCE` and `ANNOTATION_EXTENTS` went FAILED to PROVED.
+`VIEW_PROJECTION` improved but still fails: projections 22 to 33, accepted
+6 to 8, locations without 5 to 3 - the two near-side M5 holes now project in
+the section view, which is the only place they can. `ORDINATE_SCHEME`
+regressed FAILED from PROVED, for a new reason belonging to the new view.
+Remaining: `LAYOUT`, `NATIVE_CALLOUT_COVERAGE`, `VIEW_PROJECTION`,
+`ORDINATE_SCHEME`, `SECTION_DIMENSIONS`, `MANUFACTURING_DEFINITION`,
+`FINAL_QA`.
+
+- **The conflated requirement is now two requirements.**
+  `CViewHoleProjection.PositionFailureReason()` /`HasProvedPosition()` prove
+  the physical identity, the referenced configuration, the page coordinate
+  frame and that the axis is normal to the view - everything
+  `QualificationFailureReason` proves **except** the selectable anchor.
+  `QualificationFailureReason` itself is byte-for-byte unchanged, and
+  `Module13_ProjectionResolution` still decides `Accepted` through it alone.
+- **`Module17_SectionPath.ResolveBoreProjection` accepts a candidate that is
+  `Accepted` OR position-proved.** The path reads `PageX`, `PageY` and
+  `ProjectedRadiusM` and never selects the bore - `Module17` contains no
+  `PrimaryAnchor` and no `SelectEntity` reference, and a test holds that
+  true - so a proved page position is the requirement that matches the use.
+- **Largest radius still beats acceptance state.** "The principal bore" is a
+  fact about the part; preferring a smaller accepted bore would cut the
+  section through the wrong feature.
+- Singleton-family selection, the face-hole grid proof and the crossing
+  proof are all unchanged. **Face holes still require `Accepted`** - all six
+  counterbores qualify in Drawing View1, so there is no evidence that they
+  need loosening and they were not loosened.
+- The weaker proof is **confined**: a test asserts no component other than
+  `CViewHoleProjection` and `Module17_SectionPath` mentions
+  `HasProvedPosition` or `PositionFailureReason`, so dimensioning, callout
+  attachment and ordinate anchoring cannot reach it.
+- New evidence: `SECTION_PATH_BORE_BASIS|view=|physical=|basis=|anchor=|frame=|axisNormal=|use=WaypointsOnly`,
+  emitted only when the weaker proof was actually used, plus
+  `boreBasis=` in every `CSectionPath.Summary()`. A position-proved section
+  never passes silently as an accepted one.
+- `NoAcceptedSingletonBoreProjection` renamed to
+  `NoUsableSingletonBoreProjection`; the old name asserted a requirement
+  that no longer holds.
+- Confirmed live in Drawing View1: bore `axisNormal=True|frame=Page`,
+  `pageX=0.137812223|pageY=0.210324890|projectedRadiusM=0.020000000`,
+  rejected only for `ProjectionAnchorUnavailable`, six counterbores giving 2
+  columns and 3 rows. Drawing View2 refused the same bore on
+  `axisNormal=False`, as intended.
+- **What the live run newly exposed, none of it caused by this change:**
+  - `LAYOUT` fails on one line only:
+    *"Non-isometric view is not using the proved sheet scale: 'Section View
+    J-J'."* `Module9_LayoutEngine.bas:718` requires
+    `IView.UseSheetScale = 1`, and a SOLIDWORKS section view inherits its
+    PARENT view's scale, which is a different flag value even when the
+    rendered ratio is identical. No per-view scale is logged, so the actual
+    `UseSheetScale`/`ScaleDecimal` of that view is not yet in evidence.
+  - `ORDINATE_SCHEME` regressed because the new view brought two new
+    schemes. The horizontal one resolved its datum and created nothing
+    (`apiResultName=swCreateOrdDimErr_Success|createdReadBack=0`); the
+    vertical one was refused with
+    `NoBucketAvailable;outline=NoMappedBottomEdge(edges:126,curve:57,notHorizontal:42,span:8,map:19)`.
+    A section view's outline has no single mapped bottom edge.
+  - `SECTION_DIMENSIONS` is now reachable for the first time and reports
+    `requirements:7/satisfied:0/missing:7`. The seven named requirements
+    (`OVERALL_THICKNESS_18`, `BORE_STEP_DEPTH_12`, `LOWER_WALL_STEP_11_5`,
+    `INNER_BORE_D40`, `FIT_BORE_D47_H7`, `LONG_VERTICAL_REF_173_6`,
+    `LOWER_VERTICAL_REF_104_8`) have never had a view to live in until now.
+  - `NATIVE_CALLOUT_COVERAGE` and `MANUFACTURING_DEFINITION` both fail on
+    the same single family, `op:EXTRUDEDCUT`, `missing=Attachment` - the
+    stepped bore, which has no anchor in any view including the section
+    (its axis lies in the section's page plane). The M5 and counterbore
+    callouts were both created.
+- Static verification: **526/526**. The four load-bearing new tests were
+  mutation-verified: pointing `PositionFailureReason` at the anchor,
+  reverting the bore resolver, loosening the face holes, and naming
+  `HasProvedPosition` in `Module15_OrdinateScheme` each fail the suite.
+
+## 2026-08-05 (25) - r48 live: Root 1 answered, the stepped bore is obscured in every orthographic view
+
+Deployed at the user's instruction and run. Run
+`macro_qa/20260805_033146_P-0251-14A-001`. Nine required stages still fail:
+`LAYOUT`, `NATIVE_CALLOUT_COVERAGE`, `VIEW_PROJECTION`, `SECTION_GEOMETRY`,
+`SECTION_DIMENSIONS`, `MANUFACTURING_DEFINITION`, `ANNOTATION_EXTENTS`,
+`FINAL_QA`, `SECTION_CLEARANCE`.
+
+- **The selection clear worked and Route D ran for real.**
+  `R23_PROJECTION_SELECTION_PRECONDITION|preexisting=1|cleared=True|remaining=0`.
+- **The stepped bore's anchor line moved decisively:**
+
+  ```text
+  before r48:  mappedEdges=0  firstUnmappedRoute=A:Nothing:err0;B:Nothing:err0;D:RefusedPreexistingSelection
+  r48:         mappedEdges=4  inventoryConfirmed=0  firstReject=MappedEntityNotInVisibleInventory
+  ```
+
+  All four circular edges map. `IView.SelectEntity` accepts them and
+  `ISelectionMgr.GetSelectedObjectsDrawingView2` proves the owning view, so
+  they exist in Drawing View1. None is in `IView.GetVisibleEntities2`, which
+  the 2025 Help defines as entities "not completely obscured by other
+  entities in the view". **The bore's circular edges are completely obscured
+  in the Front view** - the first evidence-backed answer to the question open
+  since the post-1845 review. The r40/r41 "obscured" counts were void; this
+  is a different instrument with a working control. The fail-closed guard is
+  behaving correctly in refusing an obscured edge as a circular anchor.
+- **Root 1 is therefore a design conflict, not a defect.**
+  `Module17_SectionPath.ResolveBoreProjection` requires an **accepted**
+  projection, but the section path consumes only `BoreProjection.PageX`,
+  `PageY` and `ProjectedRadiusM` - a proved page **position**, not a
+  selectable anchor. `Module13_ProjectionResolution` already records the page
+  centre for an unanchored location ("An unanchored location still has a
+  provable position"). A bore hidden in every orthographic view can never
+  satisfy the stricter requirement, which is exactly why the reference
+  drawing puts that feature in the J-J section - and that section cannot be
+  created because it demands the projection the hidden bore cannot give.
+  Circular. **Referred to the user as a decision, not patched.**
+- `VIEW_PROJECTION` reads
+  `locations=11/projections=22/acceptedProjections=6/locationsWithProjection=6/locationsWithout=5`;
+  the section path still reports `NoAcceptedSingletonBoreProjection` for both
+  views.
+- Noted, not fixed: the six counterbores now make two redundant Route D calls
+  each, and `firstReject=MappedEntityNotInVisibleInventory` is recorded on
+  locations that were nonetheless accepted, which reads as a failure when it
+  is not.
+
+## 2026-08-05 (24) - r48 stale selection was blocking Route D; every failure now traces to Root 1
+
+Source and static verification when written; deployed and run later the same
+day, live result in entry (25). Run
+`macro_qa/20260805_032817_P-0251-14A-001` is the r47 evidence behind it.
+
+- **Route D ran for the first time and refused every location.**
+  `firstUnmappedRoute=A:Nothing:err0;B:Nothing:err0;D:RefusedPreexistingSelection:count1`
+  on all eleven. View creation leaves one object selected, and Route D
+  refuses to select over an existing selection because `IView.SelectEntity`
+  with `AppendFlag=False` would destroy an interactive caller's state. One
+  stale selection blocked the whole sheet. The r47 gate fix was correct; it
+  was simply never reached.
+- `BuildAllViewProjections` now clears a stale selection before the mapping
+  loop and records
+  `R23_PROJECTION_SELECTION_PRECONDITION|preexisting=|cleared=|remaining=`.
+  Same correction as the ordinate stage at r44, same rationale: the
+  production route owns the document it just created, and the Module13 guard
+  stays intact for the read-only probes. One clear suffices because a
+  successful Route D clears its own temporary selection.
+- **The completeness reason settled the callout question and corrected an
+  earlier claim of mine.** Both families report `missing=Attachment` and
+  nothing else. The r46 changelog recorded `op:EXTRUDEDCUT` reporting
+  `dia:0.000000000` as a second, separate defect needing a geometry-derived
+  diameter; the completeness check does not flag `NominalDiameter` for it, so
+  that zero is in the rendered family key only and the definition itself is
+  complete. **No separate extruded-cut diameter defect exists.**
+- Consequence: **every one of the nine remaining stage failures now traces to
+  Root 1.** Attachment needs a proved projection; the section needs the bore
+  projection; `LAYOUT` needs the section; the M5 side holes have axis
+  `(0,1,0)` and can only project in the J-J section view, which is why the
+  reference drawing puts them there.
+- Static verification: **510/510**.
+
+## 2026-08-05 (23) - r47 Route D gate re-keyed (Root 1); callout completeness made legible
+
+**Not deployed.** Source and static verification only, at the user's
+instruction. No r47 live evidence exists.
+
+- **Callout completeness reason is now emitted.**
+  `CCalloutDefinition.CompletenessFailureReason()` already named every
+  missing field, but `CreateMissingR23Callouts` consulted only
+  `IsComplete()`, so the r46 report said the M5 family was incomplete
+  without saying which field was missing. The reason now reaches both the
+  failure text and a new `R23_CALLOUT_INCOMPLETE|family=|missing=|` line.
+- **Root 1: the Route D gate was keyed on the wrong condition.**
+  `ResolveProjection` ran Route D only when `Not visibleInventoryAvailable`.
+  Drawing View1 HAS an inventory (39 edges), so Route D was never attempted
+  there - even though Route A demonstrably declines for real geometry in that
+  same view: six counterbores map two edges each while the stepped bore maps
+  none of its four, `A:Nothing:err0` on every one. With no second route that
+  bore has no accepted projection, `ResolveBoreProjection` finds no singleton
+  bore, and no section path resolves. The gate is now "Route A and B both
+  declined".
+- This is not a weakening. When an inventory exists, a Route-D entity must
+  still clear the Route C membership check immediately below, so it is proved
+  **twice** - ownership through
+  `ISelectionMgr.GetSelectedObjectsDrawingView2` **and** membership of
+  `IView.GetVisibleEntities2` - where the inventory-less path proves only
+  ownership. A genuinely obscured edge cannot be in the visible inventory and
+  is still rejected as `MappedEntityNotInVisibleInventory`. No coordinate
+  search was introduced, and a contract test asserts none appears.
+- **The r40-r42 visibility classifiers were removed, not kept.** They were an
+  instrument for one question - what `GetPolylines7` returns - and r42
+  settled it. The model-space variant matched nothing and so measured
+  nothing; leaving `unmappedObscuredEdges` in evidence would keep asserting a
+  fact never established. `unmappedAllRoutes` replaces it and says only what
+  is true: every route declined. The drawing-space control also cost a
+  `GetPolylines7` read per mapped edge. The measurement itself is preserved
+  in `SOLIDWORKS_API_VALIDATION.md`, and a contract test now asserts it is
+  recorded there rather than in code.
+- **Still open, unchanged:** `op:EXTRUDEDCUT` reports `dia:0.000000000`. That
+  is a different reader - an extruded cut has no feature-data diameter and
+  its size must come from geometry. Not attempted at r47.
+- Static verification: **507/507**.
+
+## 2026-08-05 (22) - r45/r46 Hole Wizard nominal comes from the type-specific member
+
+- **r45 probe, run `macro_qa/20260805_001154`.** A read-only dump of 22
+  candidate `IWizardHoleFeatureData2` members settled Root 2 without a guess:
+
+  | Feature | `Type` | Member holding the value |
+  |---|---|---|
+  | CBORE for M6 | 14 `swCounterBoreThru` | `ThruHoleDiameter=0.0066`, `ThruHoleDepth=0.018` |
+  | M5x0.8 Tapped | 46 `swTapBlindCosmeticThread` | `ThreadDiameter=0.005`, `ThreadDepth=0.010` |
+
+  `accessGranted=True` on both and `CounterBore*` read correctly, so
+  `AccessSelections` was never the problem. `HoleDiameter` and `Diameter`
+  simply do not apply to a standard-driven Hole Wizard feature. 6.60 THRU and
+  11.00 by 6.00 match the reference callout exactly.
+- **r46** replaces the direct `HoleDiameter`/`HoleDepth` reads with
+  `FirstNonZeroHoleMember`, which walks a candidate chain and names the
+  supplying member in the proof string. The two observed types are disjoint
+  on the first two entries, so the chain is deterministic rather than a
+  priority guess. An all-zero read now reports `ReadAllZeroValues:<routes>`
+  instead of `Read`.
+- **Confirmed live, run `macro_qa/20260805_001521`:**
+  `diameterM=0.006600000|depthM=0.018000000` and
+  `diameterM=0.005000000|depthM=0.010000000`.
+- **`NATIVE_CALLOUT_COVERAGE` and `MANUFACTURING_DEFINITION` did not flip.**
+  Failure count stays 9. Two distinct causes remain and neither is the Hole
+  Wizard read:
+  1. `op:EXTRUDEDCUT` still reports `dia:0.000000000`. That is a different
+     reader; an extruded cut's diameter comes from geometry, not feature data.
+  2. The M5 family now carries good values but is still judged `Incomplete`
+     **and** `Attachment`. Attachment needs a proved projection, and the M5
+     side holes have axis `(0,1,0)` - normal to neither the Front nor the
+     Left view - which is Root 1, the same reason the reference drawing puts
+     them in the J-J section.
+- **Evidence gap:** production emits the completeness token but not
+  `CCalloutDefinition.CompletenessFailureReason()`, so which field the M5
+  family is still missing is not visible in the QA report.
+- Two of my own defects were caught by existing gates before touching a
+  drawing, and both now have offline checks: a non-ASCII byte written into
+  cp1252 managed source (`VERIFY: FAIL`, nothing promoted), and a module-level
+  `Const` placed between procedures (`ready=False|reason=CompileNotClean`,
+  `main` never invoked).
+- Static verification: **503/503**.
+
+## 2026-08-05 (21) - r44 ordinates created; stale selection was blocking the datum
+
+Run `macro_qa/20260805_000138_P-0251-14A-001`.
+
+- **Ordinates exist for the first time.** `Horizontal ordinate groups: 1`,
+  `Vertical ordinate groups: 1`, `Ordinate feature selections: 12`,
+  `display dimension count=8, ordinate dimension count=4`. Every one of those
+  was 0 in every prior run.
+- Cause of the last block: the datum proof refuses to select while anything
+  is already selected, because `IView.SelectEntity` with `AppendFlag=False`
+  would destroy an interactive caller's selection. Annotation import runs
+  immediately before the ordinate stage and leaves its last inserted
+  annotation selected. r43 evidence showed the same datum, same anchor
+  (`SolidBodyEdge_0_49`, `visibleEntityIndex:23`), refused at creation
+  (`selection=Reject|reason=PreexistingSelection|initialSelectionCount=1`)
+  and resolved in the QA pass where nothing was selected.
+- `CreateR23OrdinateGroups` now clears a stale selection before building
+  schemes and records
+  `R23_ORDINATE_SELECTION_PRECONDITION|preexisting=1|cleared=True|remaining=0`.
+  The production pipeline owns the document it just created. The Module13
+  guard is untouched and still fails closed for the read-only probes.
+- **Open discrepancy, not yet explained:** the vertical group reported
+  `selectionsAppended=4|expectedSelections=3` and was still accepted as
+  `swCreateOrdDimErr_Success`. The count mismatch is not currently gated.
+- Cumulative against the 18:45 r37 baseline: failed stages **11 -> 9**;
+  `DIMENSION_ARRANGE` and `ORDINATE_SCHEME` both FAILED -> PROVED.
+- Static verification: **491/491**.
+
+## 2026-08-04 (20) - r42/r43 GetPolylines7 holds drawing entities; datum comparison corrected
+
+- **r42 two-way control settled it.** Same comparison, same array, twelve
+  edges `GetVisibleEntities2` had confirmed present:
+  `mappedVisibleEdges=0` (model edge) against
+  `mappedVisibleDrawingSpace=2` per location (mapped drawing entity). Twelve
+  of twelve in drawing space, zero of twelve in model space. Recorded in
+  `SOLIDWORKS_API_VALIDATION.md`.
+- **r43 corrects `MapVisibleDatumEntity`.** It tested the model entity from
+  r33 onward, so `visibleIndex` was always `-1` and every vertical datum
+  failed closed as `PolylineVisibilityUnavailable` regardless of real
+  visibility. Order is now map first, then prove the mapped drawing entity is
+  in the visible array. This also explains the scratch-versus-production
+  divergence: scratch returns `status=NoEdges` and takes the documented
+  fallback; production returns 39 entries that never matched.
+- The r37 fail-closed guard is retained unchanged. A mapped entity absent
+  from a non-empty array still refuses (`DatumMap:MappedEntityNotVisible`);
+  only the documented empty-array case reaches scoped selection.
+- **Not established:** whether the P-0251 stepped bore's edges are obscured.
+  Drawing-space testing needs a drawing entity, and no route maps that bore,
+  so it stays unclassified. The r40/r41 `unmappedObscuredEdges` counts remain
+  void.
+- Static verification: **486/486**. r43 live evidence pending.
+
+## 2026-08-04 (19) - r41 SelectData.View binding; visibility control added
+
+- **`ISelectData.View` raises 91 in this drawing context.** Modules 13, 15
+  and 16 each wrap that assignment in a private `TryBindSelectDataView`;
+  `Module4_ModelItemImporter` assigned it raw, so **every** dimension-arrange
+  attempt in the 18:45, 23:24 and 23:43 runs died in its error handler. Module4
+  now uses the same wrapper and records
+  `DIMENSION_ARRANGE_BINDING|viewBinding=...`. Binding scopes the selection;
+  it is not a precondition, and the view is already activated and read back,
+  so an unbound view continues.
+- **The r40 visibility classification shipped without a positive control**,
+  which made its own output unreadable: if `FindVisibleModelEdgeIndex` can
+  never match, every edge reports obscured and the count means nothing. The
+  r40 run produced exactly that shape. `mappedVisibleEdges` is the control -
+  an edge Route A already mapped is known to be in the view. **No conclusion
+  about hidden geometry may be drawn until that control is read.**
+- Static verification: **480/480**.
+- **r41 live run `macro_qa/20260804_234951_P-0251-14A-001`.**
+  `DIMENSION_ARRANGE` flipped **FAILED -> PROVED** (`api=1, noAction=2`);
+  `AlignDimensions` returned True on Drawing View2 for the first time.
+  `viewBinding=UnboundAfterError:91` is still recorded on both views, proving
+  the binding genuinely fails and that it was never a precondition.
+- **The visibility control read zero, and it invalidates the r40 reading.**
+  Twelve counterbore edges were mapped by Route A *and* confirmed present in
+  the `GetVisibleEntities2` inventory (`inventoryConfirmed=2` each), yet
+  `mappedVisibleEdges=0` on every one. `FindVisibleModelEdgeIndex` therefore
+  matches nothing at all, so every `unmappedObscuredEdges` count - including
+  the bore's 4 - measures nothing. The hidden-geometry hypothesis is
+  **untested**, not confirmed.
+- Same broken comparison gates the vertical datum:
+  `mapSample=VisibleMapUnavailable:DatumMap:PolylineVisibilityUnavailable`.
+  It also explains why the scratch drawing resolved its datum and production
+  does not - the scratch view returned `status=NoEdges` and took the
+  selection fallback, while production returns 39 edges that never match.
+  One defect, two symptoms.
+- Note for the next investigation: `GetPolylines7` returns **39** edges for
+  Drawing View1, the same count `GetVisibleEntities2` returns. The comparison
+  logic is shared and demonstrably works in drawing space
+  (`visibleIndex=33..38`); only the model-space comparison fails. Test
+  whether `GetPolylines7`'s array holds drawing-context entities rather than
+  model edges before changing any route.
+
+## 2026-08-04 (18) - r40 Phase 2 diagnosis; three blind failures made legible
+
+Evidence-only revision; no acceptance behaviour changed. Run
+`macro_qa/20260804_234310_P-0251-14A-001`.
+
+- Section failure now names its cause. Every candidate view reports
+  `R23_SECTION_PATH_CANDIDATE|` and the reasons reach the failure text:
+  `R23 semantic section path was not resolved: Drawing
+  View1:NoAcceptedSingletonBoreProjection;Drawing
+  View2:NoAcceptedSingletonBoreProjection (viewsWithoutProjections=0)`. This
+  confirms the review's F3 diagnosis from production evidence.
+  `CreateSemanticPrimarySection` also stopped overwriting `path` each
+  iteration, which had been discarding every view's reason but the last.
+- **Five** error handlers were destroying the error they reported, not one.
+  Each built its message by calling a name helper containing
+  `On Error Resume Next`, which resets the global `Err`; VBA evaluates the
+  concatenation left to right. Fixed in Modules 4, 5, 10, 13 and 14, with a
+  regex contract test guarding the shape. This immediately turned
+  `Dimension arrange API error in 'Drawing View1': 0: ` into
+  `91: Object variable or With block variable not set`.
+- Read-only visibility classification added to `ResolveProjection`
+  (`unmappedVisibleEdges` / `unmappedObscuredEdges`), and the post-layout
+  section-line filter corrected: an uncut view answers
+  `sectionLine=Read|values=0`, not `NoGeometryReturned` as r38 assumed.
+- Static verification: **475/475**.
+
+## 2026-08-04 (17) - r39 automated mutating production run; Phase 1 confirmed live
+
+- User authorized replacing the manual **Debug > Compile Project** gate and the
+  per-run chat authorization with automation. New
+  `tools/production-runner/Run-R23Production.ps1` deploys, runs the new
+  read-only `Module20_ProbeRunner.R23_PrepareProductionRun` (programmatic VBE
+  compile plus part activation), and **refuses to invoke `Module1_Main.main`
+  unless the pre-flight logged `R23_PREFLIGHT_END|ready=True`**. That refusal
+  is what the manual gate was actually for: VBA compiles lazily, so a module
+  that only fails when first called would otherwise abort a run after several
+  views already exist.
+- What did not move: `-AllowMutation` is mandatory with no default, only the
+  three authorized fixtures are accepted, the part is opened read-only,
+  nothing is ever saved, `UserForm1` is still driven by the operator, and
+  visual/manufacturing acceptance remains the user's judgement. Recorded as
+  the "Automated mutating-run exception" in `Agents.md`.
+- **First r39 production run, `macro_qa/20260804_232440_P-0251-14A-001`.**
+  Both r38 fixes confirmed live against the 18:45 baseline:
+  `Annotations imported` 0 -> **5**, `Layout moves` 0 -> **2**, with
+  `ACTIVATE_VIEW|operation=Annotation import into 'Drawing View2'|setterResult=False|readbackMatched=True`
+  showing the exact false negative that used to abort the import.
+- `LAYOUT` still fails, but now for a true reason rather than a sequencing
+  bug: the final structural pass ran, dispatched to the P-0251 reference
+  zones, and found no J-J section because the section genuinely was not
+  created. It cannot pass until the section defect is fixed.
+- Still open and unchanged: section path, projection Route D suppression,
+  all-zero Hole Wizard reads, bottom-outline datum, and the self-satisfying
+  `MODEL_IMPORT_COVERAGE` gate, which again reported PROVED while
+  `Drawing View1` imported nothing.
+- Static verification: **464/464** (17 new production-runner contracts).
+
+## 2026-08-04 (16) - r38 proved view activation and a two-pass layout
+
+Both defects were diagnosed from the failed 18:45 production run
+(`macro_qa/20260804_184514_P-0251-14A-001/QA_REPORT.txt`), not from static
+reading, and each was the sole cause of several stage failures.
+
+- `IDrawingDoc.ActivateView` returns False on this build even when the view
+  does become active; the same run proves it
+  (`ACTIVATE_VIEW|operation=ResolveOutlineDatum|setterResult=False|readbackMatched=True`).
+  Annotation import branched on that raw result, logged
+  `IMPORT_VIEW_NOT_ACTIVATED` for both views, never called
+  `InsertModelAnnotations4`, and produced `Annotations imported: 0`.
+  Annotation import, ordinate-group creation, native callout creation, and the
+  section cut now activate through
+  `Module8_RuntimeSupport.ActivateDrawingView`, which proves activation by
+  active-view readback and records a disagreeing setter as a warning.
+  `Module13_ProjectionResolution` keeps its raw read: it reports activation
+  and does not gate on it.
+- The only layout pass ran at pipeline step 3, before the section and
+  isometric views existed, so `ArrangeP0251ReferenceZones` failed
+  unconditionally on "requires exactly one primary, side, J-J section, and
+  isometric view" and the run recorded `Layout moves: 0` - no view was ever
+  positioned. `ArrangeViewsInMeasuredGrid` now takes `isFinalStructuralPass`.
+  The step-3 rough pass pre-places views with the generic zone-aware path and
+  defers the LAYOUT verdict; a new step-11b pass runs the fixture reference
+  zones once every required view exists, and is the only pass that proves or
+  fails the stage. `MarkStageFailed` is permanent, which is why the rough pass
+  must not write a verdict.
+- The section line belongs to its source view, so the structural pass is
+  followed by a read-only `RecordSectionLineAfterLayout` re-read
+  (`R23_SECTION_LINE_POSTLAYOUT`).
+- The retired automatic content-envelope repositioning and rescaling stay
+  uncalled. `FINAL_LAYOUT` remains
+  `UserAcceptedAsIs/automaticClearance=DeferredByUser`.
+- Static verification: **447/447** (12 new Phase 1 contracts). r38 deployment,
+  readback, VBE compilation, and live production evidence are pending.
+
+## 2026-08-04 (15) - r37 scoped-outline evidence
+
+- `IView.GetPolylines7` returns no edge array on both P-0251 HLV ordinate
+  views. A fallback now exists only for that named API state:
+  `IView.SelectEntity` must return
+  an entity owned by the intended drawing view through the selection manager.
+- Both vertical ordinate datums are now proven from mapped straight lower
+  outline edges, never from hole centres or view bounds. The focused P-0251
+  runner proves `ORDINATE_SCHEME=True`; semantic QA is **9/10**, with only
+  creation-dependent `MODEL_IMPORT_COVERAGE` remaining false.
+- Static verification: **435/435**. Deployment/readback: **38/38**.
+  Programmatic VBE compilation: clean. All nine read-only probes completed
+  without drawing or model mutation. Evidence: `probe_runs/20260804_164014/`.
+
+## 2026-08-04 (14) - r31 user-accepted layout policy
+
+- User accepted the layout as-is. Production retains initial structural-grid
+  placement and normal dimension arrangement, but cannot invoke automatic
+  content-envelope view movement or rescaling.
+- The retired scratch-layout command now reports
+  `UserAcceptedLayoutAsIs|mutations=0`. `FINAL_LAYOUT` remains visible as a
+  user waiver with `automaticClearance=DeferredByUser`, not a clearance pass.
+- Static verification: **435/435**. r31 live deployment, VBE compilation,
+  read-only runner evidence, and all production-mutation evidence are pending.
+
+## 2026-08-04 (13) - r30 independent review corrections
+
+- Separated planned ordinate coverage from created-and-read-back coverage and
+  moved semantic import coverage before read-only scheme construction.
+- Deduplicated production import views; stopped hiding a curve-order mismatch;
+  guarded every reviewed selection path against a pre-existing selection;
+  rejected zero nominal fallbacks; and made compile failures request VBE dialog
+  evidence rather than falsely naming a module.
+- Layout now rejects a malformed view/cell plan before rescaling and refuses
+  to override approved isometric or detail scales. Outline datums now require
+  a straight edge in the documented visible-entity inventory; without that
+  inventory they fail closed.
+- Static verification: **433/433**. r30 guarded deployment/readback passed
+  **38/38**, programmatic VBE compilation was clean, and all nine focused
+  P-0251 read-only probes completed. The newly strict visibility guard leaves
+  both vertical datums unresolved; semantic QA correctly reports 7/10 rather
+  than promoting selection ownership to visibility proof.
+
+## 2026-08-04 (12) - r29 outline-derived vertical ordinate datum
+
+- Replaced the vertical datum's lowest-hole fallback with the lowest mapped
+  horizontal model edge in the target view. Route A remains preferred and
+  Route D is the existing guarded part-drawing fallback; target-view ownership
+  is read back before the datum is accepted.
+- Runner evidence at `probe_runs/20260804_132049/` proves both P-0251 vertical
+  datums as `OutlineDerived` at `pageY=0.137763153`, with
+  `coverageFailures=None`, no creation or mutation, and semantic QA 9/10.
+  Only the pre-existing automatic `FINAL_LAYOUT` clearance gate fails.
+- `IView.GetOutline` is recorded as an enclosing view bound, not silhouette
+  geometry: the selected model edges sit 5.94 mm above its lower bound.
+  Managed-source hygiene and the companion suite pass at **428/428**;
+  revision advances to r29.
+
+## 2026-08-04 (11) - R23-006 curve-order proof
+
+- Added a read-only Phase 0 comparison inside the existing feature-catalog
+  probe. It reads one owned circular edge for counterbore, M5 tapped, mirror,
+  and extruded-cut roles in both historical API orders.
+- Fresh runner evidence at `probe_runs/20260804_125350/` passed all four:
+  `IsCircle=True`, seven `CircleParams` entries, equal radius, zero closure,
+  `R23_CURVE_ORDER_END|failures=None`, and `modelUnchanged=True`.
+- Static suite grew to **426/426 passed**; guarded deployment/readback and
+  programmatic VBE compile were clean. Production behavior is unchanged, so
+  source revision remains r28.
+
+## 2026-08-04 (10) - r28 source hygiene and fresh runner evidence
+
+- Reflowed managed VBA source without behavior changes: all 39 `.bas`/`.cls`
+  files now meet ASCII, CRLF, no-BOM, no-trailing-whitespace, `Option Explicit`,
+  and 79-character contracts. `MACRO_SOURCE_REVISION` remains r28.
+- Full companion suite: **425/425 passed**. Guarded deployment/readback passed
+  **38/38** for both candidate and target.
+- Fresh P-0251 scratch runner evidence is retained at
+  `probe_runs/20260804_124325/`: VBE `verdict=Clean`, module touch
+  `firstFailedModule=None`, and all nine read-only probes completed. Semantic
+  QA remains 9/10 because the automatic final-layout gate still names five
+  clearance failures; the prior user visual acceptance remains separate.
+
+## 2026-08-04 (9) - r28 accepted scratch-layout evidence
+
+- The controlled layout entrypoint ran only against
+  `P-0251-14A-001-R23-layout-scratch.SLDDRW`. It applied two measured scale
+  passes, reached scale `0.384200`, and correctly made no position move after
+  the re-measured plan remained `LargerSheetRequired`.
+- The user accepted the disposable scratch result. It was saved through the
+  installed SW2025 `IModelDoc2.Save3` contract with `errors=0|warnings=0`;
+  neither fixture model nor reference drawing was saved or changed.
+- The r28 probe runner then compiled the loaded VBA project cleanly, touched
+  every module, and completed all nine probes. Semantic QA remains 9/10:
+  `FINAL_LAYOUT` conservatively reports five clearance failures. Human visual
+  acceptance and the automatic production gate are recorded separately.
+
+## 2026-08-04 (8) - r28 bounded measured-rescale retry
+
+- The first scratch layout run applied factor `0.527974`, rebuilt, then
+  truthfully rejected a still-required factor `0.727687`. Text extents do not
+  shrink with the view, so one geometric estimate was insufficient.
+- `Module18_ContentEnvelope.ApplyPlacementPlan` now permits two
+  scale/readback/rebuild/re-measure passes and records each pass. A third
+  request still returns `LargerSheetRequired`; no unbounded shrink loop exists.
+- Static suite: **425/425**. r28 guarded deployment/readback passed (`38/38`).
+  The later accepted scratch run and r28 runner evidence are recorded above.
+
+## 2026-08-04 (7) - r27 isolated Phase 9 scratch-layout route
+
+- Created the byte-identical disposable P-0251 drawing at
+  `test_assets/scratch_drawings/P-0251-14A-001-R23-layout-scratch.SLDDRW`.
+  The V: drawing and fixture part remain unchanged.
+- Added `Module2_DrawingPipeline.R23_ApplyContentLayoutToScratch`. It accepts
+  only that exact path, proves the referenced fixture through a drawing view,
+  writes direct evidence, invokes only the shared final-layout helper, and
+  never saves the scratch drawing.
+- r27 guarded deployment/readback passed (`38/38`); programmatic VBE
+  compilation returned `verdict=Clean`; all nine read-only scratch probes
+  completed. Static suite: **425/425**.
+- The entrypoint has not mutated the scratch drawing. Manual VBE compilation,
+  the one authorized layout run, screenshot review, and visual acceptance
+  remain open.
+
+## 2026-08-04 (6) - r26 semantic coverage and clean runner regression
+
+- Fixed the VBE compile break in `CLocationGraph.ClearImportedAnnotations`:
+  the class now uses its own `Scripting.Dictionary` construction contract.
+- Fixed semantic QA ordering: ordinate buckets record directional scheme
+  coverage, and `MODEL_IMPORT_COVERAGE` runs after scheme reconstruction.
+  This does not promote authored drawing dimensions into imported evidence.
+- r26 guarded deployment/readback passed (`38/38`), VBE compilation returned
+  `verdict=Clean`, module touch returned `firstFailedModule=None`, and all nine
+  probes completed against authorized P-0251 with `mutations=0`.
+- Semantic QA improved from `proved=8|failures=2` to
+  `proved=9|failures=1`; only the real protected-reference layout failures
+  remain. Static suite: **424/424**.
+
+## 2026-08-04 (5) - runner title-conflict diagnostics
+
+- The runner now decodes locally confirmed
+  `swFileWithSameTitleAlreadyOpen = 65536`, enumerates the existing
+  document path, and fails closed without calling `CloseDoc`.
+- Live proof: the restarted SOLIDWORKS session had
+  `V:\VEEMAP\SW_data\P-0251-14A-001.SLDPRT` open with its drawing, blocking
+  the authorized local fixture part before compilation or probes began.
+- Corrected stale Phase 9 review wording: its three high-severity source
+  fixes exist; their mutating runtime evidence remains open.
+- Static verification after the runner change: **424/424** companion tests.
+- Fixed the VBE compile failure in `CLocationGraph.ClearImportedAnnotations`;
+  `MACRO_SOURCE_REVISION` is now `target-spec-hybrid-v2-2026-08-04-r24`.
+
+## 2026-08-04 (4) - R23 Phase 11 production wiring, static only
+
+- Replaced the production feature-list route with `CLocationGraph` and the
+  R23 feature, projection, import, ordinate, section, callout, envelope, and
+  semantic-QA stages in the required order.
+- Retired the reachable hardcoded P-0251 callout and count-only QA paths;
+  static contracts now reject their return.
+- Generic dimension arrangement now leaves semantic section lanes unchanged.
+- `MACRO_SOURCE_REVISION` is `target-spec-hybrid-v2-2026-08-04-r23`.
+- Static verification passed: 422 companion tests and deployment preflight
+  with 38 managed components. No VBE compilation, live run, screenshot review,
+  or manufacturing acceptance is claimed.
+
+## 2026-08-04 (3) - probe runner made the required test path; batch run assessed
+
+### Documentation
+
+CLAUDE.md, Agents.md and R23_CLAUDE_CODE_IMPLEMENTATION_HANDOFF.md now
+require tools/probe-runner/Run-R23Probes.ps1 for read-only testing and for
+compiling the VBA project. The agent reads the run's log file; it does not
+ask for a pasted Immediate Window unless the evidence is something the
+command cannot produce - a mutating run, a compile-error dialog, or a
+screenshot. Agents.md also records that the programmatic compile route is
+built and proved, and that a verdict=Clean is VBE compilation evidence
+without being runtime or manufacturing acceptance.
+
+Stale figures corrected: the offline suite is 401 tests, not 74.
+
+### Phase 9 and Phase 10 status updated from the batch run
+
+Phase 9's third live run confirmed the five defects from the second run are
+fixed and produced plan=RescaleRequired with suggestedScaleFactor=0.527974,
+requiredHeightM=0.479190 against usableHeightM=0.253000. Gate not satisfied:
+ten clearance failures, R23-903 and R23-904 still unrun, and three
+high-severity review findings unfixed in that same mutating path.
+
+Phase 10's first live run: stages=10, proved=3, failures=7, mutations=0.
+
+### GetVisibleEntities2 returns zero under the runner
+
+Every view in the batch run reported count=0 from IView.GetVisibleEntities2
+and was skipped as NoVisibleDrawingEntities, so Phases 3-7 read zero
+downstream and six of Phase 10's seven failures follow from it. The same
+probes returned nonzero standalone from the VBA editor.
+
+Phase 8 ran identically in both (satisfied=7, missing=0) and does not read
+visible entities, so the drawing was open, correct, and bound to the
+authorized test_assets part. The fault is specific to visible-entity
+enumeration under the runner's OpenDoc6/ActivateDoc3 sequence. Recorded at
+the top of R23_IMPLEMENTATION_PLAN.md with the experiment that separates the
+candidates.
+
+## 2026-08-04 (2) - R23 probe-automation tool: first live run, PA-103/110/112
+
+Completes the tool from the entry below. User opened a live SOLIDWORKS
+session; ran the full plan through to a successful
+`R23_RunAllProbes` execution. Evidence:
+`test_assets/iteration_evidence/probe_runs/20260804_054014/probe_log.txt`.
+
+- Compile control resolved live by caption:
+  `id=578|caption=Compile Fable`, under Menu Bar > Debug. Verdict
+  `Clean` after `.Execute` (`enabledBefore=True`, `enabledAfter=False`).
+- All 21 standard modules touched clean
+  (`R23_RUN_TOUCH|firstFailedModule=None`).
+- All nine probes ran in dependency order with `status=Completed`,
+  `mutations=0`/`creations=0`, `drawingUnchanged=True` throughout, and
+  every `part=` field resolving to the authorized `test_assets\models\`
+  copy (the 2026-08-02 network-sibling rebind failure did not recur).
+- Fixed two live-only bugs found en route: `CommandBarControl.Caption`
+  carries the raw `&` accelerator marker (`"Compi&le Fable"`), which was
+  breaking the caption match until it compared against the cleaned
+  string instead of the raw one; and PowerShell cannot call `OpenDoc6`
+  directly (fails via late binding and via a direct interop
+  bracket-cast), fixed with a new `SolidWorksDocumentOpener.cs` mirroring
+  the existing `SolidWorksMacroInvoker.cs` pattern, exposed as
+  `Open-SolidWorksDocument` alongside `Invoke-SolidWorksMacro` in
+  `tools/swp-deploy/Invoke-SolidWorksMacro.ps1`.
+- Also fixed: `R23_RunAllProbes` never switched the active document
+  between probe 1 (needs the part) and probes 2-9 (need the drawing) -
+  `OpenDoc6` documents it does not activate on open. Added explicit
+  `ActivateDoc3` calls, matching the `GetTitle`-based pattern
+  `Module8_RuntimeSupport.ActivateDrawingDocument` already used.
+- 5 new regression tests lock in both live-only bugs and the refactor
+  (`SolidWorksDocumentOpener.cs` hygiene, the `&`-stripped caption
+  match). Full suite: 401 tests, same five known-stale R20 failures.
+- Full narrative, live evidence, and API-contract detail:
+  `docs/R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md` section 12 and
+  `docs/SOLIDWORKS_API_VALIDATION.md` (2026-08-04 entry).
+
+## 2026-08-04 - R23 probe-automation tool built (PA-100..109, static)
+
+Implements the tool authorized 2026-08-02:
+[R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md](R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md).
+Everything offline-verifiable is done; PA-103 (live VBE enumeration),
+PA-110 (recording what it proved) and PA-112 (first live run) still need
+the user's SOLIDWORKS session and are not claimed here.
+
+- `Module21_EvidenceSink.bas` (new): `OpenLog`/`LogLine`/`CloseLog`/
+  `IsOpen`, teeing every diagnostic line to
+  `test_assets/iteration_evidence/probe_runs/<timestamp>/probe_log.txt`
+  in addition to `Debug.Print`, so an external process can read a probe
+  run without a manual Immediate Window paste.
+- `CRunEvidence.AddInfo`/`AddWarning`/`AddFailure` now route through
+  `LogLine` instead of calling `Debug.Print` directly. The
+  `QA INFO: `/`QA WARNING: `/`QA FAILURE: ` prefixes are unchanged.
+- All 147 `Debug.Print` sites across the nine `R23_Probe*` modules
+  (Module10, 12-19) replaced with `LogLine`, mechanically, preserving
+  every log line's text.
+- `Module20_ProbeRunner.bas` (new): `R23_EnumerateVbeControls`,
+  `R23_CompileProject` (resolves the VBE Compile control by caption, not
+  a hardcoded ID - that ID is outside the SOLIDWORKS API corpus, see
+  `docs/SOLIDWORKS_API_VALIDATION.md`), `R23_TouchAllModules` (localises
+  a compile failure to the first module that fails to load), and
+  `R23_RunAllProbes` (compile, touch, activate the correct document, run
+  all nine probes in order, isolated so one error can't abort the rest).
+  Contains no `allowMutation` and calls no mutating procedure.
+- `Public Sub R23_CompileTouch()` added to all 21 deployed standard
+  modules (the original 19 plus the two new ones).
+- `tools/probe-runner/Run-R23Probes.ps1` (new): optional `-Deploy`,
+  opens the authorized part then the drawing read-only via `OpenDoc6`,
+  refuses any part path outside the three `Module1_Main` fixtures, and
+  invokes `R23_RunAllProbes` inside a background PowerShell runspace so a
+  modal compile dialog reports a timeout instead of hanging. `-DrawingPath`
+  is mandatory with no default: no authoritative drawing path exists in
+  this repository, and guessing one would violate the "never guess a
+  path/contract" rule.
+- `tools/swp-deploy/Invoke-SolidWorksMacro.ps1` (new): the RunMacro2
+  invoker extracted verbatim out of `Deploy-TargetSpecHybrid.ps1` so both
+  scripts dot-source the same implementation instead of two copies
+  existing. `Deploy-TargetSpecHybrid.ps1` behaviour is unchanged -
+  reconfirmed with `-PreflightOnly`.
+- `deployment-manifest.json`: registered both new modules (36 to 38
+  managed components). Inventory-lock test and preflight output updated
+  to match.
+- `test_r23_probe_runner_contracts.py` (new, 16 tests): sink hygiene, no
+  raw `Debug.Print` survives in any probe module, the runner calls all
+  nine probes in dependency order and stops before them on an unclean
+  compile, no mutating marker or `allowMutation` anywhere in the runner,
+  every standard module carries `R23_CompileTouch`, source hygiene for
+  both new modules. Full suite: 398 tests, the same five known-stale R20
+  failures and nothing else.
+- `MACRO_SOURCE_REVISION` intentionally not bumped, per the plan: these
+  modules are not on the reachable production path yet.
+
 ## 2026-08-02 - Phase 8 gate satisfied; probe automation authorized
 
 ### Phase 8 SATISFIED

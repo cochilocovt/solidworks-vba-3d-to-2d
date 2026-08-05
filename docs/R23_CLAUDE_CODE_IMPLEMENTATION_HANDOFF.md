@@ -6,7 +6,26 @@
 
 **Branch / commit at handoff:** `main` / `ffe2de791f6e1587bed00bc4fa30afc2874c27ec`
 
-**Current production source revision:** `target-spec-hybrid-v2-2026-07-29-r22`
+**Production source revision when this document was written:**
+`target-spec-hybrid-v2-2026-07-29-r22`
+
+> **Status header, refreshed 2026-08-05.** This document is the durable R23
+> context: boundaries, disproved approaches, and the evidence ladder. It is
+> **not** the current state. Sections 5 to 9 describe the Phase 0 gate, which
+> closed long ago.
+>
+> - Current revision: `target-spec-hybrid-v2-2026-08-05-r62`, deployed and
+>   run. Read the real value from `Module1_Main.bas`, never from a doc.
+> - Current state, failing stages and the next work package:
+>   [CURRENT_STATUS.md](CURRENT_STATUS.md). It supersedes section 10 below.
+> - Iteration-by-iteration record: [Changelog.md](Changelog.md), newest
+>   entry first.
+> - Longer-range scope, generalization tiers and the open product question:
+>   [R23_SCOPE_AND_GENERALIZATION_PLANNING.md](R23_SCOPE_AND_GENERALIZATION_PLANNING.md).
+>
+> Sections 1 to 4 and 11 to 13 - the start-here list, boundaries, working-tree
+> warning, verification commands, claim language and collaboration model -
+> remain current and binding.
 
 **Purpose:** Give Claude Code the complete, durable context needed to finish
 the diagnostic Phase 0 gate and then implement R23 without reconstructing the
@@ -99,6 +118,23 @@ also said to stop Computer Use and provide exact manual steps instead.
 Prepare and verify source offline, then tell the user exactly what to compile,
 run, retain, and share. Do not use Computer Use unless the user explicitly
 re-authorizes it for a defined task.
+
+**Amended 2026-08-04: read-only probe evidence no longer goes through the
+user.** With SOLIDWORKS running, use the probe runner. It deploys, compiles
+the whole VBA project programmatically, opens the authorized part then the
+drawing, runs all nine `R23_Probe*` entry points, and writes a log the agent
+reads directly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File `
+  ".\tools\probe-runner\Run-R23Probes.ps1" -Deploy `
+  -DrawingPath "<full path to the fixture drawing>"
+```
+
+Evidence lands in
+`test_assets/iteration_evidence/probe_runs/<timestamp>/probe_log.txt`. Ask
+for a pasted Immediate Window only when this command cannot produce the
+evidence - a mutating run, a compile-error dialog, or a screenshot.
 
 ### 3.4 Source and deployment
 
@@ -550,7 +586,25 @@ Fail closed on any missing or unproved requirement.
 
 ## 10. Exact next work package for Claude Code
 
-Do this next:
+> **Superseded, 2026-08-05.** The Phase 0 package below is complete and is
+> retained only as a record of how the gate was closed. Every one of its
+> eleven entry conditions has been met: the counterbore projections and both
+> datum entities proved selectable, both ordinate groups return and clean up,
+> the `Ø47`/`Ø40` records are isolated and now carry created associative
+> dimensions, H7 authority was settled as drawing-authored reference
+> authority, and the J-J geometry is decoded in proved frames.
+>
+> **The live next work package is r63, defined in
+> [CURRENT_STATUS.md](CURRENT_STATUS.md).** Three placement defects from the
+> r62 run, then the two remaining root causes: callout `Attachment` (which
+> `NATIVE_CALLOUT_COVERAGE` and `MANUFACTURING_DEFINITION` share) and
+> `VIEW_PROJECTION`'s five unprojected Y-axis locations.
+>
+> Note that item 2 below - "do not change `src/target-spec-hybrid-v2/`" - was
+> a Phase 0 restriction only. Production source has been changed under the
+> normal evidence rules since r23.
+
+Do this next (historical Phase 0 package):
 
 1. Read the files in section 1 and inspect current source/diffs.
 2. Do not change `src/target-spec-hybrid-v2/`.
@@ -592,10 +646,10 @@ From the repository root:
   -v
 ```
 
-Known baseline:
+Known baseline (2026-08-04):
 
-- 74 tests run;
-- 69 pass;
+- 401 tests run;
+- 396 pass;
 - five failures remain in stale R20 string/behavior contracts.
 
 Do not call this green. Investigate any additional, missing, or changed

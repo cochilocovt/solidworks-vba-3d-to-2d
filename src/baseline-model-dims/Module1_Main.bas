@@ -1,4 +1,3 @@
-Attribute VB_Name = "Module1_Main"
 Option Explicit
 
 Public Type SectionConfig
@@ -45,9 +44,32 @@ Public GlobalConfig As DrawingConfig
 Public GlobalSections(1 To 5) As SectionConfig
 Public GlobalSectionCount As Long
 
-Private Const TEMPLATE_PATH As String = "V:\SW_data\Custom Templates\VEEMAP DRAWING.DRWDOT"
+' Single version source for the trunk. tools/swp-deploy regenerates
+' deployment-request.txt from this; never hand-edit that file. Bump whenever
+' deployable behaviour changes.
+Public Const MACRO_SOURCE_REVISION As String = _
+    "trunk-2026-08-05-r4"
+
+' User-confirmed 2026-08-05. The baseline snapshot carried "V:\SW_data\..."
+' with the VEEMAP segment missing, so the controlled template never resolved
+' and GetValidDrawingTemplatePath silently fell through to the SOLIDWORKS
+' default drawing template.
+Private Const TEMPLATE_PATH As String = _
+    "V:\VEEMAP\SW_data\Custom Templates\VEEMAP DRAWING.DRWDOT"
 Private Const swDocPART As Long = 1
 Private Const swDefaultTemplateDrawing As Long = 10
+
+' The three authorized fixtures. tools/production-runner and
+' tools/probe-runner mirror this list and never widen it.
+Private Const FIXTURE_1 As String = _
+    "C:\Users\V.T\Documents\VBA 3D TO " & _
+        "2D\test_assets\models\P-0251-14A-001.SLDPRT"
+Private Const FIXTURE_2 As String = _
+    "C:\Users\V.T\Documents\VBA 3D TO " & _
+        "2D\test_assets\models\P-0252-01-001.SLDPRT"
+Private Const FIXTURE_3 As String = _
+    "C:\Users\V.T\Documents\VBA 3D TO " & _
+        "2D\test_assets\models\P-0252-01-013.SLDPRT"
 
 Public Sub main()
     On Error GoTo Failed
@@ -75,6 +97,14 @@ Public Sub main()
     partPath = swPart.GetPathName
     If Len(partPath) = 0 Then
         MsgBox "Please save the part before running the macro.", vbExclamation, "Macro Error"
+        Exit Sub
+    End If
+
+    If Not IsAuthorizedFixture(partPath) Then
+        MsgBox _
+            "Fail-closed: this build runs only against the three " & _
+            "authorized fixtures." & vbCrLf & partPath, _
+            vbCritical, "Unauthorized Model"
         Exit Sub
     End If
 
@@ -171,6 +201,21 @@ Public Function GetSectionLabelOrDefault(ByVal index As Long) As String
         GetSectionLabelOrDefault = Chr$(Asc("J") + index - 1)
     End If
 End Function
+
+Public Function IsAuthorizedFixture(ByVal partPath As String) As Boolean
+    Dim normalized As String
+    normalized = LCase$(Replace$(Trim$(partPath), "/", "\"))
+
+    IsAuthorizedFixture = _
+        (normalized = LCase$(FIXTURE_1)) Or _
+        (normalized = LCase$(FIXTURE_2)) Or _
+        (normalized = LCase$(FIXTURE_3))
+End Function
+
+' Compile-failure localisation no-op called by
+' Module20_ProbeRunner.R23_TouchAllModules.
+Public Sub R23_CompileTouch()
+End Sub
 
 Private Function GetValidDrawingTemplatePath(ByRef swApp As SldWorks.SldWorks) As String
     Dim candidate As String

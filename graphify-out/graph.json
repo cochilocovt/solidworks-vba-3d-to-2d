@@ -1,0 +1,1520 @@
+{
+  "nodes": [
+    {
+      "id": "src_active_ordinate_btnhandler",
+      "label": "active-ordinate/BtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/active-ordinate/BtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_active_ordinate_sectionbtnhandler",
+      "label": "active-ordinate/SectionBtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/active-ordinate/SectionBtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_active_ordinate_sectiondlgbtnhandler",
+      "label": "active-ordinate/SectionDlgBtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/active-ordinate/SectionDlgBtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_active_ordinate_thislibrary",
+      "label": "active-ordinate/ThisLibrary.cls",
+      "file_type": "code",
+      "source_file": "src/active-ordinate/ThisLibrary.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_baseline_model_dims_btnhandler",
+      "label": "baseline-model-dims/BtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/baseline-model-dims/BtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_baseline_model_dims_sectionbtnhandler",
+      "label": "baseline-model-dims/SectionBtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/baseline-model-dims/SectionBtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_baseline_model_dims_sectiondlgbtnhandler",
+      "label": "baseline-model-dims/SectionDlgBtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/baseline-model-dims/SectionDlgBtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_baseline_model_dims_thislibrary",
+      "label": "baseline-model-dims/ThisLibrary.cls",
+      "file_type": "code",
+      "source_file": "src/baseline-model-dims/ThisLibrary.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_btnhandler",
+      "label": "target-spec-hybrid-v2/BtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/BtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_ccalloutdefinition",
+      "label": "CCalloutDefinition.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CCalloutDefinition.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_ccontentenvelope",
+      "label": "CContentEnvelope.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CContentEnvelope.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_cdatumproof",
+      "label": "CDatumProof.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CDatumProof.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_cfeaturedefinition",
+      "label": "CFeatureDefinition.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CFeatureDefinition.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_cholecandidate",
+      "label": "CHoleCandidate.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CHoleCandidate.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_cimportedannotation",
+      "label": "CImportedAnnotation.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CImportedAnnotation.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_clocationgraph",
+      "label": "CLocationGraph.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CLocationGraph.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_cordinatebucket",
+      "label": "COrdinateBucket.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/COrdinateBucket.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_cordinatescheme",
+      "label": "COrdinateScheme.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/COrdinateScheme.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_cphysicalholelocation",
+      "label": "CPhysicalHoleLocation.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CPhysicalHoleLocation.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "dml_merge",
+      "label": "merge",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CPhysicalHoleLocation.cls",
+      "source_location": "L16",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_crunevidence",
+      "label": "CRunEvidence.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CRunEvidence.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_csectionpath",
+      "label": "CSectionPath.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CSectionPath.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_csectionrequirement",
+      "label": "CSectionRequirement.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CSectionRequirement.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_cviewholeprojection",
+      "label": "CViewHoleProjection.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/CViewHoleProjection.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_sectionbtnhandler",
+      "label": "target-spec-hybrid-v2/SectionBtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/SectionBtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_sectiondlgbtnhandler",
+      "label": "target-spec-hybrid-v2/SectionDlgBtnHandler.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/SectionDlgBtnHandler.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_target_spec_hybrid_v2_thislibrary",
+      "label": "target-spec-hybrid-v2/ThisLibrary.cls",
+      "file_type": "code",
+      "source_file": "src/target-spec-hybrid-v2/ThisLibrary.cls",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_probe_runner_run_r23probes",
+      "label": "Run-R23Probes.ps1",
+      "file_type": "code",
+      "source_file": "tools/probe-runner/Run-R23Probes.ps1",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_probe_runner_run_r23probes_test_authorizedfixturepart",
+      "label": "Test-AuthorizedFixturePart()",
+      "file_type": "code",
+      "source_file": "tools/probe-runner/Run-R23Probes.ps1",
+      "source_location": "L91",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_deploy_targetspechybrid",
+      "label": "Deploy-TargetSpecHybrid.ps1",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Deploy-TargetSpecHybrid.ps1",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_deploy_targetspechybrid_resolve_configuredpath",
+      "label": "Resolve-ConfiguredPath()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Deploy-TargetSpecHybrid.ps1",
+      "source_location": "L24",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_deploy_targetspechybrid_test_exclusivefileaccess",
+      "label": "Test-ExclusiveFileAccess()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Deploy-TargetSpecHybrid.ps1",
+      "source_location": "L37",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_deploy_targetspechybrid_wait_forfile",
+      "label": "Wait-ForFile()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Deploy-TargetSpecHybrid.ps1",
+      "source_location": "L59",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_invoke_solidworksmacro",
+      "label": "Invoke-SolidWorksMacro.ps1",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroppath",
+      "label": "Get-SolidWorksInteropPath()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroptype",
+      "label": "Get-SolidWorksInteropType()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L8",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_invoke_solidworksmacro_invoke_solidworksmacro",
+      "label": "Invoke-SolidWorksMacro()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L28",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_invoke_solidworksmacro_open_solidworksdocument",
+      "label": "Open-SolidWorksDocument()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L78",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksopendocumentinfo",
+      "label": "Get-SolidWorksOpenDocumentInfo()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L139",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener",
+      "label": "SolidWorksDocumentOpener.cs",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "csharp_namespace:13e8a860e335304b",
+      "label": "TargetSpecHybrid.SwpDeployment",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L7",
+      "type": "namespace",
+      "metadata": {
+        "kind": "csharp_namespace",
+        "namespace": "TargetSpecHybrid.SwpDeployment"
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocresult",
+      "label": "OpenDocResult",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L9",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocumentinfo",
+      "label": "OpenDocumentInfo",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L17",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener",
+      "label": "SolidWorksDocumentOpener",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L31",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocuments",
+      "label": ".ListOpenDocuments()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L33",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_open",
+      "label": ".Open()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L55",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocumentsearlybound",
+      "label": ".ListOpenDocumentsEarlyBound()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L93",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocumentsdispatch",
+      "label": ".ListOpenDocumentsDispatch()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L114",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_openearlybound",
+      "label": ".OpenEarlyBound()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L164",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_opendispatch",
+      "label": ".OpenDispatch()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L201",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksmacroinvoker",
+      "label": "SolidWorksMacroInvoker.cs",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_macrorunresult",
+      "label": "MacroRunResult",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L9",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker",
+      "label": "SolidWorksMacroInvoker",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L15",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_run",
+      "label": ".Run()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L17",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_runearlybound",
+      "label": ".RunEarlyBound()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L59",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_rundispatch",
+      "label": ".RunDispatch()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L82",
+      "metadata": {
+        "namespace": "TargetSpecHybrid.SwpDeployment",
+        "scope_chain": [
+          "s141"
+        ]
+      },
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_verify_swp_vba",
+      "label": "verify_swp_vba.py",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_verify_swp_vba_normalized_text",
+      "label": "normalized_text()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L30",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_verify_swp_vba_digest",
+      "label": "digest()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L56",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_verify_swp_vba_resolve_manifest_path",
+      "label": "resolve_manifest_path()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L60",
+      "_origin": "ast"
+    },
+    {
+      "id": "path",
+      "label": "Path",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_verify_swp_vba_load_embedded_components",
+      "label": "load_embedded_components()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L64",
+      "_origin": "ast"
+    },
+    {
+      "id": "tools_swp_deploy_verify_swp_vba_main",
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L85",
+      "_origin": "ast"
+    }
+  ],
+  "edges": [
+    {
+      "source": "src_target_spec_hybrid_v2_cphysicalholelocation",
+      "target": "dml_merge",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "src/target-spec-hybrid-v2/CPhysicalHoleLocation.cls",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_probe_runner_run_r23probes",
+      "target": "tools_probe_runner_run_r23probes_test_authorizedfixturepart",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/probe-runner/Run-R23Probes.ps1",
+      "source_location": "L91",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_deploy_targetspechybrid",
+      "target": "tools_swp_deploy_deploy_targetspechybrid_resolve_configuredpath",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Deploy-TargetSpecHybrid.ps1",
+      "source_location": "L24",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_deploy_targetspechybrid",
+      "target": "tools_swp_deploy_deploy_targetspechybrid_test_exclusivefileaccess",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Deploy-TargetSpecHybrid.ps1",
+      "source_location": "L37",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_deploy_targetspechybrid",
+      "target": "tools_swp_deploy_deploy_targetspechybrid_wait_forfile",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Deploy-TargetSpecHybrid.ps1",
+      "source_location": "L59",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroppath",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroptype",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_invoke_solidworksmacro",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L28",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_open_solidworksdocument",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L78",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksopendocumentinfo",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L139",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroptype",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroppath",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro_invoke_solidworksmacro",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroptype",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L36",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro_invoke_solidworksmacro",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroppath",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L37",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro_open_solidworksdocument",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroptype",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L86",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro_open_solidworksdocument",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroppath",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L87",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro_open_solidworksdocument",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksopendocumentinfo",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L119",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksopendocumentinfo",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroptype",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L142",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksopendocumentinfo",
+      "target": "tools_swp_deploy_invoke_solidworksmacro_get_solidworksinteroppath",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/Invoke-SolidWorksMacro.ps1",
+      "source_location": "L143",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "system",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L1",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "System",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "system_globalization",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L2",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "System.Globalization",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "system_reflection",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "System.Reflection",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "system_runtime_interopservices",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L4",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "System.Runtime.InteropServices",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "solidworks_interop_sldworks",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L5",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "SolidWorks.Interop.sldworks",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "csharp_namespace:13e8a860e335304b",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocresult",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocumentinfo",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L17",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L31",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocuments",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocuments",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocumentinfo",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L33",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "OpenDocumentInfo"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_open",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L55",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_open",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocresult",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L55",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "OpenDocResult"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocumentsearlybound",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L93",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocumentsearlybound",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocumentinfo",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L93",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "OpenDocumentInfo"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocumentsdispatch",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L114",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocumentsdispatch",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocumentinfo",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L114",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "OpenDocumentInfo"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_openearlybound",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L164",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_openearlybound",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocresult",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L164",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "OpenDocResult"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_opendispatch",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L201",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_opendispatch",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_opendocresult",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L201",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "OpenDocResult"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocuments",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocumentsearlybound",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L37",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocuments",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_listopendocumentsdispatch",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L41",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_open",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_openearlybound",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L63",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_open",
+      "target": "tools_swp_deploy_solidworksdocumentopener_targetspechybrid_swpdeployment_solidworksdocumentopener_opendispatch",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksDocumentOpener.cs",
+      "source_location": "L71",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker",
+      "target": "system",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L1",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "System",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker",
+      "target": "system_globalization",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L2",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "System.Globalization",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker",
+      "target": "system_reflection",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "System.Reflection",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker",
+      "target": "system_runtime_interopservices",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L4",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "System.Runtime.InteropServices",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker",
+      "target": "solidworks_interop_sldworks",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L5",
+      "weight": 1.0,
+      "metadata": {
+        "using_kind": "namespace",
+        "target_fqn": "SolidWorks.Interop.sldworks",
+        "scope_kind": "file"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker",
+      "target": "csharp_namespace:13e8a860e335304b",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_macrorunresult",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_run",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L17",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_run",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_macrorunresult",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L17",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "MacroRunResult"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_runearlybound",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L59",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_runearlybound",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_macrorunresult",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L59",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "MacroRunResult"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_rundispatch",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L82",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_rundispatch",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_macrorunresult",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L82",
+      "weight": 1.0,
+      "context": "return_type",
+      "metadata": {
+        "ref_token": "MacroRunResult"
+      },
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_run",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_runearlybound",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L26",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_run",
+      "target": "tools_swp_deploy_solidworksmacroinvoker_targetspechybrid_swpdeployment_solidworksmacroinvoker_rundispatch",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/SolidWorksMacroInvoker.cs",
+      "source_location": "L35",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "argparse",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "hashlib",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L4",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "json",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "pathlib",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "re",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "sys",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "typing",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "warnings",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "oletools_olevba",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "tools_swp_deploy_verify_swp_vba_normalized_text",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "tools_swp_deploy_verify_swp_vba_digest",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "tools_swp_deploy_verify_swp_vba_resolve_manifest_path",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L60",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba_resolve_manifest_path",
+      "target": "path",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L60",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "tools_swp_deploy_verify_swp_vba_load_embedded_components",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba_load_embedded_components",
+      "target": "path",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba",
+      "target": "tools_swp_deploy_verify_swp_vba_main",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L85",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba_digest",
+      "target": "tools_swp_deploy_verify_swp_vba_normalized_text",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba_load_embedded_components",
+      "target": "path",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L73",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba_main",
+      "target": "tools_swp_deploy_verify_swp_vba_resolve_manifest_path",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L100",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba_main",
+      "target": "tools_swp_deploy_verify_swp_vba_load_embedded_components",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "tools_swp_deploy_verify_swp_vba_main",
+      "target": "tools_swp_deploy_verify_swp_vba_digest",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tools/swp-deploy/verify_swp_vba.py",
+      "source_location": "L145",
+      "weight": 1.0,
+      "_origin": "ast"
+    }
+  ],
+  "hyperedges": [],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

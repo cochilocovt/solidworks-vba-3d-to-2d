@@ -1,4 +1,3 @@
-Attribute VB_Name = "Module7_TitleBlockEngine"
 Option Explicit
 
 Private Const swCustomInfoText As Long = 30
@@ -170,3 +169,8 @@ Private Function FileNameWithoutExtension(ByVal path As String) As String
     End If
 End Function
 
+
+' Compile-failure localisation no-op called by
+' Module20_ProbeRunner.R23_TouchAllModules.
+Public Sub R23_CompileTouch()
+End Sub

@@ -1,41 +1,77 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
 Read [Agents.md](Agents.md) first — it is the binding operating contract
-(fixture authorization, ask-before-live-SOLIDWORKS rule, VBA engineering rules,
-acceptance criteria). Then follow
-[docs/R23_CLAUDE_CODE_IMPLEMENTATION_HANDOFF.md](docs/R23_CLAUDE_CODE_IMPLEMENTATION_HANDOFF.md)
-for the current R23 objective, accepted probe evidence, blocked gates, and exact
-next work package. Use
-[docs/CLAUDE_STATIC_REVIEW_AND_OFFLINE_CHECKS_HANDOFF.md](docs/CLAUDE_STATIC_REVIEW_AND_OFFLINE_CHECKS_HANDOFF.md)
-for the full review/offline-check workflow, evidence ladder, commands, and
-claim language.
+(fixture authorization, live-SOLIDWORKS rule, VBA rules, evidence honesty).
 
-## Refer at the start of every task
+## Current state
 
-- [Agents.md](Agents.md)
-- [docs/R23_CLAUDE_CODE_IMPLEMENTATION_HANDOFF.md](docs/R23_CLAUDE_CODE_IMPLEMENTATION_HANDOFF.md)
-- [docs/R23_PHASE0_PROBE_FINDINGS_AND_NEXT_STEPS.md](docs/R23_PHASE0_PROBE_FINDINGS_AND_NEXT_STEPS.md)
-- [docs/CLAUDE_STATIC_REVIEW_AND_OFFLINE_CHECKS_HANDOFF.md](docs/CLAUDE_STATIC_REVIEW_AND_OFFLINE_CHECKS_HANDOFF.md)
-- [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md) — latest state; read the actual `MACRO_SOURCE_REVISION` in `src/target-spec-hybrid-v2/Module1_Main.bas`, never assume a doc's revision label is current
-- [docs/SOLIDWORKS_API_VALIDATION.md](docs/SOLIDWORKS_API_VALIDATION.md) — accumulated API-contract evidence
-- [skills/solidworks-api-lookup/SKILL.md](skills/solidworks-api-lookup/SKILL.md) — mandatory before touching any `sw*` constant or API call
+**Trunk: `src/baseline-model-dims/`** (2026-08-05). The former trunk
+`target-spec-hybrid-v2` is in [archive/](archive/README.md) — 36k lines, too
+fixture-coupled to generalise. `src/active-ordinate/` is history.
+
+Objective is Tier C: a macro that works on any drawing, not just the three
+fixtures. Decisions and rationale in
+[docs/R23_SCOPE_AND_GENERALIZATION_PLANNING.md](docs/R23_SCOPE_AND_GENERALIZATION_PLANNING.md)
+§4a.
+
+Read the actual `MACRO_SOURCE_REVISION` in
+`src/baseline-model-dims/Module1_Main.bas`. Never trust a doc's revision
+label.
+
+## Start here
+
+- [Agents.md](Agents.md) — binding contract
+- [docs/BASELINE_TO_REFERENCE_DRAWING_GAP.md](docs/BASELINE_TO_REFERENCE_DRAWING_GAP.md)
+  — what the trunk still needs to produce the reference drawing, and the
+  phased plan
+- [docs/R23_SCOPE_AND_GENERALIZATION_PLANNING.md](docs/R23_SCOPE_AND_GENERALIZATION_PLANNING.md)
+  — the three tiers of "done" and the open product questions
+- [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md)
+- [docs/SOLIDWORKS_API_VALIDATION.md](docs/SOLIDWORKS_API_VALIDATION.md) —
+  accumulated API-contract evidence
+- [skills/solidworks-api-lookup/SKILL.md](skills/solidworks-api-lookup/SKILL.md)
+  — mandatory before touching any `sw*` constant or API call
 
 ## Update after every iteration
 
-- [docs/Changelog.md](docs/Changelog.md) (note: `Agents.md` calls it `CHANGELOG.md`; the real file is `Changelog.md`)
+- [docs/Changelog.md](docs/Changelog.md) (Agents.md calls it `CHANGELOG.md`;
+  the real file is `Changelog.md`)
 - [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md)
-- [docs/SOLIDWORKS_API_VALIDATION.md](docs/SOLIDWORKS_API_VALIDATION.md) — when API contracts were verified
-- `MACRO_SOURCE_REVISION` in `Module1_Main.bas` — bump whenever deployable behaviour changes; it is the single version source (`deployment-request.txt` is regenerated from it, never hand-edit)
-- `src/target-spec-hybrid-v2/README_IMPORT.md` — source-identity line
+- [docs/SOLIDWORKS_API_VALIDATION.md](docs/SOLIDWORKS_API_VALIDATION.md) when
+  API contracts were verified
+- `MACRO_SOURCE_REVISION` in `Module1_Main.bas` — the single version source.
+  `deployment-request.txt` is regenerated from it; never hand-edit that file.
 
 ## Tools
 
-- [tools/swp-deploy/](tools/swp-deploy/) — guarded deployment of `src/target-spec-hybrid-v2/` into `Fable.swp` (preflight, nine gates, readback verification). Commands and evidence rules are in the handoff doc, section 6.
-- [tools/solidworks-automation-companion/](tools/solidworks-automation-companion/) — offline verification layer: the 74-test `unittest` suite (5 known-stale failures — see handoff section 5.2), fake-COM tests, probes. Separately versioned, gitignored; never edit it as part of a main-repo change.
+- [tools/production-runner/Run-R23Production.ps1](tools/production-runner/Run-R23Production.ps1)
+  — **the only way to run the real macro.** Deploys, compiles the whole VBA
+  project, opens the authorized part read-only, invokes `Module1_Main.main`,
+  prints the QA stage table. Requires `-AllowMutation`; refuses to invoke
+  `main` unless pre-flight logged `ready=True`. Never assemble a manual
+  sequence instead.
+- [tools/probe-runner/Run-R23Probes.ps1](tools/probe-runner/Run-R23Probes.ps1)
+  — deploy + programmatic compile. **Its probe stage is currently inert:**
+  the nine `R23_Probe*` entry points lived in the archived Module10–19 and
+  were not ported. Use it for deploy/compile evidence; add a probe entry
+  point to the trunk when there is a read-only question worth asking.
+- [tools/swp-deploy/](tools/swp-deploy/) — guarded deployment into
+  `Fable.swp` (preflight, gates, readback).
+- [tools/solidworks-automation-companion/](tools/solidworks-automation-companion/)
+  — offline `unittest` suite. 34 live tests cover the trunk and the
+  deployment tooling. The 585 tests for the archived implementation moved to
+  `archive/target-spec-hybrid-v2-tests/`.
 
-## Design practices, algorithms, coding patterns
+```bash
+python -m unittest discover -s tools/solidworks-automation-companion/tests -q
+```
 
-- [docs/CODESTACK_DRAWING_API_COVERAGE.md](docs/CODESTACK_DRAWING_API_COVERAGE.md) — complete ledger of the CodeStack drawing-API corpus: object hierarchy, model- vs drawing-context entities, selection/transform/state-restoration patterns, and per-example cautions. Learning material, not authoritative for SOLIDWORKS 2025 contracts.
-- [docs/3D_TO_2D_DRAWING_AUTOMATION_FIELD_GUIDE.md](docs/3D_TO_2D_DRAWING_AUTOMATION_FIELD_GUIDE.md) — the durable implementation guidance distilled from that corpus (the coverage doc defers to it).
+## Design references
+
+- [docs/3D_TO_2D_DRAWING_AUTOMATION_FIELD_GUIDE.md](docs/3D_TO_2D_DRAWING_AUTOMATION_FIELD_GUIDE.md)
+  — durable implementation guidance
+- [docs/CODESTACK_DRAWING_API_COVERAGE.md](docs/CODESTACK_DRAWING_API_COVERAGE.md)
+  — CodeStack corpus ledger. Learning material; not authoritative for
+  SOLIDWORKS 2025 contracts.

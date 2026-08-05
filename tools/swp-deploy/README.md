@@ -37,7 +37,63 @@ not require module-by-module VBA editing.
 5. Compile the whole VBA project, save it, and close the VBA editor.
 
 The bootstrap is not part of the managed-component list, so it cannot delete or
-replace itself while running.
+replace itself while running. The consequence is that **changes to
+`Module0_SourceDeployment.bas` never reach `Fable.swp` through a normal
+deploy** — the deploy script only checks that the bootstrap is present. After
+editing it, repeat step 4 above.
+
+Step 5's "compile the whole VBA project" is a check, not a precondition. If
+the project does not currently compile, import the bootstrap and save anyway,
+then deploy — a deploy that prunes orphans is often exactly what is needed to
+make the project compile again.
+
+## The UserForms are not deployable either
+
+`UserForm1` and `UserFormSection` are outside the manifest because the
+deployer only handles `StdModule` and `ClassModule`. A deploy therefore never
+touches them, exactly like the bootstrap: **changing
+`src/<trunk>/UserForm1.frm` in the repository does not change the form inside
+`Fable.swp`.**
+
+Worse, they cannot be imported. Both `.frm` files start at
+`Attribute VB_Name` with no `VERSION 5.00` / `Begin ... End` designer block,
+because both forms create their controls at runtime rather than from a
+designer layout. There is no `.frx`. **File > Import File will not
+reconstruct these forms.**
+
+To change a form, open the existing component in the VBE and replace its code
+in place, keeping the component name — the same procedure as the bootstrap.
+Strip the leading `Attribute` lines from the repository copy first; the VBE
+supplies its own.
+
+This bit on 2026-08-05: after the trunk change and the orphan prune, the
+project still failed to compile because the embedded `UserForm1` was the old
+implementation calling `Module1_Main.GetFixtureKey`, a member the new trunk
+does not define.
+
+## Pruning components that left the manifest
+
+The deployer replaces the components the manifest names. Until 2026-08-05 it
+did nothing about components that were embedded but no longer named, so
+shrinking the manifest stranded them: the 38-to-12 change orphaned 26 modules
+that still called members the new source did not define, and the project
+stopped compiling.
+
+`Deploy-TargetSpecHybrid.ps1` now writes `PRUNE_UNMANAGED=1` plus a
+`PROTECTED=` line per component that must survive, and the bootstrap removes
+every standard or class module that is neither managed nor protected. Each
+removal is logged as `PRUNE|name=...|status=REMOVING`, followed by
+`PRUNE|status=COMPLETE|removed=<n>`, in the deployment result file.
+
+Three guards, because this deletes code:
+
+1. Only standard and class modules are eligible. Forms and document classes
+   are a different component type and are never removed.
+2. The protected list carries the bootstrap's own name, so the prune cannot
+   remove the module executing it.
+3. `ThisLibrary`, `UserForm1` and `UserFormSection` are protected explicitly,
+   because they sit outside the manifest by design and are otherwise
+   indistinguishable from an orphan by name.
 
 Deployable `.bas` and ordinary `.cls` files are Windows-1252/ANSI without a BOM
 and contain no VBA `Attribute` metadata. The bootstrap creates each component

@@ -1,4 +1,3 @@
-Attribute VB_Name = "Module6_QAEngine"
 
 Option Explicit
 
@@ -6,7 +5,8 @@ Public Function BuildRunSummary( _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
     ByRef swDraw As SldWorks.DrawingDoc, _
     ByVal holes As Collection, _
-    ByVal importedModelItems As Long) As String
+    ByVal importedModelItems As Long, _
+    ByRef ordinateStatus As Module5_FallbackDimensionEngine.OrdinateRunStatus) As String
 
     Dim report As String
     Dim totalDims As Long
@@ -18,12 +18,35 @@ Public Function BuildRunSummary( _
     report = report & "Total drawing view dimensions: " & totalDims & vbCrLf
     report = report & BuildPerViewSummary(swDraw)
 
-    If importedModelItems = 0 Then
+    ' Ordinate outcome is reported separately from the dimension total, so a
+    ' healthy imported-model-item count cannot mask a fully failed ordinate
+    ' run. Previously chain failures reached only Debug.Print.
+    If Module1_Main.GlobalConfig.UseOrdinateDims Then
+        report = report & _
+            Module5_FallbackDimensionEngine.DescribeOrdinateStatus(ordinateStatus)
+    End If
+
+    ' Only a warning when import was actually asked for. The r3 run reported
+    ' "import returned zero items" while running in ordinate-only mode, where
+    ' the importer is never called.
+    If Not Module1_Main.GlobalConfig.UseModelDimensions Then
+        report = report & "Model item import: skipped (not requested)." & vbCrLf
+    ElseIf importedModelItems = 0 Then
         report = report & "WARNING: Model item import returned zero items." & vbCrLf
     End If
 
+    ' Fail closed: ordinates were requested, chains were attempted, and none
+    ' were created. That is a failed run whatever the dimension total says.
+    Dim ordinatesRequestedButAbsent As Boolean
+    ordinatesRequestedButAbsent = _
+        Module1_Main.GlobalConfig.UseOrdinateDims And _
+        (ordinateStatus.ChainsAttempted > 0) And _
+        (ordinateStatus.ChainsCreated = 0)
+
     If totalDims = 0 Then
         report = report & "WARNING: No drawing dimensions were found. Review model-item import and fallback logic." & vbCrLf
+    ElseIf ordinatesRequestedButAbsent Then
+        report = report & "FAIL: Ordinate dimensions were requested but every chain failed. Review the ordinate warning above." & vbCrLf
     ElseIf totalDims < 6 Then
         report = report & "WARNING: Drawing has very few dimensions. Manual review required." & vbCrLf
     Else
@@ -56,3 +79,8 @@ Private Function BuildPerViewSummary(ByRef swDraw As SldWorks.DrawingDoc) As Str
 End Function
 
 
+
+' Compile-failure localisation no-op called by
+' Module20_ProbeRunner.R23_TouchAllModules.
+Public Sub R23_CompileTouch()
+End Sub

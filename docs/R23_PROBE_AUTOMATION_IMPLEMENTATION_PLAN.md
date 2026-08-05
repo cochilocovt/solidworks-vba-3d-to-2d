@@ -1,6 +1,7 @@
 # R23 probe-automation tool — self-contained implementation plan
 
-**Status: planned, not built.** Authorized by the user on 2026-08-02.
+**Status: built and live-verified.** Authorized by the user on 2026-08-02;
+built and first successful live run completed 2026-08-04. See section 12.
 
 ## 0. How to use this document
 
@@ -29,8 +30,7 @@ is synchronised into the `.swp` by a guarded PowerShell deployer,
 `tools/swp-deploy/Deploy-TargetSpecHybrid.ps1`, driven by
 `tools/swp-deploy/deployment-manifest.json`. Offline verification is a
 Python `unittest` suite under
-`tools/solidworks-automation-companion/tests/` (currently 381 tests, with
-five known-stale R20 failures that are expected and must not be "fixed").
+`tools/solidworks-automation-companion/tests/` (currently 424/424 passed).
 
 ## 2. The problem this tool removes
 
@@ -196,8 +196,8 @@ continues to mean what it has always meant. The sink must never write inside
 |---|---|
 | `R23_EnumerateVbeControls` | Diagnostic: logs every VBE control `.Id` and `.Caption` |
 | `R23_CompileProject` | Resolves the compile control, executes it, reports the verdict |
-| `R23_TouchAllModules` | Calls one no-op per deployed standard module; names the first that fails |
-| `R23_RunAllProbes` | Open log → compile → touch → nine probes → close log |
+| `R23_TouchAllModules` | Structural no-op inventory only; it does not localize VBA compile errors |
+| `R23_RunAllProbes` | Open log → compile → nine probes → close log |
 
 **Compile resolution and verdict.** Walk `VBE.CommandBars` → `.Controls`,
 match a caption containing "compile" case-insensitively, and log the
@@ -208,13 +208,11 @@ fully compiled, so **still enabled afterwards means not clean.** If no
 control matches, dump the full enumeration and fail with a named reason —
 never fall back to a guessed ID.
 
-**Compile-failure localisation.** Add a trivial
-`Public Sub R23_CompileTouch()` to every deployed standard module.
-`R23_TouchAllModules` invokes each in turn and reports the first that fails
-to load. VBA compiles at module granularity, so a module that loads has
-compiled; classes are covered transitively because every class is referenced
-by some module. This yields the failing **module name** without anyone
-reading a dialog.
+**Compile-failure evidence.** `On Error` cannot trap a VBA compile error.
+The touch routines are retained only as structural inventory, never as
+compile-error localization. On a failed compile, the runner writes
+`R23_RUN_COMPILE_GUIDANCE`, stops before every probe, and the user supplies
+the VBE dialog text plus its highlighted line.
 
 **Compile-failure loop.** Run → if unclean, the user supplies the error text
 and highlighted line → fix the source → redeploy → rerun. Repeat to a clean
@@ -251,50 +249,50 @@ the macro reject it is worse than one that will not try.
 
 Each task is done when its acceptance line is true.
 
-- [ ] **PA-100** Add `Module21_EvidenceSink.bas` per Design A.
+- [x] **PA-100** Add `Module21_EvidenceSink.bas` per Design A.
   *Accepts:* `LogLine` writes to file and Immediate Window; degrades to
   `Debug.Print` when no log is open.
-- [ ] **PA-101** Route `CRunEvidence.AddInfo`/`AddWarning`/`AddFailure`
+- [x] **PA-101** Route `CRunEvidence.AddInfo`/`AddWarning`/`AddFailure`
   through `LogLine`.
   *Accepts:* prefixes byte-identical to today.
-- [ ] **PA-102** Replace every `Debug.Print` in the nine probe modules with
+- [x] **PA-102** Replace every `Debug.Print` in the nine probe modules with
   `LogLine` (~147 sites).
   *Accepts:* no raw `Debug.Print` inside any `R23_Probe*` procedure.
-- [ ] **PA-103** Add `R23_EnumerateVbeControls`; run it once live; store the
+- [x] **PA-103** Add `R23_EnumerateVbeControls`; run it once live; store the
   ID/caption listing under `test_assets/iteration_evidence/`.
   *Accepts:* a stored listing showing a control captioned for compilation,
   with its ID.
-- [ ] **PA-104** Add `R23_CompileProject` per Design B, resolving by caption
+- [x] **PA-104** Add `R23_CompileProject` per Design B, resolving by caption
   with the Module0 `Nothing`/`.Enabled` guards.
   *Accepts:* reports resolved ID, caption, enabled-before, enabled-after and
   a verdict; fails named when no control matches.
-- [ ] **PA-105** Add `Public Sub R23_CompileTouch()` to all 19 deployed
-  standard modules, plus `R23_TouchAllModules`.
+- [x] **PA-105** Add `Public Sub R23_CompileTouch()` to all deployed
+  standard modules, plus `R23_TouchAllModules` as structural inventory.
   *Accepts:* a contract test proves every `StdModule` in the manifest has
-  one.
-- [ ] **PA-106** Add `R23_RunAllProbes` per Design B.
+  one; no compile-failure path claims it identifies an error module.
+- [x] **PA-106** Add `R23_RunAllProbes` per Design B.
   *Accepts:* stops before the probes when the compile is unclean; per-probe
   status lines; log path printed last.
-- [ ] **PA-107** Add `tools/probe-runner/Run-R23Probes.ps1` per Design C.
+- [x] **PA-107** Add `tools/probe-runner/Run-R23Probes.ps1` per Design C.
   *Accepts:* refuses an unauthorized fixture path; opens part before
   drawing; background runspace around the invoker.
-- [ ] **PA-108** Register both new modules in
+- [x] **PA-108** Register both new modules in
   `tools/swp-deploy/deployment-manifest.json` (36 → 38, `kind` =
   `StdModule`) and update the inventory-lock count in
   `tools/solidworks-automation-companion/tests/test_swp_deployment_tooling.py`.
   *Accepts:* preflight prints `Managed components: 38`.
-- [ ] **PA-109** Add `tools/solidworks-automation-companion/tests/test_r23_probe_runner_contracts.py`.
+- [x] **PA-109** Add `tools/solidworks-automation-companion/tests/test_r23_probe_runner_contracts.py`.
   *Accepts:* covers sink hygiene; no raw `Debug.Print` in probes; runner
   calls all nine probes in the documented order; runner contains no
   `allowMutation` and no mutating procedure name; every standard module has
   `R23_CompileTouch`; source hygiene for both new modules.
-- [ ] **PA-110** Update this document to record what the live run proved —
+- [x] **PA-110** Update this document to record what the live run proved —
   in particular the resolved control ID and caption.
-- [ ] **PA-111** Update `docs/CURRENT_STATUS.md`, `docs/Changelog.md`, and
+- [x] **PA-111** Update `docs/CURRENT_STATUS.md`, `docs/Changelog.md`, and
   `docs/SOLIDWORKS_API_VALIDATION.md`. The API doc must record that the VBE
   control ID is **not** in the SOLIDWORKS corpus and how it was proved
   instead.
-- [ ] **PA-112** First live run; iterate the compile-failure loop to a clean
+- [x] **PA-112** First live run; iterate the compile-failure loop to a clean
   compile; confirm the log file content matches the Immediate Window.
 
 ## 8. Source hygiene — non-negotiable
@@ -326,9 +324,8 @@ Offline, after every source change:
 cd "tools/solidworks-automation-companion" && python -m unittest discover -s tests -q
 ```
 
-Expect the new contracts to pass and **exactly** the five known-stale R20
-failures in `test_target_spec_hybrid_v2_r4_contracts.py`. Any sixth failure
-is yours.
+Expect the full companion suite to remain **424/424**. Any failure is new
+and must be assessed before deployment.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File ".\tools\swp-deploy\Deploy-TargetSpecHybrid.ps1" -PreflightOnly
@@ -374,3 +371,86 @@ manual, as they must. Production acceptance keeps its manual compile gate.
 
 The honest floor: deploy and compile happen inside one command, probes run
 unattended, and the agent reads the log directly.
+
+## 12. Live results (2026-08-04)
+
+The tool is built and the first live run succeeded end to end. Evidence:
+`test_assets/iteration_evidence/probe_runs/20260804_054014/probe_log.txt`.
+
+**Resolved Compile control (PA-103/PA-110).** `id=578`,
+`caption=Compile Fable` (the running project's name is appended to the
+menu caption, matching `id=3` `caption=Save Fable`), found under
+`Menu Bar` (`VBE.CommandBars` index 1) → `Debug` (`id=30165`, depth 0) →
+`Compile Fable` (depth 1). Confirmed not in the SOLIDWORKS API corpus
+(5.1) and resolved by caption walk exactly as 5.2 specified — no ID was
+ever hardcoded.
+
+`R23_COMPILE_VERDICT|id=578|caption=Compile Fable|enabledBefore=True`
+`|enabledAfter=False|verdict=Clean` — the project genuinely compiled
+clean via the programmatic `.Execute` call, with the verdict correctly
+derived from the enabled-state flip design 5.2/6.B specified.
+
+**Two live-only bugs found and fixed before the run above:**
+
+- **VBIDE captions carry the raw `&` accelerator marker.**
+  `CommandBarControl.Caption` for the Compile command returned literally
+  `"Compi&le Fable"`, not `"Compile Fable"`. `CleanControlText` already
+  stripped `&` for the *logged* text, but the caption *match* compared
+  against the raw, uncleaned string — so `InStr(..., "compile", ...)`
+  silently never matched, every single time, regardless of retries or
+  `DoEvents`. First diagnosed as a timing issue (a `DoEvents`-plus-retry
+  fix was tried and also failed identically), which is what proved it
+  wasn't timing at all. Ground truth came from temporarily logging every
+  comparison's raw caption and match position — the fastest way to a
+  live COM behaviour question is to make the macro tell you, not to
+  keep re-reading the code. Fixed by matching against
+  `CleanControlText(ctrlCaption)` instead of the raw string; locked in
+  by `test_caption_match_uses_the_ampersand_stripped_caption` in
+  `test_r23_probe_runner_contracts.py`.
+- **PowerShell's native COM calling convention cannot open a SOLIDWORKS
+  document.** `$solidWorks.OpenDoc6(...)` from plain PowerShell late
+  binding fails with `TYPE_E_ELEMENTNOTFOUND` (0x8002802B) — PowerShell
+  cannot resolve the `out`-parameter overload. A direct bracket-cast of
+  the raw `GetActiveObject()` proxy to `[SolidWorks.Interop.sldworks.
+  ISldWorks]`, tried next, also fails (`Cannot convert... __ComObject
+  ... to ISldWorks`) even after `Add-Type` has loaded the interop
+  assembly — a genuine PowerShell COM-interop limitation, not a missing
+  reference. Fixed the same way `SolidWorksMacroInvoker.cs` already
+  fixed the identical problem for `RunMacro2`: a new compiled helper,
+  `tools/swp-deploy/SolidWorksDocumentOpener.cs`, does the early-bound
+  cast and the `OpenDoc6` call inside C#, with the same
+  `InvalidCastException`/`COMException`-triggered late-bound
+  `InvokeMember` fallback `SolidWorksMacroInvoker` uses. Exposed from
+  PowerShell as `Open-SolidWorksDocument` in
+  `tools/swp-deploy/Invoke-SolidWorksMacro.ps1`, alongside
+  `Invoke-SolidWorksMacro`, both dot-sourced by
+  `tools/probe-runner/Run-R23Probes.ps1`.
+
+**Document activation, found necessary during the live run.** The
+design (section 6.B) never states how `R23_RunAllProbes` gets the right
+document active for each probe — `R23_ProbeFeatureCatalog` needs the
+authorized part as `ActiveDoc`; the other eight need the drawing
+(confirmed by reading each probe's own `swDraw.GetType <>
+swDocDRAWING` guard). `OpenDoc6`'s own Remarks state it "does not
+activate and display the document" for an already-loaded reference,
+which is why this is not optional. Fixed with `FindOpenAuthorizedPart`/
+`FindOpenDrawing` (enumerate `ISldWorks.GetFirstDocument`/
+`IModelDoc2.GetNext`) plus an explicit `ActivateDoc3(GetTitle, False,
+swRebuildActiveDoc, errors)` switch before probe 1 and again before
+probe 2, matching the `GetTitle`-not-bare-name convention
+`Module8_RuntimeSupport.ActivateDrawingDocument` already uses (`Name`
+without an extension can collide between same-named documents of
+different types, per `ActivateDoc3`'s Remarks).
+
+**Full run confirmation.** All nine probes reported `status=Completed`
+in the documented order; every terminal line reported `creations=0`
+and/or `mutations=0` with `drawingUnchanged=True` (`modelUnchanged=True`
+for the part-only first probe); every `part=` field on every `_BEGIN`
+line resolved to the `test_assets\models\` copy, not the `V:` network
+sibling — the 5.6 rebind failure did not recur with part-before-drawing
+opening. `R23_RUN_TOUCH|firstFailedModule=None` confirms all 21 standard
+modules loaded. This is the acceptance bar section 9 defined, met in
+full on the first genuinely clean attempt (three earlier attempts in
+this same session failed on the two bugs above, fixed in source,
+redeployed, and rerun each time — the compile-failure loop the design
+anticipated, just for live-COM bugs rather than VBA syntax errors).

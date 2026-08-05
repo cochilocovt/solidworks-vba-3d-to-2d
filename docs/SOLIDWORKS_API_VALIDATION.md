@@ -13,6 +13,459 @@ The MCP corpus identifies itself as **SOLIDWORKS 2026**, while this project targ
 
 No VBA source file was edited, renamed, moved, or deleted during this analysis. The protected baseline remains unchanged.
 
+## Two baseline defects located by contract reading (2026-08-05, planning)
+
+Both were found by reading MCP contracts against `src/baseline-model-dims/`
+during the 2026-08-05 reference-drawing planning session. Neither has been
+reproduced live yet; both are contract-level, not runtime, evidence.
+
+### `AddOrdinateDimension` leaves the document in ordinate pick mode
+
+**MCP evidence**, `IModelDocExtension.AddOrdinateDimension` Remarks, quoted:
+
+> Selections made immediately after calling this method continue to add
+> ordinate dimensions to the group of ordinate dimensions. When you finish
+> adding ordinate dimensions to the group, use `IModelDoc2::SetPickMode` to
+> return to the default selection mode.
+
+**Baseline use**: `B/Module5_FallbackDimensionEngine.bas:238-252`
+(`CreateOneOrdinateChain`) calls `AddOrdinateDimension`, then `ClearSelection2`,
+and returns. `SetPickMode` appears nowhere in `src/baseline-model-dims/`.
+
+**Assessment**: the horizontal chain is created first
+(`B/Module5_FallbackDimensionEngine.bas:86`), leaving the group open. The
+vertical chain's `MultiSelect2` at `B:239` is therefore a selection made after
+the call, which per the contract appends to the still-open horizontal group
+rather than starting a vertical one. Every later selection in the run
+(auto-arrange at `B/Module4_ModelItemImporter.bas:157`, title-block work) is
+made in the same polluted mode. This is the leading candidate for the reported
+"ordinate dims setting breaks the macro". `ClearSelection2` clears the
+selection list; the contract does not say it closes the group.
+
+`src/active-ordinate/Module5_FallbackDimensionEngine.bas` already calls
+`SetPickMode` — the finding is specific to the baseline snapshot. Correcting
+the note in this document's finding 5, which predates that change.
+
+### `InsertModelAnnotations4` is being told to allow duplicates
+
+**MCP evidence**, `IDrawingDoc.InsertModelAnnotations4` parameter 4:
+
+- `DuplicateDims` (System.Boolean): "True to eliminate duplicate dimensions,
+  false to allow duplicate dimensions"
+
+The parameter name reads as the opposite of its effect; the description is the
+contract.
+
+**Baseline use**: `B/Module4_ModelItemImporter.bas:36-44` passes
+`AllViews=True` and `DuplicateDims=False`, i.e. insert into every view and
+allow duplicates. `B:90-98` (per-view fallback) passes the same `False`.
+
+**Assessment**: this is a direct explanation for repeated hole callouts and
+repeated dimensions across views. **Verify in SW2025** whether `True` alone
+produces the reference drawing's single consolidated `6x`/`4x` callouts, or
+whether per-view callout targeting is also required.
+
+### Baseline import mask constants: all confirmed
+
+Every `swInsertAnnotation_e` member declared at
+`B/Module4_ModelItemImporter.bas:6-12` matches the MCP enum table exactly:
+`swInsertDimensions=8`, `swInsertGTols=32`,
+`swInsertDimensionsMarkedForDrawing=32768`,
+`swInsertHoleWizardProfileDimensions=65536`,
+`swInsertHoleWizardLocationDimensions=131072`,
+`swInsertDimensionsNotMarkedForDrawing=524288`,
+`swInsertholeCallout=1048576`. `swImportModelItemsFromEntireModel=0` also
+matches `swImportModelItemsSource_e`. The baseline ordinate constants at
+`B/Module5_FallbackDimensionEngine.bas:4-6` likewise match
+`swAddOrdinateDims_e` (`swHorizontalOrdinate=3`, `swVerticalOrdinate=2`) and
+`swCreateOrdDimError_e` (`swCreateOrdDimErr_Success=0`).
+
+The gap analysis was right to demand verification of these; they pass. The
+baseline's mask needs no numeric correction. **Verify in SW2025** still applies
+to the values themselves.
+
+### API-backed view classification exists
+
+`B/Module2_DrawingPipeline.bas:283-285` classifies views by
+`InStr(viewName, "ISO")`. Two API-backed alternatives exist: `IView.Type`
+(`swDrawingViewTypes_e`: Sheet=1, Section=2, Detail=3, Projected=4,
+Auxiliary=5, Standard=6, Named=7, Relative=8, Detached=9,
+AlternatePosition=10) and `IView.GetOrientationName` ("Gets the predefined name
+of this view"). Note that views created by `CreateDrawViewFromModelView3` are
+expected to share one `Type`, so `Type` alone will not separate the front view
+from the isometric — pair it with `GetOrientationName`. **Verify in SW2025**
+what `Type` and `GetOrientationName` actually return for each view this
+pipeline creates; this has not been probed.
+
+## `IAnnotation.SetPosition2` shares `GetPosition`'s frame (2026-08-05, r62)
+
+**MCP evidence**, `IAnnotation.SetPosition2` (not deprecated; `SetPosition`
+is obsolete and superseded by it):
+
+| item | value |
+| --- | --- |
+| signature | `Boolean SetPosition2(Double X, Double Y, Double Z)` |
+| return | *"True if the position of the annotation is successfully set, false if not"* |
+| frame | *"In a drawing, the x, y, z origin is relative to the origin of the drawing sheet (the lower-left corner of the sheet)"* |
+| display-dimension origin | *"Point of leader attachment centered on a text box border / center point of bottom border of text box"* |
+
+`IAnnotation.GetPosition` states the **same frame and the same
+display-dimension origin**, and returns *"an array of 3 doubles"*. The two
+are therefore directly comparable: a delta computed from `GetPosition` can
+be passed to `SetPosition2` without a transform. This is what R23-823's
+post-layout clamp relies on.
+
+Two documented refusals that both look like a call that returned, and which
+the clamp must therefore verify by readback rather than by return value:
+
+- *"If this method attempts to set a position of an annotation that violates
+  any restrictions, the annotation is placed as near as possible to the
+  specified position."*
+- *"Because radial and diametric dimensions are already attached to the end
+  of a leader, this property is not available for these types of
+  dimensions."* This matters directly here: the created `INNER_BORE_D40` and
+  `FIT_BORE_D47_H7` dimensions are radial. Neither was outside the usable
+  box in r61, so the case has **not** yet been exercised live.
+
+`GetPosition` additionally warns that on failure *"the VARIANT SafeArray is
+empty"*, so the array is checked before it is indexed.
+
+Not yet live-proven. This is corpus evidence plus the r61 layout arithmetic;
+the first mutating r62 run is what turns it into runtime evidence.
+
+## `CreateSectionViewAt5` with `Options=0` ignores a jogged line (2026-08-05, r52)
+
+**MCP evidence**, `swCreateSectionViewAtOptions_e`:
+
+| member | value | meaning |
+| --- | --- | --- |
+| `swCreateSectionView_NotAligned` | 1 | section does not snap into alignment with the parent view |
+| `swCreateSectionView_OffsetSection` | 2 | *"If set, then an aligned section view is created (two lines at an angle); if not set, a normal projection section view is created"* |
+| `swCreateSectionView_ChangeDirection` | 4 | reverse the view direction |
+| `swCreateSectionView_ScaleWithModel` | 8 | |
+| `swCreateSectionView_Partial` | 16 | partial rather than complete section |
+| `swCreateSectionView_DisplaySurfaceCut` | 32 | only surfaces cut by the line appear |
+| `swCreateSectionView_ExcludeFasteners` | 64 | |
+| `swCreateSectionView_CutSurfaceBodies` | 128 | |
+
+`Module17_SectionPath.CreateSectionFromPath` passes `Options = 0`, so
+SOLIDWORKS builds a **normal projection section** from a three-segment
+jogged line.
+
+**Measured**, run `macro_qa/20260805_050411_P-0251-14A-001`, decoded from
+`IView.GetSectionLineInfo2` on Drawing View1:
+
+```text
+SECTION_LINE_SEGMENT|index=1|start=-0.102000000,0.000000000|end=0.008000000,0.000000000
+SECTION_LINE_SEGMENT|index=2|start=0.008000000,0.000000000|end=0.008000000,-0.015000000
+SECTION_LINE_SEGMENT|index=3|start=0.008000000,-0.015000000|end=0.088000000,-0.015000000
+```
+
+Segment lengths 0.110, 0.015, 0.080 match the path's waypoint spacing
+exactly, so the drawing holds precisely the line that was asked for,
+including the r51 overshoot (segment 1 runs 0.040 past the bore centre at
+-0.062). The bore sits at transverse 0.000 and the six counterbores at
+-0.015; the resulting section view contains the counterbore-column features
+and **no bore geometry at all**. The cut is taken at one offset only, and
+it is segment 3's.
+
+**Consequence.** Lengthening segment 1 cannot change the section, which is
+exactly what r51 measured: the line moved 40 mm and the section view was
+byte-for-byte identical. A jogged section line needs
+`swCreateSectionView_OffsetSection`. **Verify in SW2025** whether that flag
+alone is sufficient or whether `swCreateSectionView_NotAligned` is also
+required.
+
+## `IView.GetSectionLineInfo2` on this build (2026-08-05, r52)
+
+**Documented layout**, SOLIDWORKS 2025 Help: `[numSectionLines, layer,
+numSegments, per segment (lineType, startPt[3], endPt[3]), arrowStart1[3],
+arrowEnd1[3], arrowWidth1, arrowHeight1, arrowStyle1, arrowStart2[3],
+arrowEnd2[3], arrowWidth2, arrowHeight2, arrowStyle2, textPt1[3],
+textPt2[3], textHeight]`.
+
+**Measured**, same run:
+`numSectionLines=1|layer=-1|numSegments=3|segmentsDecoded=3|count=49|documentedTotal=53|tailMatchesDocumented=False`.
+
+Two findings:
+
+1. **The array is four doubles shorter than the documented layout** for
+   three segments. The header and segment block at the front decode
+   correctly and are confirmed by the waypoint match above; the arrow and
+   text tail does not fit the documentation on this build. Do not index
+   into the tail by the documented offsets without re-deriving them.
+2. **The array mixes coordinate frames.** Segment endpoints are in the
+   view's own frame - segment 1 starts at `-0.102`, which is not a sheet
+   coordinate - while the tail holds sheet coordinates such as
+   `0.107932223, 0.265060000`, inside Drawing View1's sheet outline
+   `0.053992..0.137872, 0.061120..0.269000`. One array, two frames.
+
+## `IView.UseSheetScale = 0` does NOT mean a different scale (2026-08-05, r50)
+
+**MCP evidence**, `IView::UseSheetScale`, Remarks, verbatim:
+
+> If the property is 0, then it is possible that the view scale is the same
+> as the sheet scale.
+
+Return value is documented as "1 if the view scale is the same as the sheet
+scale, 0 if the view scale is independent of the sheet scale" - but the
+Remarks contradict the strong reading of "independent", and the same page
+names `IView::UseParentScale` as the separate member for tying a view to its
+parent's scale. A section view created by `CreateSectionViewAt5` inherits
+its parent view's scale, which is not the sheet flag.
+
+**Consequence.** `Module9_LayoutEngine.bas:718` fails the required LAYOUT
+stage whenever a non-isometric view reports `UseSheetScale <> 1`, and the
+r49 run failed on exactly that one line for `Section View J-J`. That check
+reads a flag as if it were a ratio. `IView.ScaleDecimal` is the ratio.
+
+**Acted on at r50.** `ValidateLayout` accepts `UseSheetScale = 1` as before
+and otherwise compares `IView.ScaleDecimal` against the sheet ratio proved
+by `ISheet.GetProperties2`. The comparison fails closed - an unproved sheet
+scale or an unreadable view scale is not a match - so a view genuinely drawn
+at an unapproved scale still fails the stage. `VIEW_SCALE_READBACK|view=
+|type=|isIsometric=|useSheetScale=|scaleDecimal=` is emitted for every view,
+so the flag and the ratio can never be confused for one another again.
+
+**Verify in SW2025.** The Remarks above are corpus documentation. The live
+confirmation will be a run in which `Section View J-J` reports
+`useSheetScale=0` with a `scaleDecimal` equal to the sheet's and LAYOUT no
+longer fails on it.
+
+## `IView.GetVisibleEntities2` really does exclude completely-obscured edges (2026-08-05, r48)
+
+**Documented contract**, SOLIDWORKS 2025 Help: returns entities "not
+completely obscured by other entities in the view".
+
+**Measured behaviour**, run `macro_qa/20260805_033146_P-0251-14A-001`,
+Drawing View1 (Front), the stepped bore of `P-0251-14A-001`:
+
+```text
+sourceFaces=2|facesProjected=2|boundaryEdges=4|circularEdges=4
+|mappedEdges=4|inventoryConfirmed=0
+|firstReject=MappedEntityNotInVisibleInventory
+```
+
+All four circular edges map through Route D: `IView.SelectEntity` accepts
+each one and `ISelectionMgr.GetSelectedObjectsDrawingView2` returns Drawing
+View1, so the entities exist in that view and belong to it. **Zero of the
+four appear in `IView.GetVisibleEntities2(component, Edge)`.** The two
+routes disagree in exactly the direction the Help predicts, and the same
+view returns the counterbore edges through both routes in the same pass
+(`mappedEdges=2|inventoryConfirmed=2`), which is the positive control.
+
+**Consequences.**
+
+1. The exclusion clause is real and load-bearing, not defensive wording.
+   `GetVisibleEntities2` is a *visibility* inventory, not an ownership test;
+   use `GetSelectedObjectsDrawingView2` when the question is ownership.
+2. Membership of the inventory is a sound obscured/not-obscured
+   discriminator for an entity already proved to belong to the view. This
+   supersedes the r40-r41 attempt, whose model-space comparison matched
+   nothing and therefore measured nothing.
+3. `Module13_ProjectionResolution` correctly refuses an obscured edge as a
+   circular dimension anchor. The stepped bore is hidden in every
+   orthographic view of this part, so no orthographic anchor exists for it
+   at all - it is a section-view feature, as the reference drawing shows.
+
+## `IView.GetPolylines7` return array holds DRAWING entities (2026-08-04, r42)
+
+**Documented contract**, SOLIDWORKS 2025 Help:
+
+> Return Value: Array of modeling edges and silhouette edges corresponding to
+> polylines in the view.
+
+**Measured behaviour**, run
+`macro_qa/20260804_235542_P-0251-14A-001`. The identical comparison helper
+(`ISldWorks.IsSame` via `SafeObjectEquality`) was run twice against the same
+`GetPolylines7` result, on twelve counterbore edges that
+`IView.GetVisibleEntities2` had independently confirmed present in the same
+view (`inventoryConfirmed=2` per location):
+
+```text
+mappedVisibleEdges=0          <- the MODEL edge from IFace2.GetEdges
+mappedVisibleDrawingSpace=2   <- the DRAWING entity IView.GetCorrespondingEntity returned
+```
+
+Twelve of twelve in drawing space, zero of twelve in model space. The array
+does not compare equal to the model edges the polylines were derived from; it
+compares equal to the drawing-context entities of the same view.
+
+**Consequence.** `Module13_ProjectionResolution.MapVisibleDatumEntity` tested
+the **model** entity against this array from r33 until r42. It could never
+match, so `visibleIndex` was always `-1`, and every vertical ordinate datum
+failed closed as `PolylineVisibilityUnavailable` regardless of whether its
+edge was visible. This also explains the long-standing scratch-versus-
+production divergence: the scratch view returns `status=NoEdges` and takes
+the documented scoped-selection fallback, so its datum resolves, while a
+production view returns 39 entries that never match and fail closed.
+
+**Adopted contract (r43).** Map first, then prove the **mapped drawing
+entity** is present in the `GetPolylines7` array. The r37 fail-closed guard is
+retained unchanged: a mapped entity absent from a *non-empty* array still
+refuses (`DatumMap:MappedEntityNotVisible`), and only the documented
+empty-array case falls back to `IView.SelectEntity` plus
+`ISelectionMgr.GetSelectedObjectsDrawingView2` ownership proof.
+
+**Still open.** This does not classify an edge that no route maps, because
+drawing-space testing needs a drawing entity to test. The P-0251 stepped
+bore remains unmapped and unclassified; whether its edges are obscured is
+**not** established by this evidence.
+
+## `IView.GetPolylines7` record layout, as used by the r50 inventory (2026-08-05)
+
+**MCP evidence**, `IView::GetPolylines7`. The `Polylines` out-parameter is a
+flat array of doubles, one record per polyline:
+
+```text
+[Type, GeomDataSize, GeomData[], LineColor, LineStyle, LineFont,
+ LineWeight, LayerID, LayerOverride, NumPolyPoints, [x,y,z] * NumPolyPoints]
+```
+
+- `Type` 0 = polyline, 1 = arc or circle.
+- `GeomData` for Type 1 is 12 doubles:
+  `[cx,cy,cz, sx,sy,sz, ex,ey,ez, nx,ny,nz]`. Radius is not a field; it is
+  the distance from centre to start.
+- Six style scalars sit between `GeomData` and `NumPolyPoints`.
+- The return value (entity array) is **positionally paired** with these
+  records, and carries `Null` where a polyline renders a silhouette edge
+  that no edge backs.
+- Returns nothing at all when the view display mode is Shaded, Shaded With
+  Edges, Draft Quality or Fast HLR/HLV.
+
+**Live-confirmed on SW2025**, run
+`macro_qa/20260805_041027_P-0251-14A-001`, Section View J-J:
+
+```text
+SECTION_GEOM_SUMMARY|decodeStatus=Complete|records=38|entities=38
+  |recordsMatchEntities=True|doubles=1056|arcs=6|polylines=32
+  |points=214|error=0
+```
+
+A walk that assumes the layout above consumed 1056 doubles exactly and
+produced one record per returned entity, with no range guard tripping. The
+documented layout holds on this build.
+
+## `IView.GetPolylines7` returns VIEW-space coordinates (2026-08-05, r50)
+
+**Measured**, same run, Section View J-J:
+
+```text
+SECTION_GEOM_FRAME|polylineBox=-0.009000,-0.098000,0.009000,0.098000
+  |sheetOutline=0.289060,0.044385,0.318940,0.252265
+```
+
+The polyline points are centred on the view origin; the view sits at
+sheet X 0.289 to 0.319. The two frames do not overlap at all, so the
+points are in the **view's own coordinate system**, not sheet space. The
+box measures 18 mm by 196 mm, which is the part's thickness and height.
+
+**Consequence.** Anything that compares a `GetPolylines7` point against a
+page coordinate - a projection's `PageX`/`PageY`, a view outline, a section
+waypoint - must transform first. Mixing the two frames is the defect class
+that already produced false clearance results in the section-line payload,
+and it would be silent here because both frames are metres.
+
+## `IDrawingDoc.ActivateView` return value (2026-08-04, r38)
+
+**Documented contract**, `solidworks-api` MCP, SOLIDWORKS 2025 Help,
+`IDrawingDoc.ActivateView(ViewName As String) As Boolean`:
+
+> Return Value: True if successful, false if not.
+> Remarks: This method returns false when trying to activate a drawing sheet.
+> To activate a drawing sheet, use `IDrawingDoc::ActivateSheet`.
+
+**Observed behaviour on this build**, run
+`macro_qa/20260804_184514_P-0251-14A-001`. The setter returned False for a
+named drawing view that did in fact become active, proved by reading
+`IDrawingDoc.ActiveDrawingView` back and comparing `IView.GetName2`:
+
+```text
+ACTIVATE_VIEW|operation=ResolveOutlineDatum|view=Drawing View1|setterResult=False|readbackMatched=True
+```
+
+The same run shows the consequence at the call sites that trusted the raw
+return instead:
+
+```text
+IMPORT_VIEW_NOT_ACTIVATED|view=Drawing View1
+IMPORT_VIEW_NOT_ACTIVATED|view=Drawing View2
+```
+
+**Adopted contract.** The return value of `IDrawingDoc.ActivateView` is
+recorded but is never a verdict. Activation is proved by active-view readback
+in `Module8_RuntimeSupport.ActivateDrawingView`, which additionally retries
+once through `IModelDocExtension.SelectByID2` with `"DRAWINGVIEW"` before
+failing. This joins the existing `setterResult=False|readbackMatched=True`
+family already adopted for sheet scale, display mode, rebuild, and sheet
+activation on this build. r38 routes annotation import
+(`Module14`), ordinate-group creation (`Module15`), native callout creation
+(`Module16`), and the section cut (`Module17`) through it.
+`Module13_ProjectionResolution` deliberately keeps the raw read: it reports
+`PROJECTION_VIEW_ACTIVATION` and does not gate on it.
+
+## `IWizardHoleFeatureData2.HoleDiameter` (2026-08-04, unresolved)
+
+**Documented contract**, SOLIDWORKS 2025 Help: "Gets or sets the Hole Wizard
+feature hole diameter." Remarks: "This property is not relevant for swTapered
+and swTaperedDrilled holes. See Accessing Selections that Define Features."
+
+**Observed behaviour.** After `IWizardHoleFeatureData2.AccessSelections`,
+both P-0251 Hole Wizard features report every dimensional member as zero while
+`DefinitionReadStatus` is `Read`:
+
+```text
+FEATURE_ACCEPTED|name=CBORE for M6 Socket Head Cap Screw1|...|readStatus=Read|diameterM=0.000000000|depthM=0.000000000|cboreDiameterM=0.000000000
+```
+
+Neither hole is tapered, so the documented exclusion does not apply. This
+contract is **not resolved**; it needs a read-only probe of
+`AccessSelections`' result and of the sibling `IWizardHoleFeatureData2.Diameter`
+and thread members before `Module12_FeatureQualification.ReadHoleWizardDefinition`
+is changed. No code was changed on this contract at r38.
+
+## R23 Phase 11 production wiring (2026-08-04)
+
+Phase 11 introduced no new SOLIDWORKS API contract. It composes only the
+already validated R23 operations: feature cataloguing, projection Route D
+(`IView.SelectEntity` plus selection-manager ownership readback), selected-view
+annotation import, section creation, associative callout creation, and
+content-envelope layout. The 2026-08-04 r26 runner proved guarded deployment,
+full-project VBE compilation, and nine read-only P-0251 probes. This is not a
+mutating production run, visual review, or manufacturing acceptance.
+
+## Historical R23 Phase 9 scratch-layout entrypoint (2026-08-04, r27-r30)
+
+No new SOLIDWORKS API contract was introduced. The controlled entrypoint in
+`Module2_DrawingPipeline` reuses the existing, live-proved drawing guard:
+`ISldWorks.ActiveDoc`, `IModelDoc2.GetType`, `IModelDoc2.GetPathName`,
+`IDrawingDoc.GetCurrentSheet`, `ISheet.GetViews`, and
+`IView.ReferencedDocument`. It accepted one exact disposable drawing path and
+then applied the `ApplyR23ContentLayout` transaction. r31 retires that public
+mutation route under the user-accepted layout policy; this section is retained
+only as history of the earlier API-backed scratch work.
+
+The r27 runner proved deployment/readback and full-project programmatic VBE
+compilation on the scratch drawing. It did not invoke the entrypoint, so its
+mutation behavior, visual result, and manufacturing suitability remain
+unproven until the required manual VBE compile and authorized layout run.
+
+The r28 retry changes only control flow around the existing, locally proved
+`IView.ScaleDecimal` readback, `IView.Position`, and `EditRebuild3` calls. It
+adds no API member, enum, coordinate transformation, or return-code contract.
+It allows two measured scale passes because the first scratch run proved the
+geometric estimate leaves text extents unchanged; a third request fails
+closed as `LargerSheetRequired`.
+
+## R23 accepted scratch persistence (2026-08-04)
+
+The installed SOLIDWORKS 2025 SP1.2 interop assembly reports
+`IModelDoc2.Save3(Int32, Int32&, Int32&) -> Boolean`. Its installed
+`swSaveAsOptions_e` defines `swSaveAsOptions_Silent = 1`; the external,
+compiled dispatch helper saved only the exact isolated P-0251 scratch with
+that option. Live result: `succeeded=True|errors=0|warnings=0`. This helper
+is not managed VBA source and does not widen the authorized drawing scope.
+
 ## R23 Phase 0 live fixture evidence (2026-07-31)
 
 This section records installed-build behavior separately from the MCP corpus.
@@ -1510,6 +1963,26 @@ the annotation is attached to nothing. A dangling attachment appears as
 `swSelNOTHING` with a Nothing in the matching entity slot - which is how
 "associative" is proved rather than assumed.
 
+## 2026-08-04 R23-502 outline datum contract
+
+The local SOLIDWORKS MCP had no callable tool in this session. Official Help
+confirms that [IPartDoc.GetBodies2](https://help.solidworks.com/2024/english/api/sldworksapi/SOLIDWORKS.Interop.sldworks~SOLIDWORKS.Interop.sldworks.IPartDoc~GetBodies2.html)
+returns visible bodies, [IBody2.GetEdges](https://help.solidworks.com/2025/English/api/sldworksapi/SOLIDWORKS.Interop.sldworks~SOLIDWORKS.Interop.sldworks.IBody2~GetEdges.html)
+returns their edge array, [IView.GetCorrespondingEntity](https://help.solidworks.com/2025/english/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IView~GetCorrespondingEntity.html)
+accepts a part edge and returns its corresponding drawing entity or Nothing,
+and [IView.SelectEntity](https://help.solidworks.com/2025/english/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IView~SelectEntity.html)
+selects an entity in a drawing view. The implementation stays inside the
+already live-proven Route A / Route D mapping boundary.
+
+Live P-0251 r29 evidence settles the coordinate rule: `IView.GetOutline` is
+an enclosing page-frame view bound, not part-outline geometry. None of the 27
+horizontal two-vertex model edges exactly coincided with its lower boundary;
+the selected lowest mapped edge lies 5.94 mm above it. R23-502 therefore
+chooses the lowest mapped horizontal model edge and proves target-view
+ownership, rather than selecting the view rectangle or a lowest hole centre.
+`Drawing View4` selects `SolidBodyEdge_0_49` and `Drawing View7` selects
+`SolidBodyEdge_0_73`, both at page Y `0.137763153`.
+
 ## 2026-08-01 R23 Phase 9 envelope and layout contracts
 
 ### Which sources state their frame, and which do not
@@ -1718,3 +2191,202 @@ coordinates, so the item-count check is not optional.
 The one-`layer`-overall reading is the one that fits; the alternative from
 `GetSectionLineCount2`'s Remarks was tried and did not.
 
+## 2026-08-04 R23 probe-automation tool: VBE control resolution
+
+Live-verified. First successful `R23_RunAllProbes` run completed this
+date; full narrative and evidence path in
+[R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md](R23_PROBE_AUTOMATION_IMPLEMENTATION_PLAN.md)
+section 12. This entry keeps the API-contract details.
+
+**Resolved live:** `id=578`, `caption=Compile Fable` (raw
+`CommandBarControl.Caption` is `"Compi&le Fable"` - see the accelerator-
+marker finding below), under `Menu Bar` → `Debug`.
+`R23_COMPILE_VERDICT|...|enabledBefore=True|enabledAfter=False`
+`|verdict=Clean` on the accepted run - the enabled-state flip this
+design relies on is confirmed real, not just documented behaviour.
+
+### The VBIDE Compile control ID is not in this MCP corpus
+
+Confirmed by direct search, not just absence in one query.
+`solidworks_search_api` for `"CommandBars VBE compile project control"`
+and `"VBA project compile macro editor"` returns only SOLIDWORKS geometry
+and macro-path records - zero VBIDE hits. The corpus root is the
+SOLIDWORKS API Help (`https://help.solidworks.com/2025/english/api`);
+VBE `CommandBars` control IDs belong to the Microsoft Office/VBA
+extensibility model, a different product's documentation entirely. No
+amount of re-querying this MCP will produce that number - it has to come
+from a live enumeration or the Object Browser, never from recall.
+
+### How the tool avoids guessing it anyway
+
+`Module20_ProbeRunner` never hardcodes a control ID. It walks
+`VBE.CommandBars` and every control's own `.Controls` collection
+recursively (`WalkVbeControls`), matching `.Caption` for a
+case-insensitive `"compile"` substring, and logs the resolved `.Id`
+alongside the `.Caption` it matched - so the ID becomes run evidence
+instead of an assumption. `R23_EnumerateVbeControls` dumps the full walk
+as a fallback if no caption matches, per Agents.md's "never guess a
+control ID" rule. This mirrors the one VBIDE access pattern already
+proved in this repo:
+`tools/swp-deploy/Module0_SourceDeployment.bas:214` reaches
+`targetProject.VBE.CommandBars.FindControl(1, 3, "", False)` for the Save
+command, with the same `Nothing`/`.Enabled` guards before `.Execute`.
+
+### Document-switch calls: MCP-looked-up, now locally confirmed working
+
+The plan's design section did not say how `R23_RunAllProbes` gets the
+correct document active for each probe - `R23_ProbeFeatureCatalog` needs
+the authorized part as `ActiveDoc`, the other eight need the drawing
+(confirmed by reading each probe's own `swDraw.GetType <>` guard). Three
+members were looked up before writing the fix:
+
+- `ISldWorks.GetFirstDocument` / `IModelDoc2.GetNext` - documented pattern
+  for enumerating every open document in the session; used to find the
+  open authorized part and the open drawing without assuming which one is
+  foreground.
+- `ISldWorks.ActivateDoc3(Name, UseUserPreferences, Option, out Errors)` -
+  Remarks warn that an extension-less `Name` can collide between a part
+  and an assembly of the same base name, so the runner passes
+  `IModelDoc2.GetTitle` (filename with extension), matching the pattern
+  already proved by `Module8_RuntimeSupport.ActivateDrawingDocument`.
+  `Option = swRebuildActiveDoc (2)` was cross-checked against
+  `swRebuildOnActivation_e` and matches that existing proved usage.
+- `ISldWorks.OpenDoc6` - Remarks state explicitly that it "does not
+  activate and display the document", which is *why* the explicit
+  `ActivateDoc3` switch between probe 1 and probes 2-9 is necessary rather
+  than optional. `Options = swOpenDocOptions_ReadOnly (2)` was added to
+  both `OpenDoc6` calls in `Run-R23Probes.ps1` as an extra safety layer on
+  top of the fixture guard - Agents.md forbids saving a fixture, and a
+  read-only handle makes that impossible regardless of macro behaviour.
+
+All four numeric values came from `solidworks_get_enum_values`/
+`solidworks_lookup_method` against the 2025 corpus snapshot.
+`swDocPART=1`, `swDocDRAWING=3`, `swRebuildActiveDoc=2`, and
+`swOpenDocOptions_ReadOnly=2` are now confirmed against the installed
+SW2025 SP1.2 build too: the 2026-08-04 live run opened both documents
+read-only, switched the active document twice via `ActivateDoc3`
+(`R23_RUN_ACTIVATE|title=...|errors=0|succeeded=True` for both), and
+every probe's `part=` field resolved to the correct fixture.
+
+### PowerShell cannot call `OpenDoc6` directly (live finding)
+
+Two independent PowerShell-side failures, both live, neither an API
+contract problem:
+
+1. `$solidWorks.OpenDoc6($path, $type, $options, '', [ref]$e, [ref]$w)`
+   through plain COM late binding raises
+   `TYPE_E_ELEMENTNOTFOUND (0x8002802B)`. PowerShell's automatic method
+   resolution cannot match the `out`-parameter overload.
+2. `[SolidWorks.Interop.sldworks.ISldWorks] $rawComObject` - a direct
+   bracket-cast of the `GetActiveObject()` proxy, tried after loading the
+   interop assembly with `Add-Type` - raises `Cannot convert the
+   "System.__ComObject" value... to type "...ISldWorks"`. This is a
+   PowerShell type-conversion limitation, not a version mismatch: the
+   identical cast, done inside compiled C# (`(ISldWorks)application`),
+   already works and is what `SolidWorksMacroInvoker.cs` has used
+   successfully for `RunMacro2` since the deploy tooling was built.
+
+Fix: `tools/swp-deploy/SolidWorksDocumentOpener.cs`, same shape as
+`SolidWorksMacroInvoker.cs` (early-bound cast, `InvalidCastException`/
+`COMException`-triggered late-bound `InvokeMember` fallback), exposed
+from PowerShell as `Open-SolidWorksDocument` in
+`tools/swp-deploy/Invoke-SolidWorksMacro.ps1`. Anyone adding a new
+PowerShell-to-SOLIDWORKS call with `out`/`ref` parameters should expect
+to need the same compiled-helper treatment rather than a raw COM call.
+
+### Same-title open conflicts are fail-closed (2026-08-04)
+
+The installed SOLIDWORKS 2025 SP1.2 `SolidWorks.Interop.swconst` type
+library confirms `swFileLoadError_e.swFileWithSameTitleAlreadyOpen = 65536`.
+The runner received exactly that bit when it requested local
+`test_assets\models\P-0251-14A-001.SLDPRT`; live enumeration through the
+already documented `ISldWorks.GetFirstDocument` / `IModelDoc2.GetNext`
+pattern identified the conflicting V: sibling.
+
+`SolidWorksDocumentOpener.cs` now returns title/path pairs and
+`Open-SolidWorksDocument` reports them on this error. It deliberately never
+calls `ISldWorks.CloseDoc`: closing the same-title document could discard a
+user's unsaved manual drawing. This is runner diagnostic evidence only; no
+VBE compilation, probe execution, or drawing mutation occurred.
+
+### VBIDE captions carry the raw accelerator marker (live finding)
+
+`CommandBarControl.Caption` returns the *authoring* string, including
+the `&` that marks the keyboard-accelerator letter - live value for the
+Compile command was `"Compi&le Fable"`, not `"Compile Fable"`. A caption
+search that does not strip `&` before matching will never match whatever
+word contains the marked letter, silently, with no error raised -
+`InStr` just returns 0 every time. Anything that matches or displays a
+VBIDE `.Caption` in this repo must run it through `CleanControlText` (or
+equivalent) first for both purposes, not just for display.
+
+## 2026-08-04 r30 review-correction API contracts
+
+The local `solidworks-api` MCP was available for r30. Its corpus is the
+SOLIDWORKS 2025 Help compatibility snapshot; the contracts below are MCP
+evidence and remain distinct from installed-SP1.2 runtime proof.
+
+- `ICurve.IsLine()` returns a Boolean: true for a line and false for every
+  other curve type. `OutlineDatumForModelEdge` now normalizes that COM Boolean
+  before accepting equal endpoint Y values, so a horizontal arc chord cannot
+  become an outline datum.
+- `IView.GetVisibleEntities2(Component2, swViewEntityType_e)` returns only
+  entities not completely obscured in that drawing view. The edge inventory is
+  therefore the visibility contract; `IView.GetCorrespondingEntity` proves
+  correspondence, not visibility. r30 maps a datum only when exact identity
+  occurs in that inventory. A part drawing with no usable `Component2` fails
+  closed rather than using selection ownership as a substitute.
+- `IView.UseParentScale` means the view matches its parent scale;
+  `UseSheetScale` means it matches the sheet scale; and `ScaleDecimal` reads
+  or writes the decimal scale. All three state that a rebuild is needed after
+  related view changes. r30 preflights those relationships and refuses an
+  automatic rescale of an approved isometric or `swDrawingDetailView = 3`
+  view. `IView.GetOrientationName` returns predefined names such as
+  `*Isometric` and returns empty for detail views, so both orientation and
+  type are used.
+- VBA compile errors happen before a procedure-level `On Error` handler can
+  execute. `R23_TouchAllModules` is no longer presented as compile-error
+  localization. The runner stops and requires the VBE dialog text plus its
+  highlighted line.
+
+### r30 installed-SP1.2 probe evidence
+
+The focused P-0251 scratch runner at
+`test_assets/iteration_evidence/probe_runs/20260804_154251/probe_log.txt`
+compiled cleanly and completed all nine read-only probes. In the two
+ordinate-bearing views, candidate straight edges were found and mapped, but no
+candidate survived the visible-entity identity test; both vertical schemes
+reported `NoMappedBottomEdge`. This confirms the fail-closed behavior on the
+installed build. It is not a manufacturing or production-mutation acceptance.
+
+## 2026-08-04 r31 user-accepted layout policy
+
+No new SOLIDWORKS API member or enum is introduced. The production route no
+longer calls the existing `IView.Position` or `IView.ScaleDecimal` mutation
+path after final content creation. Initial structural placement remains
+separate. `FINAL_LAYOUT` records
+`UserAcceptedLayoutAsIs|automaticClearance=DeferredByUser`; this is a user
+policy record, not API or installed-build evidence that the measured layout is
+clear.
+
+## 2026-08-04 r37 outline-datum visibility fallback
+
+The local `solidworks-api` MCP was used before this change. Its 2025-help
+compatibility snapshot documents `IView.GetPolylines7(CrossHatchOption,
+out Polylines)` as returning visible model and silhouette edges. It also
+documents `IView.SelectEntity` as selecting an entity in the specified drawing
+view.
+
+Installed-SP1.2 runner evidence at
+`test_assets/iteration_evidence/probe_runs/20260804_164014/probe_log.txt`
+shows both P-0251 HLV ordinate-bearing views returning
+`GetPolylines7|status=NoEdges|error=0`. The code therefore does not treat a
+missing edge array as an identity mismatch. It falls back only in that explicit
+state: `IView.SelectEntity` must
+select the candidate model edge and `ISelectionMgr.GetSelectedObjectsDrawingView2`
+must return the requested view. The runner proved that contract for the two
+straight lower outline edges (`Drawing View4` and `Drawing View7`).
+
+This is installed-build selection and mapping evidence, not proof that an
+ordinate has been created. Creation still requires the separate mutating
+acceptance run and dimension readback.

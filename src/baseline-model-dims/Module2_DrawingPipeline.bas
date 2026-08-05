@@ -1,4 +1,3 @@
-Attribute VB_Name = "Module2_DrawingPipeline"
 Option Explicit
 
 #If VBA7 Then
@@ -55,8 +54,12 @@ Public Sub RunDrawingPipeline( _
         importedModelItems = Module4_ModelItemImporter.ImportModelItemsAcrossDrawing(swDrawModel, swDraw, swFrontView.Name)
     End If
 
+    Dim ordinateStatus As Module5_FallbackDimensionEngine.OrdinateRunStatus
+    ordinateStatus.LastFailureCode = _
+        Module5_FallbackDimensionEngine.ORDINATE_CODE_UNSET
+
     If Module1_Main.GlobalConfig.UseOrdinateDims Then
-        AddFallbackOrdinateDimensions swDrawModel, swDraw
+        AddFallbackOrdinateDimensions swDrawModel, swDraw, ordinateStatus
     End If
 
     If Module1_Main.GlobalConfig.AutoArrange Then
@@ -70,14 +73,36 @@ Public Sub RunDrawingPipeline( _
     swDrawModel.ForceRebuild3 False
     swDrawModel.ViewZoomtofit2
 
-    MsgBox Module6_QAEngine.BuildRunSummary(swDrawModel, swDraw, holes, importedModelItems), vbInformation, "Drawing QA Summary"
+    Dim qaReport As String
+    qaReport = Module6_QAEngine.BuildRunSummary( _
+        swDrawModel, swDraw, holes, importedModelItems, ordinateStatus)
+
+    ' Write before showing. A MsgBox is not a record: the first live trunk
+    ' run lost its ordinate evidence the moment the operator clicked OK.
+    Dim qaReportPath As String
+    qaReportPath = Module21_EvidenceSink.WriteQaReport( _
+        swPart.GetPathName, qaReport)
+
+    If Len(qaReportPath) > 0 Then
+        qaReport = qaReport & vbCrLf & "Report written to:" & vbCrLf & _
+            qaReportPath & vbCrLf
+    Else
+        qaReport = qaReport & vbCrLf & _
+            "WARNING: QA report could not be written to disk." & vbCrLf
+    End If
+
+    MsgBox qaReport, vbInformation, "Drawing QA Summary"
     Exit Sub
 
 FailRun:
     MsgBox "Drawing pipeline failed: " & Err.Description, vbCritical, "Pipeline Error"
 End Sub
 
-Private Sub AddFallbackOrdinateDimensions(ByRef swDrawModel As SldWorks.ModelDoc2, ByRef swDraw As SldWorks.DrawingDoc)
+Private Sub AddFallbackOrdinateDimensions( _
+    ByRef swDrawModel As SldWorks.ModelDoc2, _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByRef status As Module5_FallbackDimensionEngine.OrdinateRunStatus)
+
     On Error GoTo SafeExit
 
     Dim swView As SldWorks.View
@@ -86,7 +111,7 @@ Private Sub AddFallbackOrdinateDimensions(ByRef swDrawModel As SldWorks.ModelDoc
 
     Do While Not swView Is Nothing
         If Not IsIsoView(swView.Name) Then
-            Module5_FallbackDimensionEngine.CreateHoleOrdinateDims swDraw, swView, Module1_Main.GlobalConfig.DatumOrigin
+            Module5_FallbackDimensionEngine.CreateHoleOrdinateDims swDraw, swView, Module1_Main.GlobalConfig.DatumOrigin, status
         End If
         Set swView = swView.GetNextView
     Loop
@@ -284,3 +309,8 @@ Private Function IsIsoView(ByVal viewName As String) As Boolean
     IsIsoView = (InStr(1, viewName, "ISO", vbTextCompare) > 0 Or InStr(1, viewName, "ISOMETRIC", vbTextCompare) > 0)
 End Function
 
+
+' Compile-failure localisation no-op called by
+' Module20_ProbeRunner.R23_TouchAllModules.
+Public Sub R23_CompileTouch()
+End Sub

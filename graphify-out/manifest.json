@@ -1,0 +1,182 @@
+{
+  ".claude/settings.local.json": {
+    "mtime": 1785183905.0413785,
+    "ast_hash": "ff65200a7715337eb71ce8f62d77a053",
+    "semantic_hash": "ff65200a7715337eb71ce8f62d77a053"
+  },
+  "src/active-ordinate/BtnHandler.cls": {
+    "mtime": 1783985728.2408984,
+    "ast_hash": "39adc01dda212e4e28f3c290f0fd0deb",
+    "semantic_hash": "39adc01dda212e4e28f3c290f0fd0deb"
+  },
+  "src/active-ordinate/SectionBtnHandler.cls": {
+    "mtime": 1783985728.239897,
+    "ast_hash": "4e71233f1dd3ad27efa6cccf28c0d263",
+    "semantic_hash": "4e71233f1dd3ad27efa6cccf28c0d263"
+  },
+  "src/active-ordinate/SectionDlgBtnHandler.cls": {
+    "mtime": 1783985728.2408984,
+    "ast_hash": "ce44b7c91a54a6e9a85ee0a3400434e8",
+    "semantic_hash": "ce44b7c91a54a6e9a85ee0a3400434e8"
+  },
+  "src/active-ordinate/ThisLibrary.cls": {
+    "mtime": 1783985728.2240446,
+    "ast_hash": "a3a3b28b6ca7e2b65a73d7a55e15180f",
+    "semantic_hash": "a3a3b28b6ca7e2b65a73d7a55e15180f"
+  },
+  "src/baseline-model-dims/BtnHandler.cls": {
+    "mtime": 1783942910.2087624,
+    "ast_hash": "1422aee87162ee527a775fb108638343",
+    "semantic_hash": "1422aee87162ee527a775fb108638343"
+  },
+  "src/baseline-model-dims/SectionBtnHandler.cls": {
+    "mtime": 1783942910.2077632,
+    "ast_hash": "d45e23b7f35be5a0946fcb137bd0f320",
+    "semantic_hash": "d45e23b7f35be5a0946fcb137bd0f320"
+  },
+  "src/baseline-model-dims/SectionDlgBtnHandler.cls": {
+    "mtime": 1783942910.2087624,
+    "ast_hash": "eaa1748913e27871367206a93cb8636e",
+    "semantic_hash": "eaa1748913e27871367206a93cb8636e"
+  },
+  "src/baseline-model-dims/ThisLibrary.cls": {
+    "mtime": 1783942910.1937697,
+    "ast_hash": "c29ee95a70e9230e1f626e87bf57f95e",
+    "semantic_hash": "c29ee95a70e9230e1f626e87bf57f95e"
+  },
+  "src/target-spec-hybrid-v2/BtnHandler.cls": {
+    "mtime": 1785218117.192466,
+    "ast_hash": "cb3681338afe60cd1d7bb79f1d0a3f4c",
+    "semantic_hash": "cb3681338afe60cd1d7bb79f1d0a3f4c"
+  },
+  "src/target-spec-hybrid-v2/CCalloutDefinition.cls": {
+    "mtime": 1785567745.2682436,
+    "ast_hash": "36768a41c4f26bdf83fc4c7d3bebca3f",
+    "semantic_hash": "36768a41c4f26bdf83fc4c7d3bebca3f"
+  },
+  "src/target-spec-hybrid-v2/CContentEnvelope.cls": {
+    "mtime": 1785601702.914168,
+    "ast_hash": "99a4e50b3407ef4c42a80c07724ca034",
+    "semantic_hash": "99a4e50b3407ef4c42a80c07724ca034"
+  },
+  "src/target-spec-hybrid-v2/CDatumProof.cls": {
+    "mtime": 1785218117.1938887,
+    "ast_hash": "2aeabf8b3e7ead506d4c3961f3c2c40e",
+    "semantic_hash": "2aeabf8b3e7ead506d4c3961f3c2c40e"
+  },
+  "src/target-spec-hybrid-v2/CFeatureDefinition.cls": {
+    "mtime": 1785524882.1514409,
+    "ast_hash": "f80963f97cb675e4190586c375625ca8",
+    "semantic_hash": "f80963f97cb675e4190586c375625ca8"
+  },
+  "src/target-spec-hybrid-v2/CHoleCandidate.cls": {
+    "mtime": 1785218117.1938887,
+    "ast_hash": "ab232d963529d3256c634240ab2dff2f",
+    "semantic_hash": "ab232d963529d3256c634240ab2dff2f"
+  },
+  "src/target-spec-hybrid-v2/CImportedAnnotation.cls": {
+    "mtime": 1785540027.4782095,
+    "ast_hash": "04994325e4d9468eb81f2027a86b986f",
+    "semantic_hash": "04994325e4d9468eb81f2027a86b986f"
+  },
+  "src/target-spec-hybrid-v2/CLocationGraph.cls": {
+    "mtime": 1785815732.0531628,
+    "ast_hash": "578b0d29ffbe59c4b52324063b402ca5",
+    "semantic_hash": "578b0d29ffbe59c4b52324063b402ca5"
+  },
+  "src/target-spec-hybrid-v2/COrdinateBucket.cls": {
+    "mtime": 1785815200.0816598,
+    "ast_hash": "9a500898a7fa438f75446d06ed7c46c4",
+    "semantic_hash": "9a500898a7fa438f75446d06ed7c46c4"
+  },
+  "src/target-spec-hybrid-v2/COrdinateScheme.cls": {
+    "mtime": 1785561936.9722877,
+    "ast_hash": "99b8cf0d361e3ae64bd9967ddf5d6e01",
+    "semantic_hash": "99b8cf0d361e3ae64bd9967ddf5d6e01"
+  },
+  "src/target-spec-hybrid-v2/CPhysicalHoleLocation.cls": {
+    "mtime": 1785530423.8205078,
+    "ast_hash": "b65be490ded54817c3dbec1cfff2e2e7",
+    "semantic_hash": "b65be490ded54817c3dbec1cfff2e2e7"
+  },
+  "src/target-spec-hybrid-v2/CRunEvidence.cls": {
+    "mtime": 1785799176.3454878,
+    "ast_hash": "fe3def4603e3d9122ed12e00f9007b23",
+    "semantic_hash": "fe3def4603e3d9122ed12e00f9007b23"
+  },
+  "src/target-spec-hybrid-v2/CSectionPath.cls": {
+    "mtime": 1785569891.2468357,
+    "ast_hash": "7044a72532915513bc6a4d7954d508f3",
+    "semantic_hash": "7044a72532915513bc6a4d7954d508f3"
+  },
+  "src/target-spec-hybrid-v2/CSectionRequirement.cls": {
+    "mtime": 1785601600.980168,
+    "ast_hash": "a95b674ba5657e87871fb3e21885c9fb",
+    "semantic_hash": "a95b674ba5657e87871fb3e21885c9fb"
+  },
+  "src/target-spec-hybrid-v2/CViewHoleProjection.cls": {
+    "mtime": 1785537104.4922009,
+    "ast_hash": "13b800aea4b4e9f8576c54b4b6305040",
+    "semantic_hash": "13b800aea4b4e9f8576c54b4b6305040"
+  },
+  "src/target-spec-hybrid-v2/SectionBtnHandler.cls": {
+    "mtime": 1785218117.1948934,
+    "ast_hash": "2bac42397ec56c8c6d256ef02fc9483c",
+    "semantic_hash": "2bac42397ec56c8c6d256ef02fc9483c"
+  },
+  "src/target-spec-hybrid-v2/SectionDlgBtnHandler.cls": {
+    "mtime": 1785218117.1948934,
+    "ast_hash": "77d3fbb7f401cb21d3915d16eb508f31",
+    "semantic_hash": "77d3fbb7f401cb21d3915d16eb508f31"
+  },
+  "src/target-spec-hybrid-v2/ThisLibrary.cls": {
+    "mtime": 1784702688.3358147,
+    "ast_hash": "4decdc4129ee837a41c767fa5561b9a1",
+    "semantic_hash": "4decdc4129ee837a41c767fa5561b9a1"
+  },
+  "tools/probe-runner/Run-R23Probes.ps1": {
+    "mtime": 1785801500.068017,
+    "ast_hash": "97512e6d29f102dcca8b6d789e0fdf09",
+    "semantic_hash": "97512e6d29f102dcca8b6d789e0fdf09"
+  },
+  "tools/r23-probes/drawing-contract-manifest.json": {
+    "mtime": 1785457933.5493655,
+    "ast_hash": "6f18afcea8dac27b143e7ab89903421b",
+    "semantic_hash": "6f18afcea8dac27b143e7ab89903421b"
+  },
+  "tools/r23-probes/import-transaction-manifest.json": {
+    "mtime": 1785397891.2613146,
+    "ast_hash": "ac285136a9626c58e3b6f83e5516fb73",
+    "semantic_hash": "ac285136a9626c58e3b6f83e5516fb73"
+  },
+  "tools/swp-deploy/Deploy-TargetSpecHybrid.ps1": {
+    "mtime": 1785799887.1305513,
+    "ast_hash": "5233725e01d17e526367db1b8b9b58b9",
+    "semantic_hash": "5233725e01d17e526367db1b8b9b58b9"
+  },
+  "tools/swp-deploy/Invoke-SolidWorksMacro.ps1": {
+    "mtime": 1785811919.021326,
+    "ast_hash": "a265e23e8104407318b1b1baacbe08c0",
+    "semantic_hash": "a265e23e8104407318b1b1baacbe08c0"
+  },
+  "tools/swp-deploy/SolidWorksDocumentOpener.cs": {
+    "mtime": 1785811863.9843175,
+    "ast_hash": "4383e366d2041de62820419bd5fb597f",
+    "semantic_hash": "4383e366d2041de62820419bd5fb597f"
+  },
+  "tools/swp-deploy/SolidWorksMacroInvoker.cs": {
+    "mtime": 1785039162.4711785,
+    "ast_hash": "66c489b5767290a358de2dde13384ccf",
+    "semantic_hash": "66c489b5767290a358de2dde13384ccf"
+  },
+  "tools/swp-deploy/deployment-manifest.json": {
+    "mtime": 1785800038.8857224,
+    "ast_hash": "09e98dccb879c5ddc4540ace1311109f",
+    "semantic_hash": "09e98dccb879c5ddc4540ace1311109f"
+  },
+  "tools/swp-deploy/verify_swp_vba.py": {
+    "mtime": 1784702680.4115095,
+    "ast_hash": "6a40ae0a13508bd5ad5831abf6741f87",
+    "semantic_hash": "6a40ae0a13508bd5ad5831abf6741f87"
+  }
+}

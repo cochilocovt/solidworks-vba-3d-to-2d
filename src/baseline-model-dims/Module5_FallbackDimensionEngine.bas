@@ -1,19 +1,68 @@
-Attribute VB_Name = "Module5_FallbackDimensionEngine"
 Option Explicit
 
+' MCP-confirmed 2026-08-05 against swAddOrdinateDims_e and
+' swCreateOrdDimError_e. Verify in SW2025 Object Browser before acceptance.
 Private Const swHorizontalOrdinate As Long = 3
 Private Const swVerticalOrdinate As Long = 2
 Private Const swCreateOrdDimErr_Success As Long = 0
 
-Public Sub CreateHoleOrdinateDims(ByRef swDraw As SldWorks.DrawingDoc, ByRef swView As SldWorks.View, ByVal datumType As String)
+' swViewEntityType_e, MCP-confirmed 2026-08-05. The baseline passed a bare 1.
+' swViewEntityType_SilhouetteEdge = 4 is the route to the reference drawing's
+' +/-36 silhouette ordinates; not used yet (gap A4).
+Private Const swViewEntityType_Edge As Long = 1
+
+' Outcome codes returned by CreateOneOrdinateChain in addition to the
+' swCreateOrdDimError_e values, which are all >= -1.
+Private Const CHAIN_SKIPPED_TOO_FEW As Long = -100
+Private Const CHAIN_SELECTION_FAILED As Long = -101
+
+' Sentinel for LastFailureCode. 0 is swCreateOrdDimErr_Success, so an
+' unset code of 0 reads as a successful chain in the report. The r3 run
+' reported "Last code=0 (Unrecognised code)" for exactly that reason.
+Public Const ORDINATE_CODE_UNSET As Long = -999
+
+' Structured ordinate outcome, so a failed chain cannot be masked in QA by a
+' healthy imported-model-item count.
+Public Type OrdinateRunStatus
+    ViewsProcessed As Long
+    ViewsWithTooFewCandidates As Long
+    ViewsErrored As Long
+    ChainsAttempted As Long
+    ChainsCreated As Long
+    ChainsFailed As Long
+    LastFailureCode As Long
+    LastFailureView As String
+    LastErrorStage As String
+    LastErrorNumber As Long
+    LastErrorText As String
+    EdgeRoute As String
+    CandidateEdgesSeen As Long
+    CircularEdgesSeen As Long
+End Type
+
+Public Sub CreateHoleOrdinateDims( _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByRef swView As SldWorks.View, _
+    ByVal datumType As String, _
+    ByRef status As OrdinateRunStatus)
+
+    ' Staged so a thrown error can name where it happened. The r3 run failed
+    ' on all four views and the handler recorded nothing but a count, which
+    ' proved only that something was wrong.
+    Dim stage As String
+
     On Error GoTo Failed
 
+    status.ViewsProcessed = status.ViewsProcessed + 1
+
+    stage = "BindModel"
     Dim swModel As SldWorks.ModelDoc2
     Set swModel = swDraw
 
     Dim swModelExt As SldWorks.ModelDocExtension
     Set swModelExt = swModel.Extension
 
+    stage = "CreateSelectData"
     Dim swSelMgr As SldWorks.SelectionMgr
     Set swSelMgr = swModel.SelectionManager
 
@@ -21,18 +70,37 @@ Public Sub CreateHoleOrdinateDims(ByRef swDraw As SldWorks.DrawingDoc, ByRef swV
     Set swSelData = swSelMgr.CreateSelectData
     Set swSelData.View = swView
 
+    stage = "GetOutline"
     Dim viewOutline As Variant
     viewOutline = swView.GetOutline
 
-    Dim edges As Variant
-    edges = swView.GetVisibleEntities2(Nothing, 1)
-    If IsEmpty(edges) Then Exit Sub
+    ' IView.GetVisibleEntities2 declares LpViewComponent as Component2 (MCP,
+    ' 2026-08-05). The baseline passed Nothing. For a part drawing view the
+    ' component must come from IView.GetVisibleComponents; passing Nothing is
+    ' an unresolved failure mode recorded in the gap analysis. Try the
+    ' resolved component first and fall back to Nothing, recording which
+    ' route produced entities.
+    stage = "ResolveViewComponent"
+    Dim swViewComponent As Object
+    Set swViewComponent = ResolveFirstVisibleComponent(swView)
 
+    stage = "GetVisibleEntities2"
+    Dim edges As Variant
+    edges = GetVisibleEdges(swView, swViewComponent, status)
+
+    stage = "CheckEdges"
+    If IsEmpty(edges) Then Exit Sub
+    If IsNull(edges) Then Exit Sub
+    If Not IsArray(edges) Then Exit Sub
+
+    stage = "MathUtility"
     Dim swMathUtil As SldWorks.MathUtility
     Set swMathUtil = Application.SldWorks.GetMathUtility
 
     Dim swTransform As SldWorks.MathTransform
     Set swTransform = swView.ModelToViewTransform
+
+    stage = "ScanEdges"
 
     Dim objs() As Object
     Dim px() As Double
@@ -46,10 +114,14 @@ Public Sub CreateHoleOrdinateDims(ByRef swDraw As SldWorks.DrawingDoc, ByRef swV
         Set swEdge = edges(i)
         If swEdge Is Nothing Then GoTo NextEdge
 
+        status.CandidateEdgesSeen = status.CandidateEdgesSeen + 1
+
         Dim swCurve As SldWorks.Curve
         Set swCurve = swEdge.GetCurve
         If swCurve Is Nothing Then GoTo NextEdge
         If Not swCurve.IsCircle Then GoTo NextEdge
+
+        status.CircularEdgesSeen = status.CircularEdgesSeen + 1
 
         Dim cp As Variant
         cp = swCurve.CircleParams
@@ -78,18 +150,186 @@ Public Sub CreateHoleOrdinateDims(ByRef swDraw As SldWorks.DrawingDoc, ByRef swV
 NextEdge:
     Next i
 
-    If cnt < 2 Then Exit Sub
+    If cnt < 2 Then
+        status.ViewsWithTooFewCandidates = _
+            status.ViewsWithTooFewCandidates + 1
+        Exit Sub
+    End If
 
     Dim datumIdx As Long
     datumIdx = ResolveDatumIndex(swView, viewOutline, px, py, cnt, datumType)
 
-    CreateOneOrdinateChain swModel, swModelExt, swView, swSelData, objs, px, cnt, datumIdx, True, viewOutline
-    CreateOneOrdinateChain swModel, swModelExt, swView, swSelData, objs, py, cnt, datumIdx, False, viewOutline
+    RecordChainOutcome status, swView.Name, _
+        CreateOneOrdinateChain(swModel, swModelExt, swView, swSelData, objs, px, cnt, datumIdx, True, viewOutline)
+    RecordChainOutcome status, swView.Name, _
+        CreateOneOrdinateChain(swModel, swModelExt, swView, swSelData, objs, py, cnt, datumIdx, False, viewOutline)
     Exit Sub
 
 Failed:
-    Debug.Print "Fallback ordinate error in view " & swView.Name & ": " & Err.Description
+    ' A thrown view is not a failed chain. Counting it as one is what made
+    ' the r3 report say "0 of 0 attempted" and "4 chains failed" at once.
+    status.ViewsErrored = status.ViewsErrored + 1
+    status.LastErrorStage = stage
+    status.LastErrorNumber = Err.Number
+    status.LastErrorText = Err.Description
+    status.LastFailureView = swView.Name
+    Debug.Print "Fallback ordinate error in view " & swView.Name & _
+        " at stage " & stage & ": " & CStr(Err.Number) & " " & Err.Description
 End Sub
+
+' IView.GetVisibleComponents returns the drawing-context components for the
+' view. A part drawing view has exactly one. Returns Nothing when the call
+' is unavailable or empty, so the caller can fall back.
+Private Function ResolveFirstVisibleComponent( _
+    ByRef swView As SldWorks.View) As Object
+
+    On Error GoTo Failed
+
+    Dim components As Variant
+    components = swView.GetVisibleComponents
+
+    If IsEmpty(components) Then Exit Function
+    If IsNull(components) Then Exit Function
+    If Not IsArray(components) Then Exit Function
+    If UBound(components) < LBound(components) Then Exit Function
+
+    Set ResolveFirstVisibleComponent = components(LBound(components))
+    Exit Function
+
+Failed:
+    Set ResolveFirstVisibleComponent = Nothing
+End Function
+
+' Asks for visible edges with the resolved component first, then with
+' Nothing. Records which route answered so the QA report can say whether the
+' component argument was the problem.
+Private Function GetVisibleEdges( _
+    ByRef swView As SldWorks.View, _
+    ByRef swViewComponent As Object, _
+    ByRef status As OrdinateRunStatus) As Variant
+
+    Dim result As Variant
+
+    If Not swViewComponent Is Nothing Then
+        On Error Resume Next
+        result = swView.GetVisibleEntities2(swViewComponent, _
+            swViewEntityType_Edge)
+        On Error GoTo 0
+
+        If IsArray(result) Then
+            status.EdgeRoute = "ViaComponent"
+            GetVisibleEdges = result
+            Exit Function
+        End If
+    End If
+
+    On Error Resume Next
+    result = swView.GetVisibleEntities2(Nothing, swViewEntityType_Edge)
+    On Error GoTo 0
+
+    If IsArray(result) Then
+        status.EdgeRoute = "ViaNothing"
+    ElseIf swViewComponent Is Nothing Then
+        status.EdgeRoute = "NoComponentAndNothingFailed"
+    Else
+        status.EdgeRoute = "BothRoutesFailed"
+    End If
+
+    GetVisibleEdges = result
+End Function
+
+Private Sub RecordChainOutcome( _
+    ByRef status As OrdinateRunStatus, _
+    ByVal viewName As String, _
+    ByVal outcome As Long)
+
+    If outcome = CHAIN_SKIPPED_TOO_FEW Then Exit Sub
+
+    status.ChainsAttempted = status.ChainsAttempted + 1
+
+    If outcome = swCreateOrdDimErr_Success Then
+        status.ChainsCreated = status.ChainsCreated + 1
+    Else
+        status.ChainsFailed = status.ChainsFailed + 1
+        status.LastFailureCode = outcome
+        status.LastFailureView = viewName
+    End If
+End Sub
+
+' Renders an OrdinateRunStatus for the QA report. Kept here so the outcome
+' vocabulary lives beside the code that produces it.
+Public Function DescribeOrdinateStatus( _
+    ByRef status As OrdinateRunStatus) As String
+
+    Dim text As String
+    text = "Ordinate views processed: " & status.ViewsProcessed & vbCrLf
+    text = text & "Ordinate edges seen: " & status.CandidateEdgesSeen & _
+        " (circular: " & status.CircularEdgesSeen & ")" & vbCrLf
+
+    If Len(status.EdgeRoute) > 0 Then
+        text = text & "Ordinate edge route: " & status.EdgeRoute & vbCrLf
+    End If
+
+    text = text & "Ordinate chains created: " & status.ChainsCreated & _
+        " of " & status.ChainsAttempted & " attempted" & vbCrLf
+
+    If status.ViewsWithTooFewCandidates > 0 Then
+        text = text & "NOTE: " & status.ViewsWithTooFewCandidates & _
+            " view(s) had fewer than two ordinate candidates." & vbCrLf
+    End If
+
+    ' A thrown view and a failed chain are different faults with different
+    ' fixes; report them separately.
+    If status.ViewsErrored > 0 Then
+        text = text & "WARNING: " & status.ViewsErrored & _
+            " view(s) raised a VBA error. Last: stage=" & _
+            status.LastErrorStage & " err=" & status.LastErrorNumber & _
+            " """ & status.LastErrorText & """ in view " & _
+            status.LastFailureView & "." & vbCrLf
+    End If
+
+    If status.ChainsFailed > 0 Then
+        text = text & "WARNING: " & status.ChainsFailed & _
+            " ordinate chain(s) failed. Last code=" & _
+            status.LastFailureCode & " (" & _
+            DescribeChainFailure(status.LastFailureCode) & ") in view " & _
+            status.LastFailureView & "." & vbCrLf
+    End If
+
+    DescribeOrdinateStatus = text
+End Function
+
+' swCreateOrdDimError_e members, MCP-confirmed 2026-08-05.
+Private Function DescribeChainFailure(ByVal code As Long) As String
+    Select Case code
+        Case ORDINATE_CODE_UNSET
+            DescribeChainFailure = "no code recorded"
+        Case CHAIN_SELECTION_FAILED
+            DescribeChainFailure = "MultiSelect2 selected the wrong count"
+        Case -1
+            DescribeChainFailure = "swCreateOrdDimErr_Undefined"
+        Case 1
+            DescribeChainFailure = "swCreateOrdDimErr_OrdFailure"
+        Case 2
+            DescribeChainFailure = "swCreateOrdDimErr_GenNoInternalDims"
+        Case 3
+            DescribeChainFailure = "swCreateOrdDimErr_GenBadSel"
+        Case 4
+            DescribeChainFailure = "swCreateOrdDimErr_GenNeedModelLoaded"
+        Case 5
+            DescribeChainFailure = "swCreateOrdDimErr_GenSamePartOnly"
+        Case 6
+            DescribeChainFailure = "swCreateOrdDimErr_GenExtraSelection"
+        Case 7
+            DescribeChainFailure = "swCreateOrdDimErr_GenFailure"
+        Case 8
+            DescribeChainFailure = "swCreateOrdDimErr_OrdDupInGroup"
+        Case 9
+            DescribeChainFailure = "swCreateOrdDimErr_OrdBadDir"
+        Case Else
+            DescribeChainFailure = "Unrecognised code"
+    End Select
+End Function
 
 Public Sub InsertHoleCalloutsForView(ByRef swDraw As SldWorks.DrawingDoc, ByRef swView As SldWorks.View)
     On Error GoTo Failed
@@ -187,7 +427,21 @@ Private Function ResolveDatumIndex(ByRef swView As SldWorks.View, ByVal viewOutl
     Next i
 End Function
 
-Private Sub CreateOneOrdinateChain( _
+' Creates one ordinate group and returns its outcome: a swCreateOrdDimError_e
+' value, or one of the CHAIN_* codes above.
+'
+' IModelDocExtension.AddOrdinateDimension Remarks (MCP, 2026-08-05):
+'   "Selections made immediately after calling this method continue to add
+'    ordinate dimensions to the group of ordinate dimensions. When you finish
+'    adding ordinate dimensions to the group, use IModelDoc2::SetPickMode to
+'    return to the default selection mode."
+'
+' The horizontal chain runs first, so without SetPickMode the vertical
+' chain's MultiSelect2 is a selection made after the call and appends to the
+' still-open horizontal group instead of starting a vertical one. Every later
+' selection in the run - auto-arrange, title block - inherits the same mode.
+' ClearSelection2 empties the selection list; it does not close the group.
+Private Function CreateOneOrdinateChain( _
     ByRef swModel As SldWorks.ModelDoc2, _
     ByRef swModelExt As SldWorks.ModelDocExtension, _
     ByRef swView As SldWorks.View, _
@@ -197,7 +451,7 @@ Private Sub CreateOneOrdinateChain( _
     ByVal cnt As Long, _
     ByVal datumIdx As Long, _
     ByVal isHorizontal As Boolean, _
-    ByVal viewOutline As Variant)
+    ByVal viewOutline As Variant) As Long
 
     Dim uniq() As Double
     Dim uniqCnt As Long
@@ -235,8 +489,18 @@ Private Sub CreateOneOrdinateChain( _
         End If
     Next i
 
+    ' A single-entity chain is the datum alone: nothing to dimension against.
+    If selCnt < 2 Then
+        CreateOneOrdinateChain = CHAIN_SKIPPED_TOO_FEW
+        Exit Function
+    End If
+
     swModel.ClearSelection2 True
-    If swModelExt.MultiSelect2(selObjs, False, swSelData) <> selCnt Then Exit Sub
+    If swModelExt.MultiSelect2(selObjs, False, swSelData) <> selCnt Then
+        CreateOneOrdinateChain = CHAIN_SELECTION_FAILED
+        swModel.ClearSelection2 True
+        Exit Function
+    End If
 
     Dim rc As Long
     If isHorizontal Then
@@ -245,9 +509,19 @@ Private Sub CreateOneOrdinateChain( _
         rc = swModelExt.AddOrdinateDimension(swVerticalOrdinate, viewOutline(2) + 0.015, viewOutline(1), 0)
     End If
 
+    ' Close the ordinate group before anything else selects. Unconditional:
+    ' the group can be left open on a failure path too.
+    swModel.SetPickMode
+
     If rc <> swCreateOrdDimErr_Success Then
         Debug.Print "Ordinate add failed in view " & swView.Name & ": code=" & rc
     End If
 
     swModel.ClearSelection2 True
+    CreateOneOrdinateChain = rc
+End Function
+
+' Compile-failure localisation no-op called by
+' Module20_ProbeRunner.R23_TouchAllModules.
+Public Sub R23_CompileTouch()
 End Sub

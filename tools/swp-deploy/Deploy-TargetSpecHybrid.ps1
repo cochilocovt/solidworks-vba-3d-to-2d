@@ -73,63 +73,10 @@ function Wait-ForFile {
     throw "Timed out waiting for deployment evidence: $Path"
 }
 
-function Invoke-SolidWorksMacro {
-    param(
-        [Parameter(Mandatory)] [object] $SolidWorks,
-        [Parameter(Mandatory)] [string] $MacroPath,
-        [Parameter(Mandatory)] [string] $ModuleName,
-        [Parameter(Mandatory)] [string] $ProcedureName
-    )
-
-    $programFiles = [Environment]::GetFolderPath(
-        [Environment+SpecialFolder]::ProgramFiles)
-    $interopPath = Join-Path $programFiles `
-        'SOLIDWORKS Corp\SOLIDWORKS\api\redist\SolidWorks.Interop.sldworks.dll'
-
-    $interopType = 'SolidWorks.Interop.sldworks.ISldWorks' -as [type]
-    if ($null -eq $interopType) {
-        if (-not (Test-Path -LiteralPath $interopPath -PathType Leaf)) {
-            throw "SOLIDWORKS interop assembly was not found: $interopPath"
-        }
-
-        Add-Type -Path $interopPath
-        $interopType = 'SolidWorks.Interop.sldworks.ISldWorks' -as [type]
-    }
-
-    if ($null -eq $interopType) {
-        throw 'SOLIDWORKS ISldWorks interop type could not be loaded.'
-    }
-
-    $invokerType = 'TargetSpecHybrid.SwpDeployment.SolidWorksMacroInvoker' -as [type]
-    if ($null -eq $invokerType) {
-        $invokerSource = Join-Path $PSScriptRoot 'SolidWorksMacroInvoker.cs'
-        if (-not (Test-Path -LiteralPath $invokerSource -PathType Leaf)) {
-            throw "SOLIDWORKS macro invoker source was not found: $invokerSource"
-        }
-
-        Add-Type `
-            -Path $invokerSource `
-            -ReferencedAssemblies $interopPath
-        $invokerType = `
-            'TargetSpecHybrid.SwpDeployment.SolidWorksMacroInvoker' -as [type]
-    }
-
-    if ($null -eq $invokerType) {
-        throw 'The strongly typed SOLIDWORKS macro invoker could not be loaded.'
-    }
-
-    $unloadAfterRun = 1
-    $runResult = $invokerType::Run(
-        $SolidWorks,
-        $MacroPath,
-        $ModuleName,
-        $ProcedureName,
-        $unloadAfterRun)
-
-    if (-not $runResult.Succeeded) {
-        throw "RunMacro2 failed for $ModuleName.$ProcedureName with swRunMacroError_e value $($runResult.Error)."
-    }
-}
+# Shared with tools/probe-runner/Run-R23Probes.ps1 so both scripts drive
+# RunMacro2 through the same strongly typed invoker instead of each
+# defining their own copy.
+. (Join-Path $PSScriptRoot 'Invoke-SolidWorksMacro.ps1')
 
 $manifestFile = (Resolve-Path -LiteralPath $ManifestPath).Path
 $manifestDirectory = Split-Path -Parent $manifestFile
@@ -251,7 +198,26 @@ $requestLines = @(
     "OUTPUT_SWP=$candidateOutput"
     "RESULT_FILE=$deploymentResult"
     "COMPILE_RESULT_FILE=$compileResult"
+    'PRUNE_UNMANAGED=1'
 )
+
+# Components the bootstrap must never remove. The bootstrap module is on
+# this list because it is the code executing the prune; the forms and
+# ThisLibrary are here because they are deliberately outside the manifest
+# (see tools/swp-deploy/README.md) and are therefore indistinguishable from
+# an orphan by name alone. The bootstrap additionally refuses to touch any
+# component that is not a standard or class module, so the forms are
+# protected twice over.
+$protectedComponents = @(
+    $manifest.bootstrapModule
+    'ThisLibrary'
+    'UserForm1'
+    'UserFormSection'
+)
+foreach ($protectedComponent in $protectedComponents) {
+    $requestLines += "PROTECTED=$protectedComponent"
+}
+
 foreach ($component in $sourceFiles) {
     $requestLines += "COMPONENT=$($component.Name)|$($component.Kind)|$($component.Path)"
 }
