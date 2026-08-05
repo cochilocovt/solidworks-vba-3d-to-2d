@@ -36,6 +36,9 @@ Public Type OrdinateRunStatus
     LastErrorNumber As Long
     LastErrorText As String
     EdgeRoute As String
+    LastActivateResult As String
+    SelDataScope As String
+    SelDataViewError As Long
     CandidateEdgesSeen As Long
     CircularEdgesSeen As Long
 End Type
@@ -62,13 +65,60 @@ Public Sub CreateHoleOrdinateDims( _
     Dim swModelExt As SldWorks.ModelDocExtension
     Set swModelExt = swModel.Extension
 
-    stage = "CreateSelectData"
+    ' Agents.md: establish the correct active view before view-scoped
+    ' selection. The baseline never activated, which is the documented
+    ' difference from the active-ordinate engine. The r4 run raised error 91
+    ' in this block on all six views.
+    ' src/active-ordinate clears the selection before activating, and carries
+    ' an explicit comment that this ordering was "the error in the prior
+    ' rewrite". The baseline cleared nothing here.
+    stage = "ClearSelection"
+    swModel.ClearSelection2 True
+
+    stage = "ActivateView"
+    Dim activated As Boolean
+    activated = swDraw.ActivateView(swView.Name)
+    status.LastActivateResult = CStr(activated)
+
+    ' Sub-staged so a repeat failure names the exact statement rather than
+    ' the block.
+    stage = "SelectionManager"
     Dim swSelMgr As SldWorks.SelectionMgr
     Set swSelMgr = swModel.SelectionManager
+    If swSelMgr Is Nothing Then
+        Err.Raise vbObjectError + 7200, "CreateHoleOrdinateDims", _
+            "ModelDoc2.SelectionManager returned Nothing for view " & _
+            swView.Name
+    End If
 
+    stage = "CreateSelectData"
     Dim swSelData As SldWorks.SelectData
     Set swSelData = swSelMgr.CreateSelectData
+    If swSelData Is Nothing Then
+        Err.Raise vbObjectError + 7201, "CreateHoleOrdinateDims", _
+            "SelectionMgr.CreateSelectData returned Nothing for view " & _
+            swView.Name
+    End If
+
+    ' Non-fatal. r5 proved this assignment raises 91 with both operands
+    ' valid, which killed the whole engine before a single edge was read.
+    ' The view is activated by this point, so an unscoped SelectData still
+    ' selects into it; scoping is a correctness guard, not a precondition.
+    ' Record which route was taken so the report says whether the drawing
+    ' was built with scoped or unscoped selection.
+    stage = "SetSelectDataView"
+    On Error Resume Next
     Set swSelData.View = swView
+
+    If Err.Number <> 0 Then
+        status.SelDataViewError = Err.Number
+        status.SelDataScope = "Unscoped(err=" & CStr(Err.Number) & ")"
+        Err.Clear
+    Else
+        status.SelDataScope = "ScopedToView"
+    End If
+
+    On Error GoTo Failed
 
     stage = "GetOutline"
     Dim viewOutline As Variant
@@ -119,7 +169,15 @@ Public Sub CreateHoleOrdinateDims( _
         Dim swCurve As SldWorks.Curve
         Set swCurve = swEdge.GetCurve
         If swCurve Is Nothing Then GoTo NextEdge
-        If Not swCurve.IsCircle Then GoTo NextEdge
+
+        ' "If Not <SOLIDWORKS COM Boolean>" is unsafe on this build. The
+        ' contract recorded in docs/SOLIDWORKS_API_VALIDATION.md (2026-07-31
+        ' third run) is that Not yields -2, which VBA treats as True, so this
+        ' test rejected every edge: r6 read 349 edges and found 0 circles on
+        ' a part with 12 holes. That table also records CBool(comCall) then
+        ' Not failing specifically for ICurve.IsCircle, so "= False" is the
+        ' safe form here, not a CBool round-trip.
+        If swCurve.IsCircle = False Then GoTo NextEdge
 
         status.CircularEdgesSeen = status.CircularEdgesSeen + 1
 
@@ -270,6 +328,15 @@ Public Function DescribeOrdinateStatus( _
         text = text & "Ordinate edge route: " & status.EdgeRoute & vbCrLf
     End If
 
+    If Len(status.LastActivateResult) > 0 Then
+        text = text & "Last ActivateView result: " & _
+            status.LastActivateResult & vbCrLf
+    End If
+
+    If Len(status.SelDataScope) > 0 Then
+        text = text & "Selection scope: " & status.SelDataScope & vbCrLf
+    End If
+
     text = text & "Ordinate chains created: " & status.ChainsCreated & _
         " of " & status.ChainsAttempted & " attempted" & vbCrLf
 
@@ -360,7 +427,8 @@ Public Sub InsertHoleCalloutsForView(ByRef swDraw As SldWorks.DrawingDoc, ByRef 
         Dim swCurve As SldWorks.Curve
         Set swCurve = swEdge.GetCurve
         If swCurve Is Nothing Then GoTo NextCallout
-        If Not swCurve.IsCircle Then GoTo NextCallout
+        ' Same SOLIDWORKS COM Boolean contract as CreateHoleOrdinateDims.
+        If swCurve.IsCircle = False Then GoTo NextCallout
 
         Dim cp As Variant
         cp = swCurve.CircleParams

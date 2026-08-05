@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-08-06 (47) - r7 live: ordinate engine works, 8 chains created
+
+First working ordinate run on the trunk. Four revisions of live diagnosis,
+each one blocked by a different defect underneath the previous one.
+
+| Rev | Result |
+|---|---|
+| r4 | 6 views threw. Staged capture named it: `err=91` at `CreateSelectData` |
+| r5 | Sub-staged. Narrowed to `SetSelectDataView`, both operands non-Nothing |
+| r6 | Component route + non-fatal fallback. 349 edges read, **0 circular** |
+| r7 | Boolean fix. 349 edges, **127 circular**, **8 chains created**, 33 dims, PASS |
+
+Three live API findings, recorded in `SOLIDWORKS_API_VALIDATION.md`:
+
+- `GetVisibleEntities2(Nothing, ...)` yields nothing on this build. Resolving
+  the component via `IView.GetVisibleComponents` yields 349 edges.
+- `Set ISelectData.View = <view>` raises error 91 with both operands proven
+  non-Nothing, after a successful `ActivateView`. Worked around by making it
+  non-fatal and relying on view activation for scoping. **Unresolved.**
+- `If Not <ICurve.IsCircle>` rejected all 349 edges. The Boolean contract
+  recorded on 2026-07-31 (`Not` yields -2, treated as True) silently disabled
+  the entire engine. One line changed to `= False` and chain creation began.
+  Treat any `If Not <comBooleanCall>` in this codebase as a defect.
+
+`SetPickMode` is finally exercised: 8 chains built in succession without the
+append cascade the Phase 1 fix was written to prevent.
+
+### Confirmed live, not yet fixed
+
+- **The isometric view received ordinate chains.** `IsIsoView` matches on the
+  name containing "ISO", but SOLIDWORKS auto-names these views
+  `Drawing View1`..`View5`. Gap A6 in the gap doc, now proven rather than
+  predicted. The API-backed replacement (`IView.Type` +
+  `GetOrientationName`) is the fix.
+- Ordinates are applied to every view; the reference uses them on the front
+  view only (gap A5).
+- Chain values do not match the reference. Datum resolution and the
+  candidate set are both still wrong (gaps A2, A3, A4).
+- 4 of 12 chains failed with `swCreateOrdDimErr_OrdFailure`, last in
+  `Section View J-J`. Not diagnosed.
+- Mass reads 1296.82 against the reference's 1.30 (grams, not kg).
+- General notes duplicated over the title block.
+
 ## 2026-08-05 (46) - trunk moved to baseline, hybrid-v2 archived, Phase 1 landed
 
 User decision: `src/baseline-model-dims/` becomes the trunk;

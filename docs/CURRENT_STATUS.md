@@ -2,7 +2,44 @@
 
 Date: 2026-08-05
 
-## Trunk moved to baseline; Phase 1 landed, unrun
+## r7 live: ordinate engine works; output not yet close to the reference
+
+`MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r7`, deployed, compiled
+`verdict=Clean`, run against P-0251 with ordinate mode selected.
+
+```
+Total drawing view dimensions: 33
+Ordinate edges seen: 349 (circular: 127)
+Ordinate edge route: ViaComponent
+Selection scope: Unscoped(err=91)
+Ordinate chains created: 8 of 12 attempted
+WARNING: 4 ordinate chain(s) failed. Last code=1 (swCreateOrdDimErr_OrdFailure)
+PASS: Drawing contains dimensions.
+```
+
+`SetPickMode` is exercised and holds across 8 successive chains.
+
+### Next, in order
+
+1. **Replace `IsIsoView`.** The isometric view is receiving ordinate chains
+   because the name test looks for "ISO" and the views are auto-named
+   `Drawing View1`..`View5`. Use `IView.Type` + `IView.GetOrientationName`;
+   probe what they actually return first.
+2. **Per-view dimension-style policy** (gap A5) - the reference ordinates the
+   front view only.
+3. **Per-axis datum contract** (gaps A2-A4) - X on the centreline, Y on the
+   bottom edge, neither of them a hole, and silhouette edges as candidates.
+4. Diagnose `swCreateOrdDimErr_OrdFailure` on the remaining 4 chains.
+5. `ISelectData.View` error 91 - worked around, not solved.
+
+### Cheap, waiting on a decision
+
+- Mass reads 1296.82 vs the reference's 1.30 (grams). One line, once it is
+  confirmed that the source property is always grams.
+- General notes duplicated over the title block. `DrawingContainsText` walks
+  per-view notes only and cannot see the template's sheet-format notes.
+
+## Historical: trunk moved to baseline; Phase 1 landed, unrun
 
 `MACRO_SOURCE_REVISION` is `trunk-2026-08-05-r2` in
 `src/baseline-model-dims/Module1_Main.bas`. **Not deployed. Not compiled in

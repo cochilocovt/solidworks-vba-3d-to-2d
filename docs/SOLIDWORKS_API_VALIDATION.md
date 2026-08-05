@@ -13,6 +13,69 @@ The MCP corpus identifies itself as **SOLIDWORKS 2026**, while this project targ
 
 No VBA source file was edited, renamed, moved, or deleted during this analysis. The protected baseline remains unchanged.
 
+## Three live findings from the first trunk ordinate runs (2026-08-06, r4-r7)
+
+All three are **live evidence** on installed SOLIDWORKS 2025 SP1.2, obtained
+by staged instrumentation in `CreateHoleOrdinateDims` across revisions r4-r7.
+Together they took the ordinate engine from "throws on every view" to 8 chains
+created.
+
+### `IView.GetVisibleEntities2(Nothing, ...)` returns nothing usable
+
+The baseline passed `Nothing` as `LpViewComponent`. MCP types that parameter
+as `Component2`. Resolving the view's component through
+`IView.GetVisibleComponents` and passing it produced **349 edges** where the
+`Nothing` route produced none.
+
+r7 reports `Ordinate edge route: ViaComponent`, so the component route is the
+one actually answering. The `Nothing` fallback is retained but has never
+succeeded on this build.
+
+### `ISelectData.View` assignment raises error 91 with both operands valid
+
+`Set swSelData.View = swView` raises runtime error 91 ("Object variable or
+With block variable not set") even though:
+
+- `swSelData` passed an explicit `Is Nothing` check immediately before;
+- `swView` passed an explicit `Is Nothing` check immediately before, and
+  `swView.Name` renders correctly in the error handler;
+- `IDrawingDoc.ActivateView(swView.Name)` returned `True` first;
+- `ModelDoc2.ClearSelection2 True` preceded the activation, matching the
+  ordering in `src/active-ordinate/Module5_FallbackDimensionEngine.bas`,
+  which carries an explicit comment that this ordering was the fix.
+
+MCP documents the member as `View View {get; set;}` on `ISelectData`, so the
+property exists and is settable. The failure is raised by SOLIDWORKS, not by
+VBA binding.
+
+**Worked around, not solved.** r6 made the assignment non-fatal: the view is
+already activated, so an unscoped `SelectData` still selects into it. r7
+created 8 ordinate chains with `Selection scope: Unscoped(err=91)`. Scoping
+remains a correctness guard that is currently absent — **unresolved**, and a
+candidate cause for any cross-view selection defect.
+
+### `If Not <ICurve.IsCircle>` rejects every edge — confirmed in the trunk
+
+The Boolean contract recorded under "2026-07-31 third run" is not historical
+trivia; it silently disabled the whole ordinate engine.
+
+r6: `Ordinate edges seen: 349 (circular: 0)` on a part with 12 holes.
+The test was `If Not swCurve.IsCircle Then GoTo NextEdge`.
+
+r7, after changing that single line to `If swCurve.IsCircle = False Then`:
+`Ordinate edges seen: 349 (circular: 127)`, and chain creation began working.
+
+This is direct live confirmation of the table in that earlier section: `Not`
+on a SOLIDWORKS COM Boolean yields `-2`, which VBA treats as True. Nothing
+errors; the branch simply always taken. **Treat any `If Not <comBooleanCall>`
+in this codebase as a defect.** `Is Nothing` comparisons and genuine VBA
+Boolean functions are unaffected.
+
+### Still open after r7
+
+`swCreateOrdDimErr_OrdFailure` (code 1) on 4 of 12 attempted chains, last seen
+in `Section View J-J`. Not yet diagnosed.
+
 ## Two baseline defects located by contract reading (2026-08-05, planning)
 
 Both were found by reading MCP contracts against `src/baseline-model-dims/`
