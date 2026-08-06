@@ -2,6 +2,66 @@
 
 Date: 2026-08-06
 
+## 2026-08-06: Operator run with Top/Bottom/Left/Back enabled - partial side-view match, wrong view bucket
+
+Operator-driven run, `macro_qa/20260806_170652_P-0251-14A-001`, no redeploy -
+same `trunk-2026-08-06-r24` binary, confirmed by unchanged section signature
+(`HLR forced (was 1)`, stepped 3-segment cut, identical readback). The
+operator ticked more of the existing view checkboxes in the form; no source
+was edited this turn.
+
+```
+Front:  13 dims, 0 dangling - 10,50,90,160 / 15,36,15,36 / 30,36,1,1,45
+Top:     0 dims
+Bottom:  6 dims, 0 dangling - 5.00, 5.00, 4.20, 6.00, 80.00, 25.00
+Right:   0 dims
+Left:    1 dim,  0 dangling - 72.00
+Back:    0 dims
+Section: unchanged from r24's first run - 13 dims, stepped cut intact
+```
+
+Imported model items 19 -> 25, total dimensions 27 -> 33. 0 dangling
+everywhere.
+
+### Reference cross-check: real overlap, wrong view
+
+The reference's side elevation carries `173.6, 104.8, 80, 25, 11.5, 6`, plus
+callouts `4x Ø4.2 T12.4 / M5x0.8-6H T10` and `6x Ø6.6 THRU / T Ø11 T6`.
+`80.00` and `25.00` now appear verbatim, alongside `4.20` and `6.00` - but on
+**Bottom**, not **Left**. This macro's Top/Bottom/Left/Right naming is
+SOLIDWORKS's standard projection relative to the Front view; it is not
+guaranteed to land the same physical face in the same named bucket as the
+reference sheet's own layout. The overlap is real evidence the geometry is
+reachable; the bucket it lands in is not yet controlled.
+
+Still absent from every view: `173.6`, `104.8`, `11.5`, and both hole
+callouts in full (`4x Ø4.2...`, `6x Ø6.6 THRU...` with their leader
+formatting - `Module4_ModelItemImporter` imports plain dimensions, not
+callout-style annotations).
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment | none this turn - same r24 binary as prior entry |
+| Live macro execution | ran, `PASS`, operator-driven |
+| Front/section regression check | unaffected, values unchanged from r24's first run |
+| Side-face dimensions reachable | confirmed - `80.00`/`25.00`/`4.20`/`6.00` present |
+| Side-face dimensions in the reference's expected view bucket | **not achieved** - landed on Bottom |
+| Full side-face coverage (`173.6`, `104.8`, `11.5`) | **not achieved** |
+| Hole callout formatting (`4x Ø.../ THRU` style) | **not achieved** - importer produces plain dimensions |
+| Right view, Top view | still 0 dimensions each |
+| Section portrait orientation / GENERAL NOTES overlap / mass units / duplicate notes | unaddressed, unchanged |
+
+## 2026-08-06: No material status change
+
+Read-only turn. The user is rerunning the macro manually with a side view
+enabled; Claude did not deploy, run, or edit source this turn - only pointed
+out that the reference's left view carries `80, 25, 6` and that `CreateLeft`
+and `CreateRight` are distinct flags in `Module1_Main.GlobalConfig`, both
+False in `ResetGlobalConfig`. No new evidence, no gate changes. Awaiting the
+user's QA report or screenshot from their run.
+
 ## r24 live: stepped section cut succeeds, coordinate frame confirmed
 
 Run `macro_qa/20260806_165529_P-0251-14A-001`. Deploy `VERIFY: PASS`, embedded
