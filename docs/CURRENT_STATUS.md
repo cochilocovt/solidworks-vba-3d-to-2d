@@ -2,6 +2,84 @@
 
 Date: 2026-08-06
 
+## r23 live: best run to date - both chains match, retry gone, guard unproven
+
+Run `macro_qa/20260806_151955_P-0251-14A-001`. Deploy `VERIFY: PASS`, embedded
+`trunk-2026-08-06-r23`, 13/13 managed components matching source. 27
+dimensions, `PASS`.
+
+```
+X: 5 stations (holes=4, edges=1), datum Edge:offsetFromTarget=160.00mm
+   10.00, 50.00, 90.00, 160.00
+Y: 5 stations (holes=3, edges=2), datum Hole:offsetFromTarget=0.00mm
+   15.00, 36.00, 15.00, 36.00
+Ordinate display dimensions actually created: 8
+Ordinate edges seen: 39 (circular: 22, of which arcs: 4, linear: 17)
+readback: 16 dims, 0 dangling
+```
+
+Both ordinate chains match the reference. The creation counter is exact:
+X 5 stations minus datum = 4, Y 5 minus datum = 4, total 8.
+
+### The holes-only retry is gone
+
+r20 produced the same chains but needed `RETRY holes-only after code 1: code 0`
+on the Y axis. r23 creates both chains on the first attempt. Combined with r22,
+this settles it: **running ordinates before model import removes the failure,
+and the imported dimensions were the cause.** The retry path stays in the code
+as a fallback but no longer fires on this fixture.
+
+### Front view is less crowded
+
+16 dimensions against r22's 22, and the `14.10` / `94.10` mismatched values are
+absent. Consistent with those being an HLV artifact - not independently proven,
+since the only change that could produce them is also the display mode.
+
+### The display-mode guard did not fire
+
+r23 added `ForceHlrForHarvest` in `Module2_DrawingPipeline`: read
+`GetDisplayMode2`, force `swHIDDEN` (2) if the view is in any other mode,
+`UpdateViewDisplayGeometry`, harvest, restore. Reported as
+`Harvest display mode:` in the QA report.
+
+This run reported `HLR (already)` - the operator ticked HLR, so the forcing
+path never executed. **The guard is unproven.** Proving it needs one run with
+HLR unticked: a working guard yields `HLR forced (was 1)`, 39 edges, and the
+160 mm datum despite the checkbox.
+
+### Why the guard exists
+
+`UserForm1.frm:265` reads `chkHLR.Value = ReadBoolSetting("UseHLR", False)` and
+`SaveSetting` persists the operator's last answer. r17 made HLR the default only
+in `ResetGlobalConfig`, which is the no-form fallback, so every form run
+defaulted to HLV. Under HLV the engine degrades two ways: hidden-line edges
+that select and then dangle (r17), and a candidate pool of 64 edges instead of
+39 that hands `ResolveOneDatum` a nearer straight edge, putting the X datum
+43 mm inside the part (r22). A geometry precondition should not be reachable
+from a checkbox.
+
+### A wasted run, recorded
+
+The first r23 attempt invoked `Run-R23Production.ps1 -AllowMutation` without
+`-Deploy`, which is opt-in. r22 executed again and returned byte-identical
+output. Pre-flight `verdict=Clean` in that run compiled the deployed r22 and
+said nothing about the r23 edits. Evidence dir `macro_qa/20260806_151854` is a
+duplicate of r22, not an r23 result.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment + readback | `VERIFY: PASS`, embedded `trunk-2026-08-06-r23` |
+| VBA compile | pre-flight `verdict=Clean` against r23 |
+| Live macro execution | ran, `PASS` |
+| Creation readback | 8 created, matches station arithmetic |
+| Both chains vs reference | match |
+| Display-mode forcing path | **unproven** - needs a run with HLR unticked |
+| Cause of the 2.1 mm value mismatch | **not proven**, only absent under HLR |
+| Dimension collision / placement (gap A7) | **not addressed** |
+| Section cut misses every hole | **not addressed** |
+
 ## r22 live: reorder fixes the Y chain; run was HLV so X is not comparable
 
 Run `macro_qa/20260806_150931_P-0251-14A-001`. Deploy `VERIFY: PASS` at r22,

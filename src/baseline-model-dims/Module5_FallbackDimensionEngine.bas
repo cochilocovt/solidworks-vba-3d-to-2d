@@ -111,6 +111,7 @@ Public Type OrdinateRunStatus
     ViewScale As Double
     DanglingFound As Long
     DanglingPruned As Long
+    HarvestDisplayMode As String
     PruneSelectFailed As Long
     PruneDeleteFailed As Long
 End Type
@@ -1154,6 +1155,10 @@ Public Function DescribeOrdinateStatus( _
 
     If Len(status.SelDataScope) > 0 Then
         text = text & "Selection scope: " & status.SelDataScope & vbCrLf
+    End If
+
+    If Len(status.HarvestDisplayMode) > 0 Then
+        text = text & "Harvest display mode: " & status.HarvestDisplayMode & vbCrLf
     End If
 
     If status.ViewScale > 0 Then

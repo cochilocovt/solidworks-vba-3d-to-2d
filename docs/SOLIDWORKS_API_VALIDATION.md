@@ -2801,3 +2801,28 @@ My arithmetic before the run predicted a 0.5 mm chamfer could only account for
 half the discrepancy. It accounted for all of it - both the datum edge and the
 opposite extreme moved, and the cross-axis midpoint moved with them. Recorded
 because the reasoning was wrong and the run was right.
+
+## IView display-mode members (r23, MCP-checked 2026-08-06)
+
+Used by `Module2_DrawingPipeline.ForceHlrForHarvest` / `RestoreDisplayMode` to
+make HLR a precondition of the ordinate harvest rather than a form checkbox.
+
+| Member | Contract | Note |
+|---|---|---|
+| `IView.GetDisplayMode2()` | returns `Int32`, a `swDisplayMode_e` | not deprecated. `GetDisplayMode` (no suffix) is obsolete and its documented return value is literally "Unknown" - do not use it |
+| `IView.SetDisplayMode3(UseParent, Mode, Facetted, Edges)` | returns `Boolean`, True on success | marked obsolete, superseded by `SetDisplayMode4`. Still the member the trunk uses; migration not attempted |
+| `IView.UpdateViewDisplayGeometry()` | returns void | Remarks name this exact case: after switching HLR/HLV it gives immediate access to the new geometry without waiting for Windows to repaint |
+
+`SetDisplayMode3` argument choices in the trunk: `UseParent=False` so the view
+keeps its own local setting, `Facetted=False` to keep precision quality. Per the
+Remarks, faceted display is controlled by the `Facetted` argument, and passing
+any `swFACETED_*` value in `Mode` is silently downgraded to its non-faceted
+equivalent - which is how three wrong display-mode constants survived fifteen
+runs before r16.
+
+`swDisplayMode_e` values re-confirmed 2026-08-06: `swHIDDEN=2` is Hidden Lines
+Removed (HLR), `swHIDDEN_GREYED=1` is Hidden Lines Visible (HLV), `swSHADED=3`.
+
+**Not verified:** whether an ordinate created under HLR survives a restore to
+HLV still attached. r23 restores the operator's mode after the harvest and
+relies on the post-rebuild prune to report any dangling that results.

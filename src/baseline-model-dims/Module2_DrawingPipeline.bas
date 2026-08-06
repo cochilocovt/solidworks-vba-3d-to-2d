@@ -160,12 +160,85 @@ Private Sub AddFallbackOrdinateDimensions( _
         ' IView.Type and IView.GetOrientationName instead.
         If Module8_ViewClassifier.AllowsOrdinateDimensions( _
             Module8_ViewClassifier.ClassifyView(swView)) Then
+            ' HLR is a precondition of the ordinate engine, not a preference.
+            ' Harvest under HLR whatever the operator asked for, then restore.
+            Dim restoreMode As Long
+            restoreMode = ForceHlrForHarvest(swView, status)
+
             Module5_FallbackDimensionEngine.CreateHoleOrdinateDims swDraw, swView, Module1_Main.GlobalConfig.DatumOrigin, status
+
+            RestoreDisplayMode swView, restoreMode
         End If
         Set swView = swView.GetNextView
     Loop
 
 SafeExit:
+End Sub
+
+' Why the ordinate engine cannot run under HLV
+' ---------------------------------------------
+' GetVisibleEntities2 returns hidden-line edges under HLV, and those edges
+' select, return swCreateOrdDimErr_Success, and then dangle (r17). r22 showed
+' a second way it degrades: HLV raised the candidate pool from 39 edges to 64,
+' which handed ResolveOneDatum a nearer straight edge, so the X end datum
+' landed 43 mm inside the part instead of on the end face. Same run under HLR
+' (r20) produced the reference chain exactly.
+'
+' r17 made HLR the default in ResetGlobalConfig - but that is the no-form
+' fallback. UserForm1 defaults chkHLR to False and persists the operator's
+' last answer, so every form run silently reverted to HLV. Fixing the form
+' default would only move the dependency; a geometry precondition of the
+' engine should not be reachable from a checkbox at all.
+'
+' GetDisplayMode2 / SetDisplayMode3 / UpdateViewDisplayGeometry all MCP-checked
+' 2026-08-06. UpdateViewDisplayGeometry Remarks name this exact case: it gives
+' immediate access to the new geometry after an HLR/HLV switch, without waiting
+' for Windows to repaint.
+'
+' Returns the mode to restore, or -1 when no change was made.
+Private Function ForceHlrForHarvest( _
+    ByRef swView As SldWorks.View, _
+    ByRef status As Module5_FallbackDimensionEngine.OrdinateRunStatus) As Long
+
+    ForceHlrForHarvest = -1
+    On Error GoTo SafeExit
+
+    Dim currentMode As Long
+    currentMode = swView.GetDisplayMode2
+
+    If currentMode = swDisplayMode_HiddenLinesRemoved Then
+        status.HarvestDisplayMode = "HLR (already)"
+        Exit Function
+    End If
+
+    ' UseParent False so the view keeps its own local setting. Facetted False
+    ' keeps precision quality - a faceted view is the draft-quality tessellation
+    ' and is not what the engine measures against.
+    If swView.SetDisplayMode3(False, swDisplayMode_HiddenLinesRemoved, False, True) = False Then
+        status.HarvestDisplayMode = "HLR forced: REFUSED (was " & currentMode & ")"
+        Exit Function
+    End If
+
+    swView.UpdateViewDisplayGeometry
+
+    status.HarvestDisplayMode = "HLR forced (was " & currentMode & ")"
+    ForceHlrForHarvest = currentMode
+    Exit Function
+
+SafeExit:
+    status.HarvestDisplayMode = "HLR force errored: " & Err.Number & " " & Err.Description
+    Err.Clear
+End Function
+
+Private Sub RestoreDisplayMode( _
+    ByRef swView As SldWorks.View, _
+    ByVal restoreMode As Long)
+
+    On Error Resume Next
+    If restoreMode < 0 Then Exit Sub
+    swView.SetDisplayMode3 False, restoreMode, False, True
+    swView.UpdateViewDisplayGeometry
+    Err.Clear
 End Sub
 
 Private Sub CreateViews( _

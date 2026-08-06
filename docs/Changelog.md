@@ -1,5 +1,69 @@
 # Changelog
 
+## 2026-08-06 (56) - r22/r23: ordinates before import; HLR stops being a checkbox
+
+Two ordering and precondition fixes, and the first run where both chains match
+the reference without a retry.
+
+**r22 - ordinates before model import.** r21 was the first run with both
+producers active and the Y chain failed with `swCreateOrdDimErr_OrdFailure`,
+then returned success on the holes-only retry while creating nothing.
+Candidate collection was byte-identical to r20's success, so the geometry had
+not changed; the only difference was 19 imported dimensions already in the
+view, including a `72.00` spanning exactly the two +/-36 silhouette edges the
+Y chain needs. Whether a dimensioned entity can still anchor an ordinate is
+undocumented - neither `AddOrdinateDimension` nor `InsertModelAnnotations4`
+says (MCP, 2026-08-06). Running ordinates against a clean view removes the
+interaction, and import is additive with no such precondition.
+
+r22 also added a creation readback: `ReadDisplayDimensionCount` before and
+after each chain, reported as `Ordinate display dimensions actually created`.
+`AddOrdinateDimension` can return `swCreateOrdDimErr_Success` and create
+nothing, so the return code alone was never evidence.
+
+**r23 - HLR becomes an engine precondition.**
+`Module2_DrawingPipeline.ForceHlrForHarvest` / `RestoreDisplayMode` wrap the
+harvest: read `IView.GetDisplayMode2`, force `swHIDDEN` (2) when the view is in
+any other mode, call `IView.UpdateViewDisplayGeometry`, harvest, restore the
+operator's mode. All three members MCP-checked 2026-08-06;
+`UpdateViewDisplayGeometry` Remarks name the HLR/HLV switch case explicitly.
+New `OrdinateRunStatus.HarvestDisplayMode`, reported as `Harvest display mode:`.
+
+r17 had made HLR "the default", but only in `ResetGlobalConfig` - the no-form
+fallback. `UserForm1.frm:265` reads `chkHLR.Value = ReadBoolSetting("UseHLR",
+False)` and persists the last answer, so every form run reverted to HLV. r22's
+live run showed the second way HLV degrades the engine, beyond the dangling of
+r17: 64 candidate edges instead of 39 handed `ResolveOneDatum` a nearer
+straight edge, and the X datum landed 43 mm inside the part instead of on the
+end face.
+
+**Live result** `macro_qa/20260806_151955`, deploy `VERIFY: PASS` at
+`trunk-2026-08-06-r23`: X `10, 50, 90, 160`, Y `15, 36, 15, 36`, 8 dimensions
+created matching station arithmetic, 0 dangling, front view down to 16
+dimensions from 22. The holes-only retry that r20 needed no longer fires.
+
+Not proven: the forcing path never executed, because the operator had HLR
+ticked and it reported `HLR (already)`. Needs one run with HLR unticked.
+
+## 2026-08-06 (55) - Require CURRENT_STATUS update after every Claude turn
+
+Added a bounded Claude Code turn gate:
+
+- `UserPromptSubmit` records the SHA-256 baseline of
+  `docs/CURRENT_STATUS.md`, keyed by session.
+- `Stop` permits completion when the file changed. If it did not, the hook
+  blocks once and asks Claude to add a newest-first, evidence-honest entry.
+- A second unchanged Stop emits a warning and permits completion, preventing
+  an infinite Stop-hook loop.
+- Read-only/no-change turns are instructed to record `No material status
+  change`; the hook never fabricates or writes project status itself.
+
+Added five focused regression tests covering settings registration, changed
+and unchanged status, bounded retry, and a missing status file. All five pass,
+and `.claude/settings.json` parses successfully. This is a process-only change:
+no VBA source, macro revision, deployment, compile, execution, or visual
+acceptance changed.
+
 ## 2026-08-06 (54) - r20: both ordinate chains match the reference exactly
 
 | | trunk r20 | P-0251-14A-001 |
