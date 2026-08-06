@@ -2576,3 +2576,56 @@ failure mode this engine has produced repeatedly.
 `IModelDocExtension.DeleteSelection2(0)` both succeed on an ordinate group
 member, with pick mode reset and the owning view activated first. Deleting one
 member does not disturb the rest of the group.
+
+## 2026-08-06 r16 constant provenance gate, and three wrong display modes
+
+`tools/solidworks-automation-companion/tests/test_api_constant_provenance.py`
+now fails the suite when a `sw*` constant is compiled into the trunk without a
+provenance record in this document. Running it for the first time listed eight
+undocumented constants. Checking them found three wrong values.
+
+### swDisplayMode_e — three defects, none of which ever raised
+
+`IView.SetDisplayMode3` Remarks (MCP, 2026-08-06): *"To display a drawing view
+shaded with edges, set swDrawingsDefaultDisplayTypeHLREdgesWhenShaded to True
+and set Mode to swSHADED"*, and any `swFACETED_*` value passed in `Mode` *"are
+treated the same as swWIREFRAME, sw_HIDDEN_GREY, and sw_HIDDEN,
+respectively"*.
+
+| constant | was | is | enum member |
+|---|---|---|---|
+| `swDisplayMode_HiddenLinesRemoved` | 3 | **2** | 3 is `swSHADED`; HLR is `swHIDDEN` = 2 |
+| `swDisplayMode_HiddenLinesVisible` | 1 | 1 | `swHIDDEN_GREYED` = 1, described as "Hidden Lines Visible (HLV)" — correct |
+| `swDisplayMode_ShadedWithEdges` | 6 | **3** | 6 is `swFACETED_HIDDEN`, silently treated as HLR |
+
+Consequences on every run up to r15: `UseHLR = True` rendered views **shaded**
+rather than hidden-lines-removed, and the isometric view was rendered
+**hidden-lines-removed** rather than shaded with edges. Fifteen live runs, no
+error, no QA signal.
+
+Shaded-with-edges now uses `swSHADED` with the method's `Edges` argument, which
+`ConfigureView` already passes `True`. The user-preference route in the Remarks
+is deliberately not used: mutating an operator's installation setting to render
+one view is a side effect outside this macro's remit.
+
+**Unverified, follow-up:** `IView.SetDisplayMode3` is marked obsolete,
+superseded by `IView.SetDisplayMode4`. The trunk still calls the obsolete form.
+No signature comparison has been made.
+
+### The remaining five constants
+
+MCP evidence, 2026-08-06. Verify in the SW2025 Object Browser before
+acceptance.
+
+| constant | value | source enum |
+|---|---|---|
+| `swDrawingSheetType` | 1 | `swDrawingViewTypes_e.swDrawingSheet` |
+| `swDrawingSectionViewType` | 2 | `swDrawingViewTypes_e.swDrawingSectionView` |
+| `swDrawingDetailViewType` | 3 | `swDrawingViewTypes_e.swDrawingDetailView` |
+| `swDrawingProjectedViewType` | 4 | `swDrawingViewTypes_e.swDrawingProjectedView` |
+| `swDefaultTemplateDrawing` | 10 | `swUserPreferenceStringValue_e`, consumed by `ISldWorks.GetUserPreferenceStringValue` — **value not re-queried; inherited from the baseline snapshot and never checked** |
+
+`swDefaultTemplateDrawing` is the one entry here that is still an inherited
+guess. It only affects the fallback path when the controlled VEEMAP template is
+missing, so a wrong value degrades to "no template found" rather than a silently
+wrong drawing — but it has not been verified.

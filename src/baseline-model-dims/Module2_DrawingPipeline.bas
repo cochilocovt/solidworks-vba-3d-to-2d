@@ -7,9 +7,25 @@ Option Explicit
 #End If
 
 Private Const swCreateSectionView_NotAligned As Long = 1
-Private Const swDisplayMode_HiddenLinesRemoved As Long = 3
+
+' swDisplayMode_e, MCP-confirmed 2026-08-06. All three were wrong before r16
+' and none of them raised: a wrong display mode renders a plausible view.
+'
+'   was 3 for HLR   -> 3 is swSHADED. HLR is swHIDDEN = 2.
+'   was 1 for HLV   -> correct; swHIDDEN_GREYED = 1 is "Hidden Lines Visible".
+'   was 6 for shaded-with-edges -> 6 is swFACETED_HIDDEN, and
+'       IView.SetDisplayMode3 Remarks state that any swFACETED_* passed in
+'       Mode is silently treated as its non-faceted equivalent. The isometric
+'       view was therefore rendered hidden-lines-removed, not shaded.
+'
+' Shaded-with-edges is swSHADED plus the method's own Edges argument, which
+' ConfigureView already passes as True. The Remarks also offer the
+' swDrawingsDefaultDisplayTypeHLREdgesWhenShaded user preference; that route
+' is not used here because mutating a user preference to render one view is a
+' side effect on the operator's installation.
+Private Const swDisplayMode_HiddenLinesRemoved As Long = 2
 Private Const swDisplayMode_HiddenLinesVisible As Long = 1
-Private Const swDisplayMode_ShadedWithEdges As Long = 6
+Private Const swDisplayMode_ShadedWithEdges As Long = 3
 
 Public Sub CreateDrawing( _
     ByRef swApp As SldWorks.SldWorks, _

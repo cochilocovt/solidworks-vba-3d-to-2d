@@ -33,6 +33,29 @@ label.
   accumulated API-contract evidence
 - [skills/solidworks-api-lookup/SKILL.md](skills/solidworks-api-lookup/SKILL.md)
   — mandatory before touching any `sw*` constant or API call
+- [docs/CODESTACK_DRAWING_API_COVERAGE.md](docs/CODESTACK_DRAWING_API_COVERAGE.md)
+  — check the 33-row ledger for a tested pattern **before** designing one.
+  It also states plainly where the corpus has nothing, which is just as
+  useful. Rows 13, 17 and 31 cover `GetVisibleEntities2`, view-scoped
+  `ISelectData`, and `IEntity.Select4`.
+
+### These two are enforced, not requested
+
+Instruction text here did not hold: on 2026-08-06 three `swDisplayMode_e`
+constants sat in the trunk with values from other enum members and survived
+fifteen live runs, because a wrong display mode renders a plausible view
+instead of raising. Two gates now fire without depending on anyone's memory.
+
+- `.claude/hooks/require_api_lookup.py` (PreToolUse) **blocks** an edit to a
+  managed `.bas`/`.cls` that introduces a `sw[A-Z]…` token when no
+  solidworks-api MCP lookup has been recorded in the last 30 minutes. Edits
+  with no such token pass untouched.
+- `tests/test_api_constant_provenance.py` **fails the suite** when a `sw*`
+  constant is compiled into the trunk without a provenance record in
+  `docs/SOLIDWORKS_API_VALIDATION.md`. It runs before every deployment.
+
+Neither proves a value is right — only the installed SW2025 type library does
+that. They make skipping the check impossible to do silently.
 
 ## Update after every iteration
 
