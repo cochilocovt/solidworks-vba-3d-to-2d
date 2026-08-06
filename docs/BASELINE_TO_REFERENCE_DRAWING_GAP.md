@@ -2,19 +2,38 @@
 
 Planning session, 2026-08-05. No source file was edited.
 
-> **Live status 2026-08-06 (r20).** Phases 1 and 2 are complete and Phase 3
-> item 9 is complete. Gaps **A1-A6, A8, A10, B1, B2** are closed; **A7, A9**
-> and the whole of section 7 remain open. Both ordinate chains now match the
-> reference structurally:
+> **Live status 2026-08-06 (r24).** Phases 1 and 2 are complete; Phase 3 item
+> 9 is complete. Gaps **A1-A6, A8, A10, B1, B2, C1, C2** are closed; **A7,
+> A9, C3, C4 (partial), C5, C6, C7, D1-D6** and the whole of section 7 remain
+> open, plus new item **C8** below. Both ordinate chains match the reference
+> exactly and have since r20:
 >
-> | | trunk r19 | reference |
+> | | trunk (r20-r24) | reference |
 > |---|---|---|
 > | Long axis | 160, 90, 50, 10, 0 | 160, 90, 50, 10, 0 |
 > | Cross axis | 36, 15, 0, 15, 36 | 36, 15, 0, 15, 36 |
 >
-> **Exact match at r20**, once the outer-edge drawing convention was
-> applied. The ordinate engine is done against this fixture; what remains
-> is everything that is not an ordinate, chiefly section 7.
+> The ordinate engine is done against this fixture. Two things closed since
+> r20, both live-only findings with no static equivalent:
+>
+> - **HLR became an engine precondition, not a checkbox (r23).** r17's
+>   `ResetGlobalConfig` default was never reached by an operator running the
+>   form — `UserForm1.frm:265` seeds from a saved registry setting, and the
+>   form always wins. `Module2_DrawingPipeline.ForceHlrForHarvest` /
+>   `RestoreDisplayMode` now force `swHIDDEN` for the ordinate harvest
+>   regardless of the operator's setting, and restore it after. Proven live
+>   both ways: `HLR (already)` when ticked, `HLR forced (was 1)` when not,
+>   byte-identical ordinate output either way.
+> - **The stepped section cut (C1, C2) is closed, r24.** `PlanSteppedCut`
+>   derives the cut path from the model's hole geometry instead of the
+>   bounding-box midpoint, and the coordinate-frame question C2 raised is
+>   answered: `ISketchLine.GetStartPoint2` readback matches the requested
+>   model-mm coordinates with no view-scale factor applied. Full detail in
+>   `SOLIDWORKS_API_VALIDATION.md`.
+>
+> What remains is everything that is not an ordinate or the section cut's
+> geometry: hole callouts, the H7 tolerance, title block content, and which
+> views get created at all (**C8**, new).
 >
 > The per-gap table below carries individual status. Live API contracts are in
 > `SOLIDWORKS_API_VALIDATION.md`; current open work is in `CURRENT_STATUS.md`.
@@ -151,10 +170,11 @@ refuse to trust them; they pass. No numeric correction is needed there.
 | A4 | ~~Only circular edges are candidates~~ **CLOSED r10** | straight model edges admitted as stations; the cross chain now reaches `36` | X chain dimensions the `±36` silhouette edges |
 | A5 | ~~Ordinates applied to every non-ISO view~~ **CLOSED r8** | now `Module8_ViewClassifier.AllowsOrdinateDimensions`, front-only | ordinates on the front view **only**; section and left views use conventional dims |
 | A6 | ~~View classification by name string~~ **CLOSED r8** | `IsIsoView` deleted; `Module8_ViewClassifier.ClassifyView` uses `IView.Type` + `IView.GetOrientationName` | see §6, now resolved with live evidence |
-| A7 | Fixed 15 mm placement offset, no bounds check | unchanged | chains sit clear of the view, inside the frame, clear of the title block. **Still open** — the section view has run off the sheet in several runs |
+| A7 | Fixed 15 mm placement offset, no bounds check | unchanged through r24 | chains sit clear of the view, inside the frame, clear of the title block. **Still open** — the section view ran off the sheet as late as r23 (fixed by C1/C2, not A7: that fix changed the section's own placement formula, not general collision logic). Front-view dimension count fell 22 to 14 across r22-r24, which reduces how often A7 bites without closing it |
 | A8 | ~~2-D proximity test used to dedupe a 1-D chain~~ **CLOSED r10** | dedup is per axis and 1-D, in `AddAxisCandidate` | a horizontal chain cares only about X; a Y difference must not keep two points that share an X |
-| A9 | 1.5 mm tolerance is an unjustified magic number | `COORD_DEDUP_TOL_M`. **Still open**, but no longer scale-dependent: r13 normalises coordinates by `IView.ScaleDecimal`, which fixed the macro emitting different dimensions at different scales | derive from model/drawing resolution |
+| A9 | 1.5 mm tolerance is an unjustified magic number | `COORD_DEDUP_TOL_M`. **Still open**, unchanged through r24, but no longer scale-dependent: r13 normalises coordinates by `IView.ScaleDecimal`, which fixed the macro emitting different dimensions at different scales | derive from model/drawing resolution |
 | A10 | ~~Chain failures only reach `Debug.Print`~~ **CLOSED r7-r15** | `OrdinateRunStatus` threaded to QA; plus a post-rebuild `IAnnotation.IsDangling` readback that reports what was actually created, not what was intended | QA must see them (§7) |
+| A11 | ~~HLV silently degrades the ordinate engine~~ **CLOSED r23** | `ForceHlrForHarvest` reads `IView.GetDisplayMode2`, forces `swHIDDEN` before the harvest, `RestoreDisplayMode` after. `OrdinateRunStatus.HarvestDisplayMode` reports which path ran. Proven live both ticked and unticked (`macro_qa/20260806_151955`, `.../20260806_152553`) | HLV was never a valid harvest state — under it, hidden-line edges select and dangle (r17), or a wider candidate pool misroutes the end datum 43 mm inside the part (r22). r17's `ResetGlobalConfig` default never reached the operator; the form always wins |
 
 **A8 is a real correctness bug independent of the reference drawing.**
 `CreateOneOrdinateChain` dedupes correctly on the single coordinate array
@@ -185,24 +205,25 @@ conclusion.
 
 | # | Gap | Evidence |
 |---|---|---|
-| C1 | Section line placed at the model bbox mid-plane | `midX = (bbox(0)+bbox(3))/2`, `B:225` — coincides with the reference's J–J by luck, not intent; the reference cut is placed to pass through the hole columns |
-| C2 | Section sketch created in raw model coordinates | `B:239-241` uses `bbox` values directly with `SketchManager.CreateLine`. CodeStack pages 9 and 30 both say the model→view (or model→view→sheet) transform must be composed. **Verify which context `CreateSectionViewAt5` expects.** |
-| C3 | Only one section is ever created | `GetPrimarySectionSettings` reads `GlobalSections(1)` only, `B:273-275` — the form promises more |
-| C4 | View placement is fixed sheet fractions | `sheetW*0.42`, `partH*scaleVal*0.75`, `B:137-167` — no collision logic, no title-block exclusion |
-| C5 | `ConfigureView` is `On Error Resume Next` with every return ignored | `B:201-207` |
-| C6 | No `IView.ProjectedDimensions` policy | CodeStack page 29 — affects whether section dims read true or projected |
-| C7 | Section arrow direction unmanaged | reference J–J arrows point left; nothing in the pipeline controls this |
+| C1 | ~~Section line placed at the model bbox mid-plane~~ **CLOSED r24** | `PlanSteppedCut` (`Module2_DrawingPipeline.bas`) reads `Module3_ModelAudit.GetAllHoleLikeFeatures`, takes the widest hole-like feature as the bore and the across-axis coordinate shared by the most non-bore holes as the row, and cuts a 3-segment stepped line (bore leg, jog, row leg) through both. Intent, not luck. Live: `macro_qa/20260806_165529`, `Section cut: stepped, 3 segments` |
+| C2 | ~~Section sketch created in raw model coordinates~~ **CLOSED r24** | Verified rather than assumed: `AddCutSegment` reads each segment's endpoints back via `ISketchLine.GetStartPoint2` after creation. Requested bore leg at Y=0, row leg at Y=15mm, jog at X=-27mm; readback `-127.4,0`, `-27,0`, `-27,15` — matches exactly, no 0.6667 view-scale factor applied anywhere. Drawing-view sketch geometry is stored at model scale; the view's own scale is a display-time transform only. Closes the CodeStack pages 9/30 question for SW2025 |
+| C3 | Only one section is ever created | unchanged through r24 | `GetPrimarySectionSettings` reads `GlobalSections(1)` only, `B:273-275` — the form promises more |
+| C4 | View placement is fixed sheet fractions | **partially addressed, r24**: the section view's own sheet placement was fixed — was `frontPos(0) + 0.18`, a blind 180mm offset that ran the section past the sheet border on r23; now `halfFront + halfSection + 15mm gutter`, derived from the part bounding box and sheet scale, confirmed by screenshot to sit inside the border. Every other view (front, top, bottom, left, right, back, iso) is still placed by fixed sheet fractions, `sheetW*0.42` etc., `B:137-167` — no collision logic, no title-block exclusion. **Still open** for everything but the section |
+| C5 | `ConfigureView` is `On Error Resume Next` with every return ignored | unchanged through r24, `B:201-207` |
+| C6 | No `IView.ProjectedDimensions` policy | unchanged through r24. CodeStack page 29 — affects whether section dims read true or projected |
+| C7 | Section arrow direction unmanaged | unchanged through r24. reference J–J arrows point left; nothing in the pipeline controls this |
+| C8 | View set doesn't match the reference's, and the standard-view naming doesn't match the reference's layout | **new, found in review 2026-08-06**. The reference has exactly four views: Left, Section J-J, Front, Isometric. The operator's r24 run enabled Front/Top/Bottom/Right/Left/Back/Isometric/Section — eight. Worse, the reference's side-elevation dimensions (`80`, `25`, `4.20`, `6.00`) landed on the view SOLIDWORKS calls **Bottom** in that run, not **Left** — SW's Top/Bottom/Left/Right naming is a standard projection relative to Front, not a guarantee that the same physical face lands in the same named bucket the reference sheet uses. Evidence: `macro_qa/20260806_170652`. Fix is two-part: determine which SW standard view is geometrically the reference's Left face, and stop creating views the reference doesn't have |
 
 ## 5. Title block and annotations — `Module7_TitleBlockEngine`
 
 | # | Gap | Evidence |
 |---|---|---|
-| D1 | Seven title-block fields are never written | reference has UNIT, PART NAME, DRA/DGN/CHD/APPD, HEAT TREATMENT, SURFACE TREATMENT, REVISION, SCALE; `B:17-25` writes Description, PartNo, Material, CustomerCode, Project, Qty, Mass, DrawnDate |
-| D2 | Mass is copied from a property, not computed | `B:23`. Reference shows `1.30`. CodeStack page 15 gives the mass-properties route |
-| D3 | Notes text and placement do not match | `B:87-98` emits a `GENERAL NOTES` heading with numbered lines at hardcoded `(0.22, 0.03)`; reference has three unnumbered lines, no heading, above the title block |
-| D4 | Barcode is plain text | `B:119` — reference uses a barcode typeface; needs `ITextFormat` font assignment |
-| D5 | No read-back verification | `WriteDrawingProperty` `B:69-74` is `On Error Resume Next` with both return values ignored |
-| D6 | Property→title-block linkage unverified | whether the sheet format's fields reference `$PRP:"…"` is template-dependent and has never been checked |
+| D1 | Seven title-block fields, written by code or not? | **Downgraded from "never written" on re-check, 2026-08-06.** Recent screenshots (r22-r24) show UNIT, PART NAME, DRA/DGN/CHD/APPD, HEAT TREATMENT, SURFACE TREATMENT, REVISION, SCALE all populated, matching the reference. `Module7_TitleBlockEngine` (`B:17-25`) still only *writes* Description, PartNo, Material, CustomerCode, Project, Qty, Mass, DrawnDate — so either the rest are template/part custom properties already set before the macro runs, or the sheet format resolves them independently. **Not verified which** — see D6, never actually checked. Do not credit the code for these fields without checking first |
+| D2 | Mass is copied from a property, not computed | unchanged through r24, `B:23`. Reference shows `1.30`; live output shows `1296.82`. Open decision, deferred by the user at r7 (units mismatch, most likely g-vs-kg on the source property) — not defaulted. CodeStack page 15 gives the mass-properties route if a computed value is wanted instead |
+| D3 | Notes text and placement do not match | unchanged through r24, confirmed present in every screenshot this session. `B:87-98` emits a `GENERAL NOTES` heading with numbered lines at hardcoded `(0.22, 0.03)`, **in addition to** the title-block info box's own three-line note text — the reference has only the latter, no heading, no second block. Open decision, deferred by the user at r7 — not defaulted |
+| D4 | Barcode is plain text | unchanged through r24, confirmed in every screenshot (plain bold `*P-0251-14A-001*`, not barcode-typeface). `B:119` — reference uses a barcode typeface; needs `ITextFormat` font assignment |
+| D5 | No read-back verification | unchanged through r24. `WriteDrawingProperty` `B:69-74` is `On Error Resume Next` with both return values ignored |
+| D6 | Property→title-block linkage unverified | unchanged through r24 — still never checked. This is now the open question D1 depends on: whether the sheet format's fields reference `$PRP:"…"` is template-dependent |
 
 ## 6. View classification — RESOLVED r8 (2026-08-06)
 
@@ -256,6 +277,20 @@ That is the real completeness gap, and it is exactly what the Tier C
 `R23_SCOPE_AND_GENERALIZATION_PLANNING.md`) was reaching for. It cannot be
 closed by patching Module 4 or Module 5.
 
+**Found in review, 2026-08-06, not yet investigated**: a third producer may
+already exist. `Module5_FallbackDimensionEngine.InsertHoleCalloutsForView`
+has zero callers anywhere in the trunk — it is written but never invoked.
+Check what it actually does before writing a new hole-callout producer from
+scratch; it may already be most of the answer to the `6x Ø6.6` / `4x Ø4.2`
+gap above.
+
+By r24, the ordinate chains and the section's stepped-cut geometry are the
+two pieces of this document that are actually solid. Everything else
+listed here — hole callouts, the H7 tolerance, five of six title-block
+gaps, and now C8's view-set mismatch — is exactly as open as when this
+document was written on 2026-08-05, or newly found. The live-run discipline
+that closed A1-A11 and C1-C2 has not yet been pointed at any of it.
+
 ## 8. Recommended sequence
 
 Rationale for the ordering: phases 1 and 2 are contract-verified or
@@ -288,28 +323,46 @@ ones expected to change observable behaviour.
    drawing.
 9. **Per-axis datum contract** (A2, A3, A4). X and Y resolved separately,
    against edges and centrelines as well as holes.
-10. Sheet-aware placement (A7), tolerance derivation (A8, A9).
+10. Sheet-aware placement (A7), tolerance derivation (A9). (A8 closed r10;
+    stale reference to it here removed 2026-08-06.)
 
-### Phase 4 — Tier C
+### Phase 4 — Tier C — **not started, 2026-08-06 re-check**
 
-11. Feature-tree-derived requirements (§7).
-12. Structured placement report as the acceptance artefact (§4a item 6).
-13. Fixture-allowlist replacement (§4a item 2).
+11. Feature-tree-derived requirements (§7). Not started. Every heuristic
+    added r10-r24 (bore-as-widest-hole, row-as-shared-Y, per-axis datum
+    rules) is tuned against this one fixture, not derived from the feature
+    tree.
+12. Structured placement report as the acceptance artefact (§4a item 6). Not
+    started. Every "matches reference" judgement through r24, including the
+    ones in this document, is a human visual read of a screenshot.
+13. Fixture-allowlist replacement (§4a item 2). Not started; not designed.
+    Still the only runtime safety guarantee against an unauthorized part.
+
+Also not done: a live run against either of the other two authorized
+fixtures (`P-0252-01-001`, `P-0252-01-013`). Every run referenced in this
+document through r24 is `P-0251-14A-001` only — there is no evidence yet
+that any of Phase 1-3's work generalizes even to Tier B.
 
 ## 9. Open questions for the user
 
-1. **Which snapshot is the trunk?** Three partial implementations now exist:
-   `baseline-model-dims` (cleanest control flow, correct import mask, missing
-   `SetPickMode`), `active-ordinate` (defensive scaffolding, *has*
-   `SetPickMode`), and `target-spec-hybrid-v2` (fixture-hardcoded literals
-   like the 173.6 requirement). Recommendation: **baseline as trunk**, port
-   the defensive scaffolding from active, drop the hardcoded spec from
-   hybrid-v2. Not yet decided.
-2. **Is front-view-only ordinates a rule or an instance?** Drives A5.
+1. ~~Which snapshot is the trunk?~~ **ANSWERED.** `baseline-model-dims`, per
+   `CLAUDE.md`: "Trunk: `src/baseline-model-dims/`". `active-ordinate` is
+   history; `target-spec-hybrid-v2` is archived.
+2. **Is front-view-only ordinates a rule or an instance?** Operationally
+   decided for this fixture — `Module8_ViewClassifier` implements
+   front-only (r8) and the reference confirms it for `P-0251`. Whether it
+   generalizes is unverified: no run yet against `P-0252-01-001` or
+   `P-0252-01-013`. Still drives A5's general form.
 3. **Where do the drawing-authored tolerances come from** (the `H7`), given
-   the model has none? Drives §7.
+   the model has none? Still open. Memory `h7-fit-is-drawing-authored`
+   confirms the model carries no tolerance and the H7 lives on a drawing
+   reference dimension, but no drawing-side tolerance rule has been
+   implemented. Drives §7.
 4. **Is the reference's view layout a fixed template or a computed one?**
-   Drives C4.
+   Still open, now sharpened by C8: the reference has exactly four views
+   (Left, Section J-J, Front, Isometric) and the macro's form can produce
+   up to eight. Whatever the answer, "create every standard view the form
+   offers" is not it.
 
 
 ## 12. What the live runs taught, r7 to r19
@@ -361,3 +414,32 @@ on OK, so the form wins on every run that shows it. The forms are outside
 `deployment-manifest.json` and cannot be imported, so operator-visible
 defaults can only be changed by hand-editing in the VBE, and no test covers
 them. See `Architecture.md`.
+
+Re-verified true 2026-08-06: `UserForm1` still absent from
+`deployment-manifest.json`, still no `VERSION 5.00` designer block. This is
+why r23 made HLR an engine precondition (`ForceHlrForHarvest`, A11) instead
+of trying to fix the form's checkbox default — a form default cannot be
+deployed or tested, so a correctness requirement cannot depend on one.
+
+### r20 to r24, in brief
+
+The outer-edge drawing convention (user-stated, 2026-08-06) was the last
+piece the ordinate engine needed — applying it produced the exact reference
+match at r20 and it has held through every run since, including under every
+view-count and view-mode combination tried.
+
+Two more live-only lessons, beyond the ones above:
+
+- **A default that is never exercised is not a default.** r17 set
+  `UseHLR = True` in `ResetGlobalConfig` and the document above called HLR
+  "the default" for five revisions. It was never once the value an operator
+  actually got, because the form always overrides it. A11's fix — force the
+  precondition inside the engine, independent of any config value — is the
+  general lesson: **a correctness requirement that can be silently
+  overridden by an unverified, undeployed form is not actually enforced.**
+- **Proving a coordinate transform needs a nonzero test case.** Every
+  section cut before r24 sat at an offset of 0 on the axis in question,
+  which reads back as 0 under any scale factor and any coordinate frame —
+  it proved nothing about C2 for four revisions. The transform was only
+  actually tested once a cut was placed away from zero and its readback
+  checked against the request.
