@@ -2,6 +2,22 @@
 
 Date: 2026-08-06
 
+## Process: CURRENT_STATUS is gated at the end of every Claude Code turn
+
+Claude Code now snapshots this file on `UserPromptSubmit` and checks it on
+`Stop`. If its SHA-256 hash is unchanged, the Stop hook continues the turn
+once with an evidence-honest update instruction. A second unchanged Stop is
+allowed with a visible warning so the hook cannot create an infinite loop.
+
+Read-only turns and turns with no material project change must add a dated
+`No material status change` note rather than inventing progress. The hook does
+not edit this file itself, rewrite prior evidence, or imply that static,
+compile, execution, or visual-acceptance gates ran.
+
+Verification: 5 focused hook tests pass; `.claude/settings.json` parses as
+JSON. No VBA source, macro revision, deployment, compile, SOLIDWORKS execution,
+or visual acceptance changed as part of this process update.
+
 ## r20 live: both ordinate chains match the reference EXACTLY
 
 `MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r20`, deployed 13/13, compiled

@@ -48,7 +48,7 @@ Public GlobalSectionCount As Long
 ' deployment-request.txt from this; never hand-edit that file. Bump whenever
 ' deployable behaviour changes.
 Public Const MACRO_SOURCE_REVISION As String = _
-    "trunk-2026-08-06-r20"
+    "trunk-2026-08-06-r21"
 
 ' User-confirmed 2026-08-05. The baseline snapshot carried "V:\SW_data\..."
 ' with the VEEMAP segment missing, so the controlled template never resolved
@@ -144,8 +144,12 @@ Public Sub ResetGlobalConfig()
         .SectionLabel = vbNullString
         .SectionVertical = False
 
+        ' Both producers always run. The form's mutually exclusive
+        ' "Import Model Dims" / "Ordinate Dims" option group was removed on
+        ' 2026-08-06: it made the two impossible to combine, and the
+        ' reference drawing needs both at once.
         .UseModelDimensions = True
-        .UseOrdinateDims = False
+        .UseOrdinateDims = True
         .RunHybridStrategy = True
         .ImportHoleCallouts = True
         .DatumOrigin = "Center"

@@ -20,8 +20,12 @@ Private lstSections As Object
 Private cmdAddSection As Object
 Private cmdRemoveSection As Object
 
-Private optDimModel As Object
-Private optDimOrdinate As Object
+' The Import Model Dims / Ordinate Dims option group was removed 2026-08-06.
+' They were mutually exclusive members of the "DimMode" group, so the two
+' producers could never run in the same drawing - and the reference drawing
+' P-0251-14A-001 needs both at once: native import supplies R36, the section
+' diameters and the hole callouts, the ordinate engine supplies the two
+' position chains. Both now always run; see Module1_Main.ResetGlobalConfig.
 Private cmbDatum As Object
 Private chkHoleCallouts As Object
 Private lblHoleCount As Object
@@ -113,13 +117,12 @@ Private Sub BuildUI()
     f3.Width = 160
     f3.Height = 128
 
-    Set optDimModel = AddOptionButton(f3, "Import Model Dims", "DimMode", 10, 16, 120, True)
-    Set optDimOrdinate = AddOptionButton(f3, "Ordinate Dims", "DimMode", 10, 36, 120, False)
+    AddLabel f3, "Model dims + ordinate chains both applied.", 10, 14, 145
 
-    AddLabel f3, "Ordinate Datum Origin:", 10, 60, 120
+    AddLabel f3, "Ordinate Datum Origin:", 10, 36, 120
     Set cmbDatum = f3.Controls.Add("Forms.ComboBox.1", "cmbDatum", True)
     cmbDatum.Left = 10
-    cmbDatum.Top = 76
+    cmbDatum.Top = 52
     cmbDatum.Width = 120
     cmbDatum.Style = 2
     cmbDatum.AddItem "Bottom-Left"
@@ -127,8 +130,8 @@ Private Sub BuildUI()
     cmbDatum.AddItem "Top-Left"
     cmbDatum.ListIndex = 1
 
-    Set chkHoleCallouts = AddCheckBox(f3, "Insert Hole Wizard Callouts", 10, 98, 140, True, True)
-    Set lblHoleCount = AddLabel(f3, "Hole-like features detected: 0", 10, 114, 145)
+    Set chkHoleCallouts = AddCheckBox(f3, "Insert Hole Wizard Callouts", 10, 74, 140, True, True)
+    Set lblHoleCount = AddLabel(f3, "Hole-like features detected: 0", 10, 90, 145)
 
     Set f4 = Me.Controls.Add("Forms.Frame.1", "frmOther", True)
     f4.caption = "Other Settings"
@@ -248,12 +251,6 @@ Private Sub LoadPreferences()
     chkBack.Value = ReadBoolSetting("BackView", False)
     chkIso.Value = ReadBoolSetting("IsoView", True)
 
-    If ReadTextSetting("DimStyle", "Model") = "Ordinate" Then
-        optDimOrdinate.Value = True
-    Else
-        optDimModel.Value = True
-    End If
-
     cmbDatum.Text = ReadTextSetting("DatumOrigin", "Center")
     chkHoleCallouts.Value = ReadBoolSetting("ImportHoleCallouts", True)
 
@@ -314,12 +311,6 @@ Private Sub SavePreferences()
     SaveSetting "VeemapDrawingMacro", "Settings", "LeftView", CStr(chkLeft.Value)
     SaveSetting "VeemapDrawingMacro", "Settings", "BackView", CStr(chkBack.Value)
     SaveSetting "VeemapDrawingMacro", "Settings", "IsoView", CStr(chkIso.Value)
-
-    If optDimOrdinate.Value Then
-        SaveSetting "VeemapDrawingMacro", "Settings", "DimStyle", "Ordinate"
-    Else
-        SaveSetting "VeemapDrawingMacro", "Settings", "DimStyle", "Model"
-    End If
 
     SaveSetting "VeemapDrawingMacro", "Settings", "DatumOrigin", cmbDatum.Text
     SaveSetting "VeemapDrawingMacro", "Settings", "ImportHoleCallouts", CStr(chkHoleCallouts.Value)
@@ -459,8 +450,11 @@ Public Sub DoCreate()
     Module1_Main.GlobalConfig.CreateBack = chkBack.Value
     Module1_Main.GlobalConfig.CreateIso = chkIso.Value
 
-    Module1_Main.GlobalConfig.UseModelDimensions = optDimModel.Value
-    Module1_Main.GlobalConfig.UseOrdinateDims = optDimOrdinate.Value
+    ' Both producers, always. The reference drawing needs native import for
+    ' R36 / the section diameters / the hole callouts AND the ordinate engine
+    ' for the two position chains; the old option group made that impossible.
+    Module1_Main.GlobalConfig.UseModelDimensions = True
+    Module1_Main.GlobalConfig.UseOrdinateDims = True
     Module1_Main.GlobalConfig.RunHybridStrategy = True
     Module1_Main.GlobalConfig.ImportHoleCallouts = chkHoleCallouts.Value
     Module1_Main.GlobalConfig.DatumOrigin = cmbDatum.Text
