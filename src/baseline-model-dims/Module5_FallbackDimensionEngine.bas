@@ -46,8 +46,16 @@ Private Const COORD_DEDUP_TOL_M As Double = 0.0015
 ' centre. Both are admitted. The r7 engine admitted circles only, which is why
 ' its chain terminated on the outermost hole (23.60) instead of the part
 ' silhouette (36.00).
+' Alt holds a second entity that sits at the same station, kept because a
+' circular edge contributes to BOTH axes: the bore's edge is a station on the
+' X chain and on the Y chain. The r10 sheet rendered exactly three ordinates
+' as 0.00 in the dangling colour while the report listed their true offsets,
+' and all three are entities the two chains share. An alternate entity at the
+' same coordinate lets the second chain attach to something the first has not
+' already consumed, without losing the station.
 Private Type AxisCandidates
     Objs() As Object
+    Alt() As Object
     Coord() As Double
     IsEdgeKind() As Boolean
     Count As Long
@@ -82,6 +90,8 @@ Public Type OrdinateRunStatus
     XAxisReport As String
     YAxisReport As String
     HolesOnlyRetries As Long
+    SharedEntitySubstitutions As Long
+    SharedEntityUnresolved As Long
 End Type
 
 Public Sub CreateHoleOrdinateDims( _
@@ -209,12 +219,21 @@ Public Sub CreateHoleOrdinateDims( _
     status.YAxisReport = DescribeAxis("Y", ys)
 
     stage = "CreateChains"
+
+    ' One entity may belong to only one chain. A circular edge is a station on
+    ' both axes, so the X chain would otherwise consume the bore edge as its
+    ' datum and leave the Y chain re-selecting the same entity for its 36.00
+    ' station - which is what the r10 sheet showed as a dangling 0.00.
+    Dim usedObjs() As Object
+    Dim usedCount As Long
+    usedCount = 0
+
     RecordChainOutcome status, swView.Name, _
         CreateChainWithFallback(swModel, swModelExt, swView, swSelData, _
-            xs, True, viewOutline, status)
+            xs, True, viewOutline, usedObjs, usedCount, status)
     RecordChainOutcome status, swView.Name, _
         CreateChainWithFallback(swModel, swModelExt, swView, swSelData, _
-            ys, False, viewOutline, status)
+            ys, False, viewOutline, usedObjs, usedCount, status)
     Exit Sub
 
 Failed:
@@ -332,22 +351,28 @@ Private Sub AddAxisCandidate( _
         If Abs(axis.Coord(i) - coord) < COORD_DEDUP_TOL_M Then
             ' A straight edge at the same station displaces a hole. The
             ' reference drawing's chains terminate on the silhouette, so when
-            ' both exist the edge is the one worth keeping.
+            ' both exist the edge is the one worth keeping. The displaced
+            ' entity is retained as the alternate rather than dropped.
             If isEdgeKind = True And axis.IsEdgeKind(i) = False Then
+                If axis.Alt(i) Is Nothing Then Set axis.Alt(i) = axis.Objs(i)
                 Set axis.Objs(i) = obj
                 axis.IsEdgeKind(i) = True
                 axis.HoleCount = axis.HoleCount - 1
                 axis.EdgeCount = axis.EdgeCount + 1
+            ElseIf axis.Alt(i) Is Nothing Then
+                If Not obj Is axis.Objs(i) Then Set axis.Alt(i) = obj
             End If
             Exit Sub
         End If
     Next i
 
     ReDim Preserve axis.Objs(0 To axis.Count)
+    ReDim Preserve axis.Alt(0 To axis.Count)
     ReDim Preserve axis.Coord(0 To axis.Count)
     ReDim Preserve axis.IsEdgeKind(0 To axis.Count)
 
     Set axis.Objs(axis.Count) = obj
+    Set axis.Alt(axis.Count) = Nothing
     axis.Coord(axis.Count) = coord
     axis.IsEdgeKind(axis.Count) = isEdgeKind
     axis.Count = axis.Count + 1
@@ -661,11 +686,18 @@ Private Function CreateChainWithFallback( _
     ByRef axis As AxisCandidates, _
     ByVal isHorizontal As Boolean, _
     ByVal viewOutline As Variant, _
+    ByRef usedObjs() As Object, _
+    ByRef usedCount As Long, _
     ByRef status As OrdinateRunStatus) As Long
+
+    ' A failed attempt must not leave its entities claimed, or the retry
+    ' substitutes alternates for stations that were never actually drawn.
+    Dim usedBefore As Long
+    usedBefore = usedCount
 
     Dim rc As Long
     rc = CreateOneOrdinateChain(swModel, swModelExt, swView, swSelData, _
-        axis, isHorizontal, viewOutline)
+        axis, isHorizontal, viewOutline, usedObjs, usedCount, status)
 
     If rc = swCreateOrdDimErr_Success Then
         CreateChainWithFallback = rc
@@ -694,10 +726,11 @@ Private Function CreateChainWithFallback( _
     ResolveOneDatum holesOnly, axis.Coord(axis.DatumIndex)
 
     status.HolesOnlyRetries = status.HolesOnlyRetries + 1
+    usedCount = usedBefore
 
     Dim retryRc As Long
     retryRc = CreateOneOrdinateChain(swModel, swModelExt, swView, swSelData, _
-        holesOnly, isHorizontal, viewOutline)
+        holesOnly, isHorizontal, viewOutline, usedObjs, usedCount, status)
 
     If isHorizontal Then
         status.XAxisReport = status.XAxisReport & vbCrLf & _
@@ -719,11 +752,91 @@ Private Function HolesOnlySubset( _
     For i = 0 To axis.Count - 1
         If axis.IsEdgeKind(i) = False Then
             AddAxisCandidate result, axis.Objs(i), axis.Coord(i), False
+            ' Same coordinate, so this lands as the station's alternate.
+            If Not axis.Alt(i) Is Nothing Then
+                AddAxisCandidate result, axis.Alt(i), axis.Coord(i), False
+            End If
         End If
     Next i
 
     HolesOnlySubset = result
 End Function
+
+' Hands back an entity for this station that no earlier chain has consumed.
+'
+' The r10 sheet rendered three ordinates as 0.00 in the dangling colour while
+' the report listed their true offsets, so creation placed them correctly and
+' the attachment failed. All three are stations whose entity the other chain
+' had already taken - a circular edge is a station on both axes, and the bore
+' edge served as the X datum and as the Y 36.00 station.
+'
+' This is a hypothesis with a measurement attached, not a certainty: the run
+' reports SharedEntitySubstitutions and SharedEntityUnresolved, so the next
+' sheet either loses the dangling values with a non-zero substitution count -
+' confirming it - or keeps them, refuting it and pointing elsewhere.
+Private Function ClaimEntity( _
+    ByRef axis As AxisCandidates, _
+    ByVal index As Long, _
+    ByRef usedObjs() As Object, _
+    ByRef usedCount As Long, _
+    ByRef status As OrdinateRunStatus) As Object
+
+    Dim primary As Object
+    Set primary = axis.Objs(index)
+
+    If IsEntityUsed(usedObjs, usedCount, primary) = False Then
+        MarkEntityUsed usedObjs, usedCount, primary
+        Set ClaimEntity = primary
+        Exit Function
+    End If
+
+    Dim alternate As Object
+    Set alternate = axis.Alt(index)
+
+    If Not alternate Is Nothing Then
+        If IsEntityUsed(usedObjs, usedCount, alternate) = False Then
+            MarkEntityUsed usedObjs, usedCount, alternate
+            status.SharedEntitySubstitutions = _
+                status.SharedEntitySubstitutions + 1
+            Set ClaimEntity = alternate
+            Exit Function
+        End If
+    End If
+
+    ' Nothing distinct is available at this station. Keep the station rather
+    ' than dropping it, and record that it is still shared.
+    status.SharedEntityUnresolved = status.SharedEntityUnresolved + 1
+    Set ClaimEntity = primary
+End Function
+
+Private Function IsEntityUsed( _
+    ByRef usedObjs() As Object, _
+    ByVal usedCount As Long, _
+    ByRef obj As Object) As Boolean
+
+    IsEntityUsed = False
+    If obj Is Nothing Then Exit Function
+
+    Dim i As Long
+    For i = 0 To usedCount - 1
+        If usedObjs(i) Is obj Then
+            IsEntityUsed = True
+            Exit Function
+        End If
+    Next i
+End Function
+
+Private Sub MarkEntityUsed( _
+    ByRef usedObjs() As Object, _
+    ByRef usedCount As Long, _
+    ByRef obj As Object)
+
+    If obj Is Nothing Then Exit Sub
+
+    ReDim Preserve usedObjs(0 To usedCount)
+    Set usedObjs(usedCount) = obj
+    usedCount = usedCount + 1
+End Sub
 
 Private Sub RecordChainOutcome( _
     ByRef status As OrdinateRunStatus, _
@@ -781,6 +894,16 @@ Public Function DescribeOrdinateStatus( _
 
     text = text & "Ordinate chains created: " & status.ChainsCreated & _
         " of " & status.ChainsAttempted & " attempted" & vbCrLf
+
+    text = text & "Shared entities: " & status.SharedEntitySubstitutions & _
+        " substituted, " & status.SharedEntityUnresolved & _
+        " still shared" & vbCrLf
+
+    If status.SharedEntityUnresolved > 0 Then
+        text = text & "WARNING: " & status.SharedEntityUnresolved & _
+            " station(s) reuse an entity another chain already took. " & _
+            "Expect that many dangling 0.00 ordinates on the sheet." & vbCrLf
+    End If
 
     If status.HolesOnlyRetries > 0 Then
         text = text & "NOTE: " & status.HolesOnlyRetries & _
@@ -931,7 +1054,10 @@ Private Function CreateOneOrdinateChain( _
     ByRef swSelData As SldWorks.SelectData, _
     ByRef axis As AxisCandidates, _
     ByVal isHorizontal As Boolean, _
-    ByVal viewOutline As Variant) As Long
+    ByVal viewOutline As Variant, _
+    ByRef usedObjs() As Object, _
+    ByRef usedCount As Long, _
+    ByRef status As OrdinateRunStatus) As Long
 
     ' A single-entity chain is the datum alone: nothing to dimension against.
     If axis.Count < 2 Then
@@ -944,7 +1070,8 @@ Private Function CreateOneOrdinateChain( _
     Dim selObjs() As Object
     ReDim selObjs(0 To axis.Count - 1)
 
-    Set selObjs(0) = axis.Objs(axis.DatumIndex)
+    Set selObjs(0) = ClaimEntity(axis, axis.DatumIndex, usedObjs, _
+        usedCount, status)
 
     Dim selCnt As Long
     selCnt = 1
@@ -952,7 +1079,8 @@ Private Function CreateOneOrdinateChain( _
     Dim i As Long
     For i = 0 To axis.Count - 1
         If i <> axis.DatumIndex Then
-            Set selObjs(selCnt) = axis.Objs(i)
+            Set selObjs(selCnt) = ClaimEntity(axis, i, usedObjs, _
+                usedCount, status)
             selCnt = selCnt + 1
         End If
     Next i

@@ -48,7 +48,7 @@ Public GlobalSectionCount As Long
 ' deployment-request.txt from this; never hand-edit that file. Bump whenever
 ' deployable behaviour changes.
 Public Const MACRO_SOURCE_REVISION As String = _
-    "trunk-2026-08-06-r10"
+    "trunk-2026-08-06-r11"
 
 ' User-confirmed 2026-08-05. The baseline snapshot carried "V:\SW_data\..."
 ' with the VEEMAP segment missing, so the controlled template never resolved

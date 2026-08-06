@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-08-06 (50) - r11: one entity, one chain
+
+The r10 sheet rendered three ordinates as `0.00` in the dangling colour while
+the report listed their true offsets, so creation was placing them correctly
+and the attachment was failing.
+
+**Cause.** A circular edge is a station on both axes. The X chain runs first
+and consumes the entity; the Y chain then re-selects an entity an open
+ordinate group already owns. Worked back from the r10 data: Y's two edges are
+its extremes (0.00 and 71.00), so Y=36.00 is a hole - the bore - and X=0 sits
+on the bore centre. One entity, two chains.
+
+**Fix.** An entity belongs to one chain only. Each station keeps an
+`Alt` entity at the same coordinate, which a stepped bore or a counterbore
+supplies naturally through its concentric circles, and the second chain
+attaches to that instead. The station survives; only the entity changes.
+`HolesOnlySubset` carries alternates through, and a failed chain releases its
+claims before the retry so substitutions are not made for stations that were
+never drawn.
+
+**The prediction was numeric, and it matched.** The diagnosis was inferred
+from station counts and sheet positions, not from reading entity identities,
+so the run reports the count:
+
+```
+Shared entities: 3 substituted, 0 still shared
+```
+
+Three substitutions against three dangling ordinates, and nothing left
+sharing. Sheet confirmation that the `0.00` values are gone is the remaining
+check.
+
+Unchanged and still open: the X datum sits on the bore centre rather than the
+part extreme (a rounded end is an arc, and arcs are not admitted as stations);
+station counts are too high against the reference (X 9 vs 5, Y 7 vs 5); the
+default `Center` datum contract has still not executed live; and
+`GetDisplayDimensions` reports 14 against 16 ordinate labels on the sheet.
+
+
 ## 2026-08-06 (49) - r9/r10: per-axis datum contract; a Boolean rule widened
 
 Gaps A2, A3, A4 and A8 in `BASELINE_TO_REFERENCE_DRAWING_GAP.md`.
