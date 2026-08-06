@@ -2,6 +2,26 @@
 
 Date: 2026-08-06
 
+## 2026-08-06: r22 redeploy launched - no material status change yet
+
+The operator closed `Fable.swp` in the VBA editor and a redeploy-and-run of
+r22 was launched. **The run had not returned when this entry was written**, so
+there is no deployment verdict, no compile verdict, no QA report and no
+outcome for the Y chain.
+
+No source file changed this turn. `MACRO_SOURCE_REVISION` remains
+`trunk-2026-08-06-r22`. Every gate listed in the r22 entry below is still
+outstanding; nothing here supersedes it.
+
+What the next report should answer:
+
+- `Ordinate display dimensions actually created: N` - the new r22 counter.
+  Roughly 8 if both chains land, since datum ordinates are not returned by
+  `GetDisplayDimensionCount`.
+- Whether the Y chain survives now that ordinates run before import. Success
+  implicates the imported `72.00` spanning the `+/-36` silhouette edges;
+  failure exonerates it and the cause lies elsewhere.
+
 ## r22 source: ordinates before import, and creation is measured not inferred
 
 Source change. Deployed and a run was launched at the end of this turn; **no
