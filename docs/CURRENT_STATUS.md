@@ -2,6 +2,69 @@
 
 Date: 2026-08-06
 
+## r22 live: reorder fixes the Y chain; run was HLV so X is not comparable
+
+Run `macro_qa/20260806_150931_P-0251-14A-001`. Deploy `VERIFY: PASS` at r22,
+pre-flight `verdict=Clean`, 33 dimensions, `PASS`.
+
+### Confirmed: running ordinates before import restores the Y chain
+
+`15, 23.60, 36.00, 15, 23.60, 36.00` on the front view, `+/-36` included, and
+the operator screenshot shows the full chain `36, 23.60, 15, 0, 15, 23.60, 36`
+down the right side. r21's Y chain was absent entirely.
+
+**The imported dimensions were the cause.** The r21 hypothesis is now
+supported by an A/B with the ordering as the only change.
+
+### The new r22 counter works
+
+`Ordinate display dimensions actually created: 14`. X 9 stations minus datum
+= 8, Y 7 minus datum = 6, total 14. Exact. `Ordinate chains created: 2 of 2`
+is now corroborated by a creation count rather than a return code.
+
+### This run was HLV, not HLR - X is not comparable to r20
+
+`Ordinate edges seen: 64 (circular: 35, of which arcs: 4, linear: 29)` is the
+documented HLV signature; HLR is `39 (22, 4, 17)`.
+
+| | r20 (HLR) | r22 (this run, HLV) |
+|---|---|---|
+| Edges | 39 | 64 |
+| X stations | 5 | 9 |
+| X datum | `Edge:offsetFromTarget=160.00mm` | `Edge:offsetFromTarget=43.00mm` |
+
+The extra hidden-line edges gave `ResolveOneDatum` a nearer straight edge, so
+the end datum landed **43 mm inside the part** instead of on the end face.
+X reads `43, 0, 1, 12, 27, 67, 92, 107, 117` against the reference's
+`0, 10, 50, 90, 160`. This is the r17 finding recurring in a new form: under
+HLV the ordinate engine degrades, previously by dangling, now by datum choice.
+
+### New failure mode: rendered value differs from computed station
+
+The sheet renders `14.10` and `94.10` where the computed stations are `12` and
+`92` - a ~2.1 mm mismatch on two X ordinates, drawn in a distinct colour -
+while `IAnnotation.IsDangling` reports **false for all 22** dimensions and the
+r22 creation counter reports the expected 14.
+
+So neither existing instrument detects this. It is **not** the `0.00` dangling
+of r10-r15. **Cause unknown, not probed.**
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment + readback | `VERIFY: PASS`, embedded `trunk-2026-08-06-r22` |
+| VBA compile | pre-flight `verdict=Clean` |
+| Live macro execution | ran, `PASS` verdict |
+| Creation readback | 14 created, matches station arithmetic |
+| Visual acceptance | done, **fails** - X datum wrong, two values mismatched, front view crowded |
+| HLR comparison run | **not done** - this run was HLV |
+| Cause of the 2.1 mm value mismatch | **not probed** |
+| Dimension collision / placement (gap A7) | **not addressed** |
+
+No source file changed this turn. `MACRO_SOURCE_REVISION` remains
+`trunk-2026-08-06-r22`.
+
 ## 2026-08-06: r22 redeploy launched - no material status change yet
 
 The operator closed `Fable.swp` in the VBA editor and a redeploy-and-run of
