@@ -2,6 +2,48 @@
 
 Date: 2026-08-06
 
+## 2026-08-06: Local trunk pushed to origin/main - repo, not code, change
+
+At the user's explicit request ("commit the current state of the
+repository to the main branch on github"). No source, deploy, or run this
+turn - a git-history and repo-hygiene action only.
+
+Before pushing, found and committed three files that had been running all
+session but were never in git: `.claude/hooks/record_current_status_baseline.py`,
+`.claude/hooks/require_current_status_update.py`,
+`.claude/hooks/test_current_status_hooks.py` - the UserPromptSubmit/Stop
+hook pair CLAUDE.md already documented as installed (it fired on every turn
+this session). Also committed the `.claude/settings.json` wiring, the
+CLAUDE.md section describing them, and `tools/swp-deploy/deployment-request.txt`
+(the regenerated artifact from the r24 deploy - CLAUDE.md says never
+hand-edit it). Commit `4b53855`. `.claude/hooks/test_current_status_hooks.py`
+verified passing (5/5) before committing.
+
+Explicitly excluded from staging: `docs/personal_review.md` (private, per
+the user's own instruction from earlier this turn-chain), and all
+`graphify-out/*` / `tools/graphify-solidworks/*` changes (another person's
+in-progress work in this directory, per standing instruction - never swept
+with `-A`, only explicit paths used).
+
+`git fetch origin` confirmed `origin/main` was a strict ancestor of local
+`trunk-baseline-r4` (0 commits on origin/main not in HEAD, 33 - then 34 with
+this turn's commit - not yet on origin/main) - a clean fast-forward, no
+merge, no conflict. Pushed `trunk-baseline-r4` to `origin/main`:
+`e9783e5..4b53855`. Local checkout branch unchanged (still
+`trunk-baseline-r4`); only the remote `main` ref moved.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment | none this turn |
+| Live macro execution | none this turn |
+| Local commit history clean, only this session's own files staged | confirmed - explicit paths, graphify and personal_review.md excluded |
+| Fast-forward safety (no divergent history on origin/main) | confirmed via `git fetch` + `git merge-base --is-ancestor` before pushing |
+| Push to origin/main | confirmed - `e9783e5..4b53855` |
+| Hook test suite | 5/5 pass, `.claude/hooks/test_current_status_hooks.py` |
+| Everything the r24 gap-doc refresh lists as open | unchanged, still open - this turn was git/repo hygiene only |
+
 ## 2026-08-06: Gap doc refreshed to r24; private review file created
 
 `docs/BASELINE_TO_REFERENCE_DRAWING_GAP.md` was still dated r20 and had
