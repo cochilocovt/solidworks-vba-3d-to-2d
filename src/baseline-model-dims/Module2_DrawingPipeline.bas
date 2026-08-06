@@ -63,19 +63,38 @@ Public Sub RunDrawingPipeline( _
     DoEvents
     Sleep 300
 
-    Dim importedModelItems As Long
-    importedModelItems = 0
-
-    If Module1_Main.GlobalConfig.UseModelDimensions Then
-        importedModelItems = Module4_ModelItemImporter.ImportModelItemsAcrossDrawing(swDrawModel, swDraw, swFrontView.Name)
-    End If
-
+    ' ORDINATES FIRST, import second. Reordered 2026-08-06 (r22).
+    '
+    ' r21 was the first run with both producers active, and the Y ordinate
+    ' chain failed with swCreateOrdDimErr_OrdFailure, then returned success on
+    ' the holes-only retry while creating nothing at all. Candidate collection
+    ' was byte-identical to r20's successful run - same 39 edges, same 5+5
+    ' stations, same datums - so nothing about the geometry changed. The only
+    ' difference was that 19 imported dimensions already existed in the view,
+    ' including a `72.00` spanning exactly the two +/-36 silhouette edges the
+    ' Y chain needs.
+    '
+    ' Whether a dimensioned entity can still anchor an ordinate is NOT
+    ' documented: neither AddOrdinateDimension nor InsertModelAnnotations4
+    ' says anything about it (MCP, 2026-08-06). Running the ordinate engine
+    ' against a clean view removes the interaction entirely, and is the right
+    ' order regardless - import is additive and has no such precondition.
+    '
+    ' This ordering is also the experiment. If the Y chain now succeeds, the
+    ' imported dimensions were the cause; if it still fails, they were not.
     Dim ordinateStatus As Module5_FallbackDimensionEngine.OrdinateRunStatus
     ordinateStatus.LastFailureCode = _
         Module5_FallbackDimensionEngine.ORDINATE_CODE_UNSET
 
     If Module1_Main.GlobalConfig.UseOrdinateDims Then
         AddFallbackOrdinateDimensions swDrawModel, swDraw, ordinateStatus
+    End If
+
+    Dim importedModelItems As Long
+    importedModelItems = 0
+
+    If Module1_Main.GlobalConfig.UseModelDimensions Then
+        importedModelItems = Module4_ModelItemImporter.ImportModelItemsAcrossDrawing(swDrawModel, swDraw, swFrontView.Name)
     End If
 
     If Module1_Main.GlobalConfig.AutoArrange Then

@@ -2,6 +2,64 @@
 
 Date: 2026-08-06
 
+## r22 source: ordinates before import, and creation is measured not inferred
+
+Source change. Deployed and a run was launched at the end of this turn; **no
+result had returned when this entry was written**, so nothing below claims a
+live outcome.
+
+### The r21 suspect was wrong, and our own counter refuted it
+
+The previous entry blamed native import for consuming the silhouette edges,
+citing shared-entity substitutions rising 2 -> 4. That rise is entirely the
+retry's own arithmetic:
+
+- first Y attempt: 5 stations, **2** substitutions - identical to r20
+- `CreateChainWithFallback` rolls `usedCount` back to the post-X state, the
+  holes-only retry re-claims 3 holes, the same 2 collide again -> **+2**
+
+Candidate collection was byte-identical between r20 and r21: 39 edges
+(22 circular, 4 arcs, 17 linear), X 5 stations, Y 5 stations, same datums,
+same 2 outer-edge promotions. **Import changed nothing about the candidates.**
+
+### What remains, stated as hypothesis
+
+The only difference when the Y chain ran was that 19 imported dimensions
+already existed in the view, including a `72.00` spanning exactly the two
+`+/-36` silhouette edges the Y chain uses. Whether an entity that already
+carries a dimension can still anchor an ordinate is **not documented** -
+neither `AddOrdinateDimension` nor `InsertModelAnnotations4` mentions it
+(MCP, 2026-08-06). Not asserted as the cause.
+
+### Changes
+
+- `Module2_DrawingPipeline`: the ordinate engine now runs **before** model
+  import. Removes the interaction, and is the correct order regardless since
+  import is additive and has no such precondition. This ordering is also the
+  experiment - Y succeeding implicates the imported dimensions, Y still
+  failing exonerates them.
+- `Module5_FallbackDimensionEngine`: `IView.GetDisplayDimensionCount` is read
+  either side of `AddOrdinateDimension`. A success return with a zero delta is
+  now reported as `CHAIN_CREATED_NOTHING` rather than counted as a created
+  chain. New report line `Ordinate display dimensions actually created: N`.
+  This closes the exact hole r21 fell through: `2 of 2 created` against a
+  sheet carrying no Y chain.
+- `Module1_Main`: `MACRO_SOURCE_REVISION` -> `trunk-2026-08-06-r22`
+  (deployable behaviour changed).
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Offline companion suite | 37/37 pass |
+| Deployment + readback | ran, `VERIFY: PASS` at r22 |
+| VBA compile | ran, pre-flight `verdict=Clean` |
+| Live macro execution | launched; **result not seen in this turn** |
+| Y chain restored | **unverified** |
+| Cause of the `OrdFailure` | **still unproven** - the reorder is a test, not a diagnosis |
+| Visual acceptance | **not done** |
+| Dimension collision / placement (gap A7) | **not addressed** |
+
 ## r21 visual: the Y ordinate chain is absent, and the report says it succeeded
 
 Screenshot of run `macro_qa/20260806_144628`, supplied by the operator.

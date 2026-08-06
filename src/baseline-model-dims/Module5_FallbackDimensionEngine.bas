@@ -18,6 +18,13 @@ Private Const swThisConfiguration As Long = 1
 Private Const CHAIN_SKIPPED_TOO_FEW As Long = -100
 Private Const CHAIN_SELECTION_FAILED As Long = -101
 
+' AddOrdinateDimension can return swCreateOrdDimErr_Success and create
+' nothing. r21's Y chain did exactly that on its holes-only retry: the report
+' said "2 of 2 created" and the sheet had no Y chain on it. A return code is
+' not a creation record, so the display-dimension count is read before and
+' after and a zero delta is reported as this failure instead of a success.
+Private Const CHAIN_CREATED_NOTHING As Long = -102
+
 ' Sentinel for LastFailureCode. 0 is swCreateOrdDimErr_Success, so an
 ' unset code of 0 reads as a successful chain in the report. The r3 run
 ' reported "Last code=0 (Unrecognised code)" for exactly that reason.
@@ -94,6 +101,7 @@ Public Type OrdinateRunStatus
     LinearEdgesSeen As Long
     ArcEdgesSeen As Long
     OuterEdgePromotions As Long
+    OrdinateDimsCreated As Long
     AxisRoleBasis As String
     XAxisReport As String
     YAxisReport As String
@@ -1171,6 +1179,9 @@ Public Function DescribeOrdinateStatus( _
     text = text & "Ordinate chains created: " & status.ChainsCreated & _
         " of " & status.ChainsAttempted & " attempted" & vbCrLf
 
+    text = text & "Ordinate display dimensions actually created: " & _
+        status.OrdinateDimsCreated & vbCrLf
+
     text = text & "Shared entities: " & status.SharedEntitySubstitutions & _
         " substituted, " & status.SharedEntityUnresolved & _
         " still shared" & vbCrLf
@@ -1432,6 +1443,9 @@ Private Function DescribeChainFailure(ByVal code As Long) As String
             DescribeChainFailure = "no code recorded"
         Case CHAIN_SELECTION_FAILED
             DescribeChainFailure = "MultiSelect2 selected the wrong count"
+        Case CHAIN_CREATED_NOTHING
+            DescribeChainFailure = _
+                "returned success but created 0 display dimensions"
         Case -1
             DescribeChainFailure = "swCreateOrdDimErr_Undefined"
         Case 1
@@ -1580,6 +1594,12 @@ Private Function CreateOneOrdinateChain( _
         Exit Function
     End If
 
+    ' IView.GetDisplayDimensionCount, MCP-confirmed 2026-08-06: "Gets the
+    ' number of display dimensions in this drawing view." Read either side of
+    ' the call so creation is measured rather than inferred from the return.
+    Dim dimsBefore As Long
+    dimsBefore = ReadDisplayDimensionCount(swView)
+
     Dim rc As Long
     If isHorizontal Then
         rc = swModelExt.AddOrdinateDimension(swHorizontalOrdinate, viewOutline(0), viewOutline(3) + 0.015, 0)
@@ -1591,12 +1611,36 @@ Private Function CreateOneOrdinateChain( _
     ' the group can be left open on a failure path too.
     swModel.SetPickMode
 
+    Dim created As Long
+    created = ReadDisplayDimensionCount(swView) - dimsBefore
+    If created < 0 Then created = 0
+    status.OrdinateDimsCreated = status.OrdinateDimsCreated + created
+
     If rc <> swCreateOrdDimErr_Success Then
         Debug.Print "Ordinate add failed in view " & swView.Name & ": code=" & rc
+    ElseIf created = 0 Then
+        ' Success with nothing to show for it. Report it as the failure it is
+        ' rather than letting the chain count claim a chain that is not on the
+        ' drawing.
+        rc = CHAIN_CREATED_NOTHING
+        Debug.Print "Ordinate reported success but created 0 dimensions in " & _
+            swView.Name
     End If
 
     swModel.ClearSelection2 True
     CreateOneOrdinateChain = rc
+End Function
+
+' Returns -1 on failure so a broken read cannot masquerade as "0 created".
+Private Function ReadDisplayDimensionCount( _
+    ByRef swView As SldWorks.View) As Long
+
+    On Error GoTo Failed
+    ReadDisplayDimensionCount = swView.GetDisplayDimensionCount
+    Exit Function
+
+Failed:
+    ReadDisplayDimensionCount = -1
 End Function
 
 ' Compile-failure localisation no-op called by
