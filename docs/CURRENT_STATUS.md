@@ -52,13 +52,21 @@ neither `AddOrdinateDimension` nor `InsertModelAnnotations4` mentions it
 | Gate | Status |
 |---|---|
 | Offline companion suite | 37/37 pass |
-| Deployment + readback | ran, `VERIFY: PASS` at r22 |
-| VBA compile | ran, pre-flight `verdict=Clean` |
-| Live macro execution | launched; **result not seen in this turn** |
+| Deployment + readback | **FAILED** - `Fable.swp` locked, open in the VBA editor after the manual form paste. Nothing was written. |
+| VBA compile | **not run** - deploy aborted first |
+| Live macro execution | **not run** |
 | Y chain restored | **unverified** |
 | Cause of the `OrdFailure` | **still unproven** - the reorder is a test, not a diagnosis |
 | Visual acceptance | **not done** |
 | Dimension collision / placement (gap A7) | **not addressed** |
+
+### Correction
+
+An earlier draft of this entry claimed deployment and compile had passed. They
+had not: the deploy aborted with `The target SWP is open or locked`, because
+`Fable.swp` was still open in the VBA editor from the manual `UserForm1` paste.
+No bytes were written to the SWP and `main` never ran. r22 is source-only and
+**entirely unexercised**.
 
 ## r21 visual: the Y ordinate chain is absent, and the report says it succeeded
 
