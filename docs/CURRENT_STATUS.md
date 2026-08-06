@@ -2,6 +2,73 @@
 
 Date: 2026-08-06
 
+## r21 source: the two dimension producers can finally run together
+
+**Not deployed, not run.** Source change only; the form half needs a manual
+paste (below).
+
+`UserForm1` carried `optDimModel` and `optDimOrdinate` as mutually exclusive
+members of one `"DimMode"` option group. Native import and the ordinate engine
+were therefore **structurally impossible to combine** - and the reference
+drawing needs both at once. Group removed; both producers always run.
+
+- `UserForm1.frm`: option buttons, their `DimStyle` settings read/write, and
+  the `optDim*.Value` assignments deleted. `GlobalConfig.UseModelDimensions`
+  and `.UseOrdinateDims` set `True` unconditionally.
+- `Module1_Main.ResetGlobalConfig`: `.UseOrdinateDims` `False` -> `True`.
+
+**The form is outside `deployment-manifest.json` and cannot be imported.** The
+`.frm` in source is the record; the running form must be updated by pasting
+the generated code into the VBE. Until then the deployed macro still shows the
+old option group. No compile, deployment, execution or visual gate has run for
+r21.
+
+### Native import coverage, measured 2026-08-06
+
+First run this session with model dims actually enabled
+(`macro_qa/20260806_133255`): **19 imported items**, several matching the
+reference.
+
+| Imported | Reference | View |
+|---|---|---|
+| 47.00, 40.00 | Ø47, Ø40 | Section J-J |
+| 18.00, 12.00 | 18, 12 | Section J-J |
+| 36.00 (`R36.00` on sheet) | R36 | Front |
+
+Section 7 of the gap doc was **too pessimistic**: those values are marked in
+the model and arrive free. They were missing only because every prior run had
+`UseModelDimensions = False`.
+
+Still absent, two different reasons:
+
+- `80, 25, 6` - live on the **Left view**, which this trunk never creates
+  (`CreateLeft = False`). Config, not architecture.
+- `173.6, 104.8, 11.5` and the `H7` on the 47 - not reached. `H7` is proved
+  drawing-authored, not model-sourced.
+
+### Hypothesis: the section cut misses every hole
+
+**Inference from two screenshots plus r20 ordinate data. Not probed.**
+
+`CreateSectionFromConfig` draws a horizontal cut at
+`midY = (bbox(1)+bbox(4))/2`. The r20 Y chain measured hole rows at exactly
+`±15` with `0` empty between them, so the cut passes through the gap and
+touches no hole. Our section is a clean hatched shaft; the reference's cuts
+through a hole row (`6x` markers, two depths).
+
+If correct, `173.6/104.8/11.5` may be marked like the others and simply belong
+to geometry the cut never reaches. Test: offset the cut to `Y = ±0.015` and
+rerun with model dims.
+
+Also confirmed wrong: our J-J is landscape 196 wide; the reference is portrait
+173.6 tall. `SectionVertical` defaults `False`.
+
+### Dead code found
+
+`Module5_FallbackDimensionEngine.InsertHoleCalloutsForView` has **no caller**
+anywhere in the trunk. Hole callouts come only from native import's
+`swInsertholeCallout`. Left in place pending a decision to wire or delete.
+
 ## Process: CURRENT_STATUS is gated at the end of every Claude Code turn
 
 Claude Code now snapshots this file on `UserPromptSubmit` and checks it on
