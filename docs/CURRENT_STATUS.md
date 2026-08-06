@@ -2,6 +2,57 @@
 
 Date: 2026-08-06
 
+## 2026-08-06: Gap doc refreshed to r24; private review file created
+
+`docs/BASELINE_TO_REFERENCE_DRAWING_GAP.md` was still dated r20 and had
+drifted from the live evidence gathered r20-r24. Refreshed and committed
+(`f4177d1`): closed C1/C2 (section cut placement, coordinate frame - both
+closed by r24), added new A11 (HLV degrading the ordinate engine, closed
+r23) and new C8 (reference has 4 views, recent runs create up to 8, and
+side-face dimensions landed in the wrong named view bucket - `Bottom` not
+`Left`). Corrected a stale reference to A8 (closed r10) still cited as open
+in §8. D1 downgraded from "never written" to "populated in output, source
+unverified" - recent screenshots show most title-block fields present, but
+whether the code or template defaults are responsible was never checked.
+Added a note that `Module5_FallbackDimensionEngine.InsertHoleCalloutsForView`
+has zero callers and is a plausible existing candidate for the missing
+hole-callout producer. Phase 4 (Tier C) marked explicitly not started, with
+a note that no run has ever been made against the other two authorized
+fixtures.
+
+Also created `docs/personal_review.md` at the user's request - a private
+snapshot of the same review, explicitly not to be linked, indexed, or cited
+by Claude in future turns (saved to memory: `personal-review-file-private`).
+Left untracked, not committed, per its stated private purpose.
+
+No source file changed, no deploy, no run this turn. Offline suite reran as
+a sanity check only (37/37, unchanged) - not evidence of anything new.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment | none this turn |
+| Live macro execution | none this turn |
+| Documentation accuracy | refreshed and committed - `BASELINE_TO_REFERENCE_DRAWING_GAP.md` now reflects r24 state |
+| Everything the refreshed doc lists as open | still open - this was a documentation pass, not a fix |
+
+## 2026-08-06: No material status change
+
+Read-only review turn: full gap review of current output vs the reference
+drawing, cross-checked against `BASELINE_TO_REFERENCE_DRAWING_GAP.md`,
+`R23_SCOPE_AND_GENERALIZATION_PLANNING.md`, and recent QA reports/screenshots.
+No code, deploy, or run. Findings delivered to the user in-chat, not written
+to docs this turn. Two new items surfaced, not previously recorded anywhere:
+`UserForm1.frm` sits outside `deployment-manifest.json` (no `VERSION 5.00`
+block, cannot be mechanically deployed/verified - source may drift from what
+`Fable.swp` actually runs), and `InsertHoleCalloutsForView` in Module5 has
+zero callers in the trunk and is plausibly the unused hole-callout producer.
+
+## 2026-08-06: No material status change
+
+Turn was a caveman-mode level switch only. No code, docs, or run.
+
 ## 2026-08-06: Operator run with Top/Bottom/Left/Back enabled - partial side-view match, wrong view bucket
 
 Operator-driven run, `macro_qa/20260806_170652_P-0251-14A-001`, no redeploy -
