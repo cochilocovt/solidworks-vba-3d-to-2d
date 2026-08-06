@@ -2,15 +2,19 @@
 
 Planning session, 2026-08-05. No source file was edited.
 
-> **Live status 2026-08-06 (r19).** Phases 1 and 2 are complete and Phase 3
+> **Live status 2026-08-06 (r20).** Phases 1 and 2 are complete and Phase 3
 > item 9 is complete. Gaps **A1-A6, A8, A10, B1, B2** are closed; **A7, A9**
 > and the whole of section 7 remain open. Both ordinate chains now match the
 > reference structurally:
 >
 > | | trunk r19 | reference |
 > |---|---|---|
-> | Long axis | 159, 89, 49, 9, 0 | 160, 90, 50, 10, 0 |
-> | Cross axis | 36, 15, 0, 15, 35 | 36, 15, 0, 15, 36 |
+> | Long axis | 160, 90, 50, 10, 0 | 160, 90, 50, 10, 0 |
+> | Cross axis | 36, 15, 0, 15, 36 | 36, 15, 0, 15, 36 |
+>
+> **Exact match at r20**, once the outer-edge drawing convention was
+> applied. The ordinate engine is done against this fixture; what remains
+> is everything that is not an ordinate, chiefly section 7.
 >
 > The per-gap table below carries individual status. Live API contracts are in
 > `SOLIDWORKS_API_VALIDATION.md`; current open work is in `CURRENT_STATUS.md`.

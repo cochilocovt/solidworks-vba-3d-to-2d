@@ -2770,3 +2770,34 @@ side (36) and is 1 mm short on the other (35). One candidate is the drawing's
 own general note - *"All corners are chamfered 0.5 x 45 deg"* - which would put
 the selected straight edge on the chamfer rather than the true face extreme.
 That has **not** been tested.
+
+## 2026-08-06 r20 outer-edge rule closes the 1 mm systematic offset
+
+Not an API finding. A **drawing convention**, stated by the user: a dimension
+always goes to the OUTER edge.
+
+A chamfered corner presents two parallel axis-parallel straight edges - the
+true outer extreme and the chamfer's inner boundary. Both are legitimate
+stations, both fall well inside `COORD_DEDUP_TOL_M`, so they merge into one
+station. Which entity survived was decided by array order out of
+`GetVisibleEntities2`, not geometry, and it was landing on the inner edge.
+
+`PreferOuterCandidates` promotes each station's retained runner-up wherever it
+lies further from the axis midpoint. It runs before datum resolution, because
+the datum is chosen from these coordinates. Holes are unaffected: concentric
+circles of one hole share a centre exactly.
+
+**Result: both chains match the reference exactly.**
+
+| | trunk r20 | P-0251-14A-001 |
+|---|---|---|
+| Long axis | 160, 90, 50, 10, 0 | 160, 90, 50, 10, 0 |
+| Cross axis | 36, 15, 0, 15, 36 | 36, 15, 0, 15, 36 |
+
+`Outer-edge promotions: 2`, one per axis, and the centreline datum's
+`offsetFromTarget` went from 0.50 mm to 0.00 mm.
+
+My arithmetic before the run predicted a 0.5 mm chamfer could only account for
+half the discrepancy. It accounted for all of it - both the datum edge and the
+opposite extreme moved, and the cross-axis midpoint moved with them. Recorded
+because the reasoning was wrong and the run was right.

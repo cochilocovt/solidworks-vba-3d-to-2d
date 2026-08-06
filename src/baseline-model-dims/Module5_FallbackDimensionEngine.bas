@@ -61,7 +61,9 @@ Private Type AxisCandidates
     Objs() As Object
     Alt() As Object
     Coord() As Double
+    AltCoord() As Double
     IsEdgeKind() As Boolean
+    AltIsEdgeKind() As Boolean
     Count As Long
     HoleCount As Long
     EdgeCount As Long
@@ -91,6 +93,7 @@ Public Type OrdinateRunStatus
     CircularEdgesSeen As Long
     LinearEdgesSeen As Long
     ArcEdgesSeen As Long
+    OuterEdgePromotions As Long
     AxisRoleBasis As String
     XAxisReport As String
     YAxisReport As String
@@ -255,6 +258,11 @@ Public Sub CreateHoleOrdinateDims( _
             status.ViewsWithTooFewCandidates + 1
         Exit Sub
     End If
+
+    ' Outer edge wins, before datums are resolved off these coordinates.
+    stage = "PreferOuterEdges"
+    PreferOuterCandidates xs, status
+    PreferOuterCandidates ys, status
 
     stage = "ResolveDatums"
     ResolveAxisDatums xs, ys, datumType, status
@@ -431,13 +439,22 @@ Private Sub AddAxisCandidate( _
             ' both exist the edge is the one worth keeping. The displaced
             ' entity is retained as the alternate rather than dropped.
             If isEdgeKind = True And axis.IsEdgeKind(i) = False Then
-                If axis.Alt(i) Is Nothing Then Set axis.Alt(i) = axis.Objs(i)
+                If axis.Alt(i) Is Nothing Then
+                    Set axis.Alt(i) = axis.Objs(i)
+                    axis.AltCoord(i) = axis.Coord(i)
+                    axis.AltIsEdgeKind(i) = axis.IsEdgeKind(i)
+                End If
                 Set axis.Objs(i) = obj
+                axis.Coord(i) = coord
                 axis.IsEdgeKind(i) = True
                 axis.HoleCount = axis.HoleCount - 1
                 axis.EdgeCount = axis.EdgeCount + 1
             ElseIf axis.Alt(i) Is Nothing Then
-                If Not obj Is axis.Objs(i) Then Set axis.Alt(i) = obj
+                If Not obj Is axis.Objs(i) Then
+                    Set axis.Alt(i) = obj
+                    axis.AltCoord(i) = coord
+                    axis.AltIsEdgeKind(i) = isEdgeKind
+                End If
             End If
             Exit Sub
         End If
@@ -446,10 +463,14 @@ Private Sub AddAxisCandidate( _
     ReDim Preserve axis.Objs(0 To axis.Count)
     ReDim Preserve axis.Alt(0 To axis.Count)
     ReDim Preserve axis.Coord(0 To axis.Count)
+    ReDim Preserve axis.AltCoord(0 To axis.Count)
     ReDim Preserve axis.IsEdgeKind(0 To axis.Count)
+    ReDim Preserve axis.AltIsEdgeKind(0 To axis.Count)
 
     Set axis.Objs(axis.Count) = obj
     Set axis.Alt(axis.Count) = Nothing
+    axis.AltCoord(axis.Count) = coord
+    axis.AltIsEdgeKind(axis.Count) = isEdgeKind
     axis.Coord(axis.Count) = coord
     axis.IsEdgeKind(axis.Count) = isEdgeKind
     axis.Count = axis.Count + 1
@@ -527,6 +548,76 @@ Private Sub ResolveAxisDatums( _
     ' datum takes no such restriction: it is normally a hole or an axis.
     ResolveOneDatum xs, xTarget, xFromExtreme
     ResolveOneDatum ys, yTarget, yFromExtreme
+End Sub
+
+' Drawing convention, user-stated 2026-08-06: a dimension always goes to the
+' OUTER edge.
+'
+' A chamfered corner presents two parallel straight edges - the true outer
+' extreme, and the chamfer's inner boundary a fraction of a millimetre inboard.
+' Both are axis-parallel, both are legitimate stations, and they fall well
+' inside COORD_DEDUP_TOL_M, so they merge into one station. Which entity
+' survived was decided by whichever came first out of GetVisibleEntities2 -
+' array order, not geometry - and it was landing on the inner one. That is the
+' systematic 1 mm shortfall against the reference: every long-axis station read
+' 1 mm low and the cross axis matched on one side only.
+'
+' Each station keeps its runner-up already, for the shared-entity logic. This
+' pass promotes the runner-up wherever it lies further from the axis midpoint,
+' which is the outer edge by definition. It runs before datum resolution
+' because the datum is chosen from these coordinates.
+'
+' Holes are unaffected: concentric circles of one hole share a centre exactly,
+' so neither is further out and nothing swaps.
+Private Sub PreferOuterCandidates( _
+    ByRef axis As AxisCandidates, _
+    ByRef status As OrdinateRunStatus)
+
+    If axis.Count < 2 Then Exit Sub
+
+    Dim minCoord As Double
+    Dim maxCoord As Double
+    AxisRange axis, minCoord, maxCoord
+
+    Dim midCoord As Double
+    midCoord = (minCoord + maxCoord) / 2#
+
+    Dim i As Long
+    For i = 0 To axis.Count - 1
+        If Not axis.Alt(i) Is Nothing Then
+            If Abs(axis.AltCoord(i) - midCoord) > _
+                Abs(axis.Coord(i) - midCoord) + AXIS_PARALLEL_TOL_M Then
+
+                Dim swapObj As Object
+                Dim swapCoord As Double
+                Dim swapKind As Boolean
+
+                Set swapObj = axis.Objs(i)
+                swapCoord = axis.Coord(i)
+                swapKind = axis.IsEdgeKind(i)
+
+                Set axis.Objs(i) = axis.Alt(i)
+                axis.Coord(i) = axis.AltCoord(i)
+                axis.IsEdgeKind(i) = axis.AltIsEdgeKind(i)
+
+                Set axis.Alt(i) = swapObj
+                axis.AltCoord(i) = swapCoord
+                axis.AltIsEdgeKind(i) = swapKind
+
+                If axis.IsEdgeKind(i) <> swapKind Then
+                    If axis.IsEdgeKind(i) = True Then
+                        axis.EdgeCount = axis.EdgeCount + 1
+                        axis.HoleCount = axis.HoleCount - 1
+                    Else
+                        axis.EdgeCount = axis.EdgeCount - 1
+                        axis.HoleCount = axis.HoleCount + 1
+                    End If
+                End If
+
+                status.OuterEdgePromotions = status.OuterEdgePromotions + 1
+            End If
+        End If
+    Next i
 End Sub
 
 Private Sub AxisRange( _
@@ -1061,6 +1152,9 @@ Public Function DescribeOrdinateStatus( _
         text = text & "View scale: " & Format$(status.ViewScale, "0.####") & _
             " (stations below are model mm, scale-normalised)" & vbCrLf
     End If
+
+    text = text & "Outer-edge promotions: " & _
+        status.OuterEdgePromotions & vbCrLf
 
     If Len(status.AxisRoleBasis) > 0 Then
         text = text & "Datum contract: " & status.AxisRoleBasis & vbCrLf

@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-08-06 (54) - r20: both ordinate chains match the reference exactly
+
+| | trunk r20 | P-0251-14A-001 |
+|---|---|---|
+| Long axis | 160, 90, 50, 10, 0 | 160, 90, 50, 10, 0 |
+| Cross axis | 36, 15, 0, 15, 36 | 36, 15, 0, 15, 36 |
+
+Not an API finding. A drawing convention, stated by the user: **a dimension
+always goes to the outer edge.**
+
+A chamfered corner presents two parallel axis-parallel straight edges - the
+true outer extreme and the chamfer's inner boundary. Both are legitimate
+stations and they fall well inside `COORD_DEDUP_TOL_M`, so they merge. Which
+one survived was decided by array order out of `GetVisibleEntities2`, not by
+geometry, and it was landing on the inner edge.
+
+`PreferOuterCandidates` promotes each station's retained runner-up wherever it
+lies further from the axis midpoint, before datum resolution. Holes are
+unaffected - concentric circles of one hole share a centre exactly.
+
+`Outer-edge promotions: 2`, one per axis, and the centreline datum's
+`offsetFromTarget` went from 0.50 mm to 0.00 mm.
+
+**My arithmetic was wrong and the run was right.** Before deploying I reasoned
+that a 0.5 mm chamfer could only explain half the 1 mm discrepancy. It
+explained all of it: both the datum edge and the opposite extreme moved
+outward, and the cross-axis midpoint moved with them.
+
+### Ordinate engine status
+
+Gaps A1-A6, A8, A10 closed. A7 (placement bounds) and A9 (tolerance
+derivation) remain. The engine now produces the reference drawing's two
+ordinate chains exactly, on the front view only, with zero dangling
+dimensions.
+
+
 ## 2026-08-06 (53) - r18/r19: both ordinate chains match the reference
 
 | | trunk r19 | P-0251-14A-001 |

@@ -2,6 +2,76 @@
 
 Date: 2026-08-06
 
+## r20 live: both ordinate chains match the reference EXACTLY
+
+`MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r20`, deployed 13/13, compiled
+`verdict=Clean`, run against P-0251 with ordinate mode, Center datum, HLR.
+Report `macro_qa/20260806_100240_P-0251-14A-001`.
+
+| | trunk r20 | P-0251-14A-001 |
+|---|---|---|
+| Long axis | **160, 90, 50, 10, 0** | 160, 90, 50, 10, 0 |
+| Cross axis | **36, 15, 0, 15, 36** | 36, 15, 0, 15, 36 |
+
+```
+readback: 8 dims, 0 dangling
+Ordinate edges seen: 39 (circular: 22, of which arcs: 4, linear: 17)
+Selection scope: ScopedToView(Let)
+View scale: 0.6667 (stations are model mm, scale-normalised)
+Outer-edge promotions: 2
+Datum contract: LongAxis=X:FromMinEnd;ShortAxis=Y:FromCentreline
+  X: 5 stations, datum Edge:offsetFromTarget=160.00mm
+  Y: 5 stations, datum Hole:offsetFromTarget=0.00mm
+```
+
+The r19 1 mm systematic offset is closed by the user's drawing convention -
+**a dimension always goes to the outer edge**. See
+`SOLIDWORKS_API_VALIDATION.md`, r20 section.
+
+**The ordinate engine is done against this fixture.** Gaps A1-A6, A8, A10
+closed. What remains is everything that is not an ordinate.
+
+### Open, in order
+
+1. **Conventional dimensions do not exist.** Everything on the reference
+   except the two ordinate chains and the hole callouts - `R36`, `Ø40`,
+   `Ø47 H7`, `18`, `12`, `11.5`, `173.6`, `104.8`, `80`, `25`, `6` - is a
+   conventional dimension that appears only if the model happens to have it
+   marked. Nothing in the trunk creates one. This is the Tier C gap; see
+   section 7 of the gap doc. **Largest remaining work package.**
+2. **Hole callouts.** The reference carries `6x Ø6.6 THRU / ⌴Ø11 ↧6` and
+   `4x Ø4.2 ↧12.4 / M5x0.8-6H ↧10` as consolidated leader callouts. Not
+   verified against the trunk since the `DuplicateDims` fix.
+3. **Section view placement and sheet layout** (A7, C-series). The section
+   view has run off the sheet frame in several runs; view placement is
+   arithmetic on the part bounding box with no bounds check.
+4. **`swCreateOrdDimErr_OrdFailure`** on non-front views. Four failures at r7,
+   never attempted since. **Undiagnosed.**
+5. **The form owns the settings, and it is unmanaged.** `ResetGlobalConfig` is
+   a no-form fallback; `UserForm1` seeds from saved registry settings and
+   overwrites `GlobalConfig` on OK. The forms are outside the deployment
+   manifest, cannot be imported, and no test covers them.
+6. `A9` - `COORD_DEDUP_TOL_M` is still an unjustified 1.5 mm, though no longer
+   scale-dependent.
+7. `swDefaultTemplateDrawing = 10` inherited, never re-queried.
+   `IView.SetDisplayMode3` is obsolete and still called.
+
+### Waiting on a user decision - do not default
+
+- **Mass units.** Title block reads `MASS(KG): 1296.82` against the
+  reference's `1.30 kg`.
+- **Duplicate general notes.** Once from the template's sheet format, once
+  from `InsertNotes`. `DrawingContainsText` cannot see sheet-format text.
+
+### Process gates added 2026-08-06
+
+Instruction text in `CLAUDE.md` did not hold across a long session: three
+`swDisplayMode_e` constants sat in the trunk with values from other enum
+members and survived fifteen live runs. Two mechanical gates now enforce the
+API-lookup contract - a `PreToolUse` hook that blocks `sw*` edits without a
+recent MCP lookup, and a test that fails the suite when a `sw*` constant has
+no provenance record. See `CLAUDE.md` and `Architecture.md`.
+
 ## r19 live: both ordinate chains match the reference structurally
 
 `MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r19`, deployed, compiled
