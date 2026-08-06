@@ -2,6 +2,59 @@
 
 Date: 2026-08-06
 
+## r21 visual: the Y ordinate chain is absent, and the report says it succeeded
+
+Screenshot of run `macro_qa/20260806_144628`, supplied by the operator.
+
+**The Y chain is not on the sheet.** In r20 it ran down the right side of the
+front view as `36, 15, 0, 15, 36`. In this sheet that column is gone; the right
+side carries only imported `1.00`, `10.00`, `40.00` and a vertical `72`.
+
+Accounting the front view's 12 readback values: X chain `10, 50, 90, 160` (4)
+plus imported `72, 40, 30, 10, 36, 1, 1, 45` (8) = 12. **None left for the Y
+chain.** The `36.00` is the imported `R36.00` rendered on the sheet, not an
+ordinate station.
+
+So the holes-only retry returned `code 0` (`swCreateOrdDimErr_Success`) and
+created nothing. Precedent exists in the archived tree:
+`swCreateOrdDimErr_Success|createdReadBack=0`.
+
+**`Ordinate chains created: 2 of 2 attempted` is therefore false**, and the
+dimension readback did not catch it.
+
+### The instrument gap
+
+`DescribeDimensionReadback` counts dimensions per view and reads
+`IAnnotation.IsDangling`, but **cannot attribute a dimension to a producer**.
+While model import was off, subtraction identified the ordinates; with both
+producers active it cannot. A success return code was trusted where a
+creation readback was needed - the same class of error as counting dimensions
+without checking attachment (r10-r15).
+
+Candidate fix, **not implemented**: capture created ordinate dimension names
+at creation time and report per-producer counts, so the chain count is checked
+against dimensions that exist rather than against a return value.
+
+### Also visible, not yet addressed
+
+- Front view dimensions overlap the part outline and each other (`45` over the
+  profile, `36.00`/`0.50` colliding near the section). Gap A7, no placement or
+  collision handling exists.
+- Section J-J dimensions cross the `SECTION J-J` label.
+- Section J-J is still landscape 196 wide; the reference is portrait 173.6.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Visual acceptance | done, **fails** - Y chain absent, dimensions collide |
+| Cause of `OrdFailure` on the first Y attempt | **not probed** |
+| Why the holes-only retry created nothing | **not probed** |
+| Per-producer dimension attribution | **not implemented** |
+
+No source file changed this turn. `MACRO_SOURCE_REVISION` remains
+`trunk-2026-08-06-r21`.
+
 ## r21 live: both producers ran together; the Y ordinate chain lost its edges
 
 Run `macro_qa/20260806_144628_P-0251-14A-001`, after the operator pasted the
