@@ -2,6 +2,66 @@
 
 Date: 2026-08-06
 
+## r15 live: no wrong dimensions on the sheet; two stations lost
+
+`MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r15`. Report at
+`macro_qa/20260806_064*_P-0251-14A-001/QA_REPORT.txt`.
+
+```
+readback: 12 dims, 0 dangling
+  live values: 43.00, 45.00, 70.00, 110.00, 150.00, 159.00,
+               15.00, 23.60, 36.00, 15.00, 23.60, 35.00
+View scale: 0.6667 (stations below are model mm, scale-normalised)
+Datum contract: LongAxis=X:FromMinEnd;ShortAxis=Y:FromCentreline
+  X: 9 stations, datum Hole:offsetFromTarget=0.00mm
+  Y: 7 stations, datum Hole:offsetFromTarget=0.50mm
+Dangling ordinates: 2 found, 2 deleted (0 select-refused, 0 delete-refused)
+```
+
+Every dimension on the sheet is now correct. Gaps A2, A3, A4 and A8 are
+closed, and the `Center` datum contract is proven live: the Y chain is
+symmetric about the centreline - `36.00, 23.60, 15.00, 0, 15.00, 23.60, 35.00`
+against the reference's `36, 15, 0, 15, 36`.
+
+### Fixed since r10
+
+- **View scale.** `ModelToViewTransform` carries the view scale, so
+  `COORD_DEDUP_TOL_M` was being applied in view space and the macro emitted
+  **different dimensions at different scales** - at 1:2 the 43 mm and 45 mm
+  stations merged. Now normalised by `IView.ScaleDecimal`.
+- **Shared entities.** An entity belonged to both chains; the second use
+  dangled. Each station keeps an alternate. Fixed the Y=36.00 bore station.
+- **Dangling prune.** `IAnnotation.IsDangling` is a post-rebuild property, so
+  the prune had to move downstream of `ForceRebuild3`.
+
+### Open, in order
+
+1. **Root cause of the two dangling stations** (X=55.00, X=135.00). They are
+   deleted, not explained. Not a sharing problem - the X chain runs first, so
+   every substitution was necessarily in the Y chain.
+2. **Too many stations.** X has 9 against the reference's 5, Y has 7 against
+   5. Admitting every axis-parallel edge over-corrected A4; stations need a
+   selection rule, not a wider net. The extra Y pair is +/-23.60.
+3. **The X datum is not the part extreme.** X=0 sits on the bore centre while
+   the part extends further left; a rounded end is an arc and arcs are not
+   admitted as stations.
+4. **The Y extremes are asymmetric** (-36.00 / +35.00), so the centreline
+   datum sits 0.50 mm off. One silhouette station is 1 mm short of the true
+   outline.
+5. Diagnose `swCreateOrdDimErr_OrdFailure` - the 4 failures at r7 were on
+   non-front views and have not been attempted since. **Undiagnosed.**
+6. `ISelectData.View` error 91 - worked around, not solved.
+7. Section view placement, view layout, and the C-series gaps.
+
+### Waiting on a user decision - do not default
+
+Both confirmed on the sheet; the user has deferred them.
+
+- **Mass units.** Title block reads `MASS(KG): 1296.82` against the
+  reference's `1.30 kg`.
+- **Duplicate general notes.** Once in the template's sheet format, once from
+  `InsertNotes`. `DrawingContainsText` cannot see sheet-format text.
+
 ## r10 live: per-axis datum contract works; three stations dangle
 
 `MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r10`, deployed, compiled

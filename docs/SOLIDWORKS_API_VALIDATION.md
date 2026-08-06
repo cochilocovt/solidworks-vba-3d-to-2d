@@ -2546,3 +2546,33 @@ candidates to circles was a self-imposed limit, not an API constraint.
 attachment. Three stations on the r10 sheet render `0.00` in the dangling
 colour while the report shows their true offsets, so some attachments do not
 survive. See CURRENT_STATUS.md.
+
+## 2026-08-06 r14/r15 IAnnotation.IsDangling is a post-rebuild property
+
+A freshly created ordinate reports `IsDangling = False`. The flag only becomes
+True after the drawing rebuilds.
+
+Measured, not inferred. r14 ran the dangling prune inside the ordinate stage,
+immediately after `AddOrdinateDimension`, and reported
+`DanglingFound = 0` - the line did not print at all. The QA readback, running
+later in the same run against the same view and after
+`IModelDoc2.ForceRebuild3`, reported `readback: 14 dims, 2 dangling`. Neither
+`IAnnotation.Select3` nor `IModelDocExtension.DeleteSelection2` had refused;
+there was nothing to select.
+
+r15 moved the prune downstream of `ForceRebuild3` in
+`Module2_DrawingPipeline` and it worked first time:
+
+```
+Dangling ordinates: 2 found, 2 deleted (0 select-refused, 0 delete-refused)
+readback: 12 dims, 0 dangling
+```
+
+**Consequence for any future attachment check:** it must run after a rebuild.
+Placed earlier it reads clean on broken geometry, which is the silent-pass
+failure mode this engine has produced repeatedly.
+
+`IAnnotation.Select3(False, Nothing)` and
+`IModelDocExtension.DeleteSelection2(0)` both succeed on an ordinate group
+member, with pick mode reset and the owning view activated first. Deleting one
+member does not disturb the rest of the group.

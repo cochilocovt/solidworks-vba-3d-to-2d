@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-08-06 (51) - r15: the sheet carries no wrong dimensions
+
+`readback: 12 dims, 0 dangling`. Every ordinate on the front view is correct.
+
+**The dangling flag is a post-rebuild property.** r14 pruned inside the
+ordinate stage and found zero dangling annotations; the QA readback, later in
+the same run and after `ForceRebuild3`, found two in the same view. Neither
+`Select3` nor `DeleteSelection2` had refused - there was nothing yet to
+select. r15 moved the prune downstream of the rebuild and it worked first
+time: `2 found, 2 deleted (0 select-refused, 0 delete-refused)`.
+
+Any future attachment check must sit after a rebuild, or it reads clean on
+broken geometry.
+
+Three revisions went into this one defect and each of my proposed mechanisms
+was wrong: shared entities (r11, refuted by the readback), select/delete being
+refused (r14, refuted by the counters), then rebuild timing. Each refutation
+came from a measurement that cost one function. The mechanism guesses cost a
+run apiece.
+
+### Still open
+
+The two stations at X=55.00 and X=135.00 are **deleted, not explained**. The
+report says so rather than quietly dropping them.
+
+
 ## 2026-08-06 (50) - r11: one entity, one chain
 
 The r10 sheet rendered three ordinates as `0.00` in the dangling colour while

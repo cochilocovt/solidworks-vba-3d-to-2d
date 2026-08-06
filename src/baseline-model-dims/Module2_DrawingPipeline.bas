@@ -71,6 +71,15 @@ Public Sub RunDrawingPipeline( _
     End If
 
     swDrawModel.ForceRebuild3 False
+
+    ' After the rebuild, not before. IAnnotation.IsDangling reads False on a
+    ' freshly created ordinate and only becomes True once the drawing has
+    ' rebuilt, so a prune inside the ordinate stage sees nothing (r14).
+    If Module1_Main.GlobalConfig.UseOrdinateDims Then
+        Module5_FallbackDimensionEngine.PruneDanglingAcrossDrawing _
+            swDrawModel, swDraw, ordinateStatus
+    End If
+
     swDrawModel.ViewZoomtofit2
 
     Dim qaReport As String

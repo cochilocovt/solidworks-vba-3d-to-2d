@@ -258,8 +258,11 @@ Public Sub CreateHoleOrdinateDims( _
         CreateChainWithFallback(swModel, swModelExt, swView, swSelData, _
             ys, False, viewOutline, usedObjs, usedCount, status)
 
-    stage = "PruneDangling"
-    PruneDanglingOrdinates swModel, swView, status
+    ' Pruning does NOT happen here. r14 proved why: this ran immediately after
+    ' creation and found zero dangling annotations, while the QA readback -
+    ' after the pipeline's ForceRebuild3 - found two in the same view. The
+    ' dangling flag is not set until a rebuild, so the prune has to run after
+    ' one. Module2_DrawingPipeline calls PruneDanglingAcrossDrawing there.
     Exit Sub
 
 Failed:
@@ -1020,6 +1023,22 @@ End Function
 ' still unknown, so this does not claim to fix it - it removes the wrong value
 ' and counts what it removed, so the loss stays visible in the report rather
 ' than being papered over.
+' Must be called after a rebuild. See PruneDanglingOrdinates.
+Public Sub PruneDanglingAcrossDrawing( _
+    ByRef swDrawModel As SldWorks.ModelDoc2, _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByRef status As OrdinateRunStatus)
+
+    Dim swView As SldWorks.View
+    Set swView = swDraw.GetFirstView
+    If Not swView Is Nothing Then Set swView = swView.GetNextView
+
+    Do While Not swView Is Nothing
+        PruneDanglingOrdinates swDrawModel, swView, status
+        Set swView = swView.GetNextView
+    Loop
+End Sub
+
 Private Sub PruneDanglingOrdinates( _
     ByRef swModel As SldWorks.ModelDoc2, _
     ByRef swView As SldWorks.View, _
