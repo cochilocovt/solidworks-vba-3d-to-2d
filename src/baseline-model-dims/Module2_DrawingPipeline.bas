@@ -8,6 +8,12 @@ Option Explicit
 
 Private Const swCreateSectionView_NotAligned As Long = 1
 
+' Section-cut evidence for the QA report. Module-level rather than threaded
+' through BuildRunSummary, which would mean changing Module6's signature for
+' two strings. Reset at the start of every pipeline run.
+Public LastSectionPlan As String
+Public LastSectionReadback As String
+
 ' swDisplayMode_e, MCP-confirmed 2026-08-06. All three were wrong before r16
 ' and none of them raised: a wrong display mode renders a plausible view.
 '
@@ -55,6 +61,9 @@ Public Sub RunDrawingPipeline( _
 
     Dim swDraw As SldWorks.DrawingDoc
     Set swDraw = swDrawModel
+
+    LastSectionPlan = vbNullString
+    LastSectionReadback = vbNullString
 
     Dim swFrontView As SldWorks.View
     CreateViews swPart, swDrawModel, swDraw, partPath, swFrontView
@@ -120,6 +129,10 @@ Public Sub RunDrawingPipeline( _
     Dim qaReport As String
     qaReport = Module6_QAEngine.BuildRunSummary( _
         swDrawModel, swDraw, holes, importedModelItems, ordinateStatus)
+
+    If Len(LastSectionPlan) > 0 Then
+        qaReport = qaReport & LastSectionPlan & vbCrLf
+    End If
 
     ' Write before showing. A MsgBox is not a record: the first live trunk
     ' run lost its ordinate evidence the moment the operator clicked OK.
@@ -319,7 +332,7 @@ Private Sub CreateViews( _
     Sleep 300
 
     If Module1_Main.GlobalConfig.CreateSection Then
-        CreateSectionFromConfig swDrawModel, swDraw, bbox, swFrontView, displayMode, scaleVal
+        CreateSectionFromConfig swPart, swDrawModel, swDraw, bbox, swFrontView, displayMode, scaleVal
     End If
 
     Exit Sub
@@ -353,7 +366,46 @@ Private Sub ConfigureView(ByRef swView As SldWorks.View, ByVal displayMode As Lo
     swView.SetLightweightToResolved
 End Sub
 
+' The reference drawing's section J-J is a stepped cut, not a centreline cut
+' -----------------------------------------------------------------------
+' Read off test_assets/reference_drawings/P-0251-14A-001.PNG: the section line
+' runs along the part's long axis through the centre of the R36 end bore, jogs
+' sideways once, and continues through one row of counterbored holes. That is
+' what puts both the 040/047 bore profile AND the counterbore steps in the same
+' section. Cutting straight down the centreline - what the trunk did through
+' r23 - catches the bore and misses all six holes.
+'
+' A stepped section is not swCreateSectionView_OffsetSection. That flag is
+' documented as "an aligned section view is created (two lines at an angle)",
+' which is the revolved case. CreateSectionViewAt5 Remarks say to select "the
+' section line or lines" - plural - so a stepped cut is an ordinary NotAligned
+' section over a multi-segment sketch (MCP, 2026-08-06).
+'
+' Coordinate frame, and why the old code proved nothing about it
+' --------------------------------------------------------------
+' CodeStack row 9 warns that view-owned sketch entities live in the view's own
+' frame and says to verify the transform direction on SW2025. The pre-r24 line
+' was drawn at midY, and for this fixture the model is symmetric about Y=0, so
+' midY was 0 - and 0 is 0 under any scale factor. The cut landing correctly was
+' therefore no evidence at all about whether one sketch unit is one model metre
+' or one sheet metre.
+'
+' Two facts settle the origin: the line spanned bbox(0)..bbox(3), roughly
+' 0..0.196, while the front view sits at sheet position ~(0.176, 0.143). Had
+' the frame been sheet coordinates that line would have run along the bottom
+' edge of the sheet, intersected no view, and CreateSectionViewAt5 would have
+' had nothing to cut. It produced a correct section, so the frame is the view's
+' local frame with the model origin at its origin.
+'
+' Scale is still not proven. CodeStack row 9's "move, scale, and rotate with
+' the view" implies the sketch is stored at model size and the view scale is
+' applied on display, which is the assumption used here. This is the first
+' revision to place a section line at a NONZERO offset, so it is also the first
+' run that can tell the difference: the readback below reports the endpoints
+' the sketch actually kept. If one unit were a sheet metre the reported jog
+' would come back at 0.6667 of what was asked for.
 Private Sub CreateSectionFromConfig( _
+    ByRef swPart As SldWorks.ModelDoc2, _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
     ByRef swDraw As SldWorks.DrawingDoc, _
     ByVal bbox As Variant, _
@@ -381,24 +433,71 @@ Private Sub CreateSectionFromConfig( _
     Dim secVertical As Boolean
     GetPrimarySectionSettings secLabel, secVertical
 
-    Dim swLine As SldWorks.SketchLine
+    ' Along = the axis the section line runs down. Across = the axis it jogs on.
+    Dim boreAcross As Double
+    Dim rowAcross As Double
+    Dim jogAlong As Double
+    Dim hasJog As Boolean
+    hasJog = PlanSteppedCut(swPart, secVertical, midX, midY, _
+                            boreAcross, rowAcross, jogAlong)
+
+    Dim startAlong As Double
+    Dim endAlong As Double
     If secVertical Then
-        Set swLine = swDrawModel.SketchManager.CreateLine(midX, bbox(1) - spanY * 0.15, 0, midX, bbox(4) + spanY * 0.15, 0)
+        startAlong = bbox(1) - spanY * 0.15
+        endAlong = bbox(4) + spanY * 0.15
     Else
-        Set swLine = swDrawModel.SketchManager.CreateLine(bbox(0) - spanX * 0.15, midY, 0, bbox(3) + spanX * 0.15, midY, 0)
+        startAlong = bbox(0) - spanX * 0.15
+        endAlong = bbox(3) + spanX * 0.15
     End If
 
-    If swLine Is Nothing Then GoTo SafeExit
-
     swDrawModel.ClearSelection2 True
-    swLine.Select4 True, Nothing
+
+    Dim segments As Long
+    segments = 0
+
+    If hasJog Then
+        ' Bore leg, the jog itself, then the hole-row leg.
+        If AddCutSegment(swDrawModel, secVertical, startAlong, boreAcross, jogAlong, boreAcross) Then segments = segments + 1
+        If AddCutSegment(swDrawModel, secVertical, jogAlong, boreAcross, jogAlong, rowAcross) Then segments = segments + 1
+        If AddCutSegment(swDrawModel, secVertical, jogAlong, rowAcross, endAlong, rowAcross) Then segments = segments + 1
+    End If
+
+    If segments < 3 Then
+        ' Either no distinct hole row was found or a segment failed. Fall back
+        ' to the straight centreline cut rather than leaving a partial line -
+        ' a half-drawn stepped cut is worse than the r23 behaviour.
+        swDrawModel.ClearSelection2 True
+        hasJog = False
+        segments = 0
+        If AddCutSegment(swDrawModel, secVertical, startAlong, midAcross(secVertical, midX, midY), _
+                         endAlong, midAcross(secVertical, midX, midY)) Then segments = 1
+    End If
+
+    LastSectionPlan = DescribeSectionPlan(hasJog, secVertical, boreAcross, rowAcross, _
+                                          jogAlong, segments, scaleVal)
+
+    If segments = 0 Then GoTo SafeExit
 
     Dim frontPos As Variant
     frontPos = swFrontView.Position
 
+    ' Was frontPos(0) + 0.18 - a fixed 180 mm nudge that took no account of how
+    ' wide either view actually is, which is why the section overflowed the
+    ' sheet border on the r23 sheet. Half the front view plus half the section
+    ' (the section is as long as the part's long axis) plus a 15 mm gutter.
+    Dim halfFront As Double
+    Dim halfSection As Double
+    halfFront = (spanX * scaleVal) / 2#
+    If secVertical Then
+        halfSection = (spanX * scaleVal) / 2#
+    Else
+        halfSection = (spanY * scaleVal) / 2#
+    End If
+
     Dim targetX As Double
     Dim targetY As Double
-    targetX = frontPos(0) + 0.18
+    targetX = frontPos(0) + halfFront + halfSection + 0.015
     targetY = frontPos(1)
 
     Dim swSectionView As SldWorks.View
@@ -406,12 +505,210 @@ Private Sub CreateSectionFromConfig( _
 
     If Not swSectionView Is Nothing Then
         ConfigureView swSectionView, displayMode, scaleVal
+    Else
+        LastSectionPlan = LastSectionPlan & vbCrLf & _
+            "  CreateSectionViewAt5 returned Nothing"
     End If
 
 SafeExit:
     swDrawModel.ClearSelection2 True
     swDraw.ActivateView ""
 End Sub
+
+Private Function midAcross(ByVal secVertical As Boolean, _
+                           ByVal midX As Double, ByVal midY As Double) As Double
+    If secVertical Then
+        midAcross = midX
+    Else
+        midAcross = midY
+    End If
+End Function
+
+' Creates one leg of the section line and appends it to the selection. Reads
+' the endpoints back off the sketch segment rather than trusting the arguments,
+' because the sketch frame's scale is the open question this revision answers.
+Private Function AddCutSegment( _
+    ByRef swDrawModel As SldWorks.ModelDoc2, _
+    ByVal secVertical As Boolean, _
+    ByVal along1 As Double, ByVal across1 As Double, _
+    ByVal along2 As Double, ByVal across2 As Double) As Boolean
+
+    On Error GoTo Failed
+
+    Dim x1 As Double, y1 As Double, x2 As Double, y2 As Double
+    If secVertical Then
+        x1 = across1: y1 = along1: x2 = across2: y2 = along2
+    Else
+        x1 = along1: y1 = across1: x2 = along2: y2 = across2
+    End If
+
+    Dim swLine As SldWorks.SketchLine
+    Set swLine = swDrawModel.SketchManager.CreateLine(x1, y1, 0, x2, y2, 0)
+    If swLine Is Nothing Then GoTo Failed
+
+    ' Append rather than replace: CreateSectionViewAt5 wants every leg selected
+    ' at once ("the section line or lines").
+    swLine.Select4 True, Nothing
+
+    Dim swStart As SldWorks.SketchPoint
+    Set swStart = swLine.GetStartPoint2
+    If Not swStart Is Nothing Then
+        LastSectionReadback = LastSectionReadback & _
+            Format$(swStart.X * 1000#, "0.###") & "," & _
+            Format$(swStart.Y * 1000#, "0.###") & " "
+    End If
+
+    AddCutSegment = True
+    Exit Function
+
+Failed:
+    Err.Clear
+    AddCutSegment = False
+End Function
+
+' Picks the two across-axis coordinates the stepped cut needs: the bore's, and
+' the busiest row of ordinary holes. Deliberately derived from the model rather
+' than hardcoded to this fixture - the widest hole-like feature is the bore on
+' any part where a bore is the reason a section exists at all.
+Private Function PlanSteppedCut( _
+    ByRef swPart As SldWorks.ModelDoc2, _
+    ByVal secVertical As Boolean, _
+    ByVal midX As Double, ByVal midY As Double, _
+    ByRef boreAcross As Double, ByRef rowAcross As Double, _
+    ByRef jogAlong As Double) As Boolean
+
+    On Error GoTo Failed
+
+    boreAcross = midAcross(secVertical, midX, midY)
+    PlanSteppedCut = False
+
+    Dim holes As Collection
+    Set holes = Module3_ModelAudit.GetAllHoleLikeFeatures(swPart)
+    If holes Is Nothing Then Exit Function
+    If holes.Count < 2 Then Exit Function
+
+    ' Widest feature is the bore. Everything within 60% of its diameter counts
+    ' as "the bore" too, so a counterbore's own ring does not become the row.
+    Dim biggest As Double
+    Dim boreAlong As Double
+    Dim i As Long
+    biggest = 0#
+    For i = 1 To holes.Count
+        Dim d As Double
+        d = Module3_ModelAudit.GetHoleDiameter(holes(i))
+        If d > biggest Then
+            biggest = d
+            boreAcross = AcrossOf(secVertical, holes(i))
+            boreAlong = AlongOf(secVertical, holes(i))
+        End If
+    Next i
+
+    If biggest <= 0# Then Exit Function
+
+    ' Busiest across-coordinate among the non-bore holes, and the one of those
+    ' furthest along the axis from the bore - that is where the cut has to end
+    ' up to pass through the row.
+    Dim bestCount As Long
+    Dim bestAcross As Double
+    Dim nearestAlong As Double
+    Dim haveRow As Boolean
+    bestCount = 0
+    haveRow = False
+
+    For i = 1 To holes.Count
+        If Module3_ModelAudit.GetHoleDiameter(holes(i)) < biggest * 0.6 Then
+            Dim candAcross As Double
+            candAcross = AcrossOf(secVertical, holes(i))
+
+            Dim n As Long
+            Dim closestAlong As Double
+            n = 0
+            closestAlong = 0#
+
+            Dim j As Long
+            For j = 1 To holes.Count
+                If Module3_ModelAudit.GetHoleDiameter(holes(j)) < biggest * 0.6 Then
+                    If Abs(AcrossOf(secVertical, holes(j)) - candAcross) <= 0.0005 Then
+                        n = n + 1
+                        Dim a As Double
+                        a = AlongOf(secVertical, holes(j))
+                        If n = 1 Then
+                            closestAlong = a
+                        ElseIf Abs(a - boreAlong) < Abs(closestAlong - boreAlong) Then
+                            closestAlong = a
+                        End If
+                    End If
+                End If
+            Next j
+
+            If n > bestCount Then
+                bestCount = n
+                bestAcross = candAcross
+                nearestAlong = closestAlong
+                haveRow = True
+            End If
+        End If
+    Next i
+
+    If Not haveRow Then Exit Function
+    If bestCount < 2 Then Exit Function
+    If Abs(bestAcross - boreAcross) <= 0.0005 Then Exit Function
+
+    rowAcross = bestAcross
+    ' Jog midway between the bore centre and the first hole of the row, so
+    ' neither feature is clipped by the step.
+    jogAlong = (boreAlong + nearestAlong) / 2#
+
+    PlanSteppedCut = True
+    Exit Function
+
+Failed:
+    Err.Clear
+    PlanSteppedCut = False
+End Function
+
+Private Function AlongOf(ByVal secVertical As Boolean, ByVal holeInfo As Variant) As Double
+    If secVertical Then
+        AlongOf = Module3_ModelAudit.GetHoleY(holeInfo)
+    Else
+        AlongOf = Module3_ModelAudit.GetHoleX(holeInfo)
+    End If
+End Function
+
+Private Function AcrossOf(ByVal secVertical As Boolean, ByVal holeInfo As Variant) As Double
+    If secVertical Then
+        AcrossOf = Module3_ModelAudit.GetHoleX(holeInfo)
+    Else
+        AcrossOf = Module3_ModelAudit.GetHoleY(holeInfo)
+    End If
+End Function
+
+Private Function DescribeSectionPlan( _
+    ByVal hasJog As Boolean, ByVal secVertical As Boolean, _
+    ByVal boreAcross As Double, ByVal rowAcross As Double, _
+    ByVal jogAlong As Double, ByVal segments As Long, _
+    ByVal scaleVal As Double) As String
+
+    Dim text As String
+    text = "Section cut: "
+    If hasJog Then
+        text = text & "stepped, " & segments & " segments" & vbCrLf & _
+            "  bore leg at " & Format$(boreAcross * 1000#, "0.###") & "mm, " & _
+            "row leg at " & Format$(rowAcross * 1000#, "0.###") & "mm, " & _
+            "jog at " & Format$(jogAlong * 1000#, "0.###") & "mm"
+    Else
+        text = text & "straight centreline (no distinct hole row found), " & _
+            segments & " segment(s)"
+    End If
+
+    If Len(LastSectionReadback) > 0 Then
+        text = text & vbCrLf & "  sketch readback (mm): " & Trim$(LastSectionReadback) & vbCrLf & _
+            "  view scale " & Format$(scaleVal, "0.####") & _
+            " - readback matching the requested values proves the sketch frame is model-scale"
+    End If
+
+    DescribeSectionPlan = text
+End Function
 
 Private Sub GetPrimarySectionSettings(ByRef secLabel As String, ByRef secVertical As Boolean)
     secLabel = vbNullString

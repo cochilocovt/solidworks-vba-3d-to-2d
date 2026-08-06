@@ -2834,3 +2834,32 @@ proves the forcing path itself: `Harvest display mode: HLR forced (was 1)`,
 **Still not verified:** whether `SetDisplayMode3` succeeds on the restore call.
 `RestoreDisplayMode` runs under `On Error Resume Next` and discards the return
 value.
+
+## CreateSectionViewAt5 with a multi-segment stepped cut (r24, live 2026-08-06)
+
+`macro_qa/20260806_165529`. Confirms two things left open when the member was
+first logged.
+
+**"the section line or lines" means literally that.** Three separately
+created `SketchLine` segments, each `Select4 True, Nothing` (additive, not
+replacing prior selection), then one `CreateSectionViewAt5` call: returned a
+non-Nothing `View`. A stepped/jogged section cut does not need
+`swCreateSectionView_OffsetSection` - that flag's own description ("two lines
+at an angle") is the revolved-section case, confirmed distinct by the enum
+text alone, now also confirmed by exclusion: the trunk uses only
+`swCreateSectionView_NotAligned` for the stepped cut and it worked.
+
+**Drawing-view sketch geometry is stored at model scale, not sheet scale.**
+CodeStack row 9 flagged this as unverified-on-SW2025. `ISketchLine.GetStartPoint2`
+read back after each segment's creation matched the requested model-mm
+coordinates exactly, with no 0.6667 view-scale factor applied: requested bore
+leg at Y=0, row leg at Y=15mm, jog at X=-27mm; readback `-127.4,0`, `-27,0`,
+`-27,15`. The view's scale is applied at display time, not to the sketch's
+stored coordinates.
+
+**Not verified:** whether the resulting section view's cutting plane visually
+follows the intended path through the model, or merely accepted the sketch
+without error. `CreateSectionViewAt5` returning non-Nothing is evidence the
+call succeeded, not that the cut is geometrically correct. The operator
+screenshot confirms the section now sits inside the sheet border, which the
+r23 version did not.

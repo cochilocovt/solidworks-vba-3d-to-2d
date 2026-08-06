@@ -2,6 +2,152 @@
 
 Date: 2026-08-06
 
+## r24 live: stepped section cut succeeds, coordinate frame confirmed
+
+Run `macro_qa/20260806_165529_P-0251-14A-001`. Deploy `VERIFY: PASS`, embedded
+`trunk-2026-08-06-r24`, 13/13 managed components matching source. Pre-flight
+`verdict=Clean`. 27 dimensions, `PASS`.
+
+### Ordinate chains: unaffected, still exact
+
+`Ordinate edges seen: 39 (circular: 22, of which arcs: 4, linear: 17)`,
+`Harvest display mode: HLR forced (was 1)`, X `160,90,50,10,0`, Y `36,15,0,15,36`,
+8 created, 0 dangling. The section-cut change touches a different code path
+and did not regress the r23 result.
+
+### Section cut: stepped, and the coordinate-frame question is closed
+
+```
+Section cut: stepped, 3 segments
+  bore leg at 0.mm, row leg at 15.mm, jog at -27.mm
+  sketch readback (mm): -127.4,0. -27.,0. -27.,15.
+  view scale 0.6667 - readback matching the requested values proves the sketch frame is model-scale
+```
+
+The three logged points are the start point of each of the three
+`SketchLine` segments (bore leg, jog, row leg), read back via
+`GetStartPoint2` rather than trusted from the arguments. They match the
+requested along/across values with no 0.6667 scale factor applied anywhere.
+This settles the question CodeStack row 9 raised: drawing-view sketch
+geometry in this SW2025 install is stored at model scale; the view's own
+scale is a display-time transform, not a coordinate-system change.
+Previously unverified because every prior section cut sat at an offset of 0,
+which reads back as 0 under any scale and proved nothing.
+
+`CreateSectionViewAt5` accepted three separately-created, separately-selected
+`SketchLine` segments as one section line and returned a non-Nothing view.
+The Remarks phrase "the section line or lines" (MCP, 2026-08-06) is now
+confirmed to mean what it says.
+
+Section view dimension count rose 11 to 13 (new `40.00` and `10.00`
+present); front view fell 16 to 14. Consistent with dimensions that used to
+land on the front view now landing on the section instead, now that the cut
+passes through the hole row - not independently confirmed, text readback
+alone cannot distinguish this from a placement change. 0 dangling in both
+views.
+
+### Operator screenshot: confirms border containment, front view matches reference
+
+The operator's post-run screenshot shows the front view matching the
+reference drawing closely: `160.00, 90.00, 50.00, 10.00, 0` across the top,
+`36.00, 15.00, 0, 15.00, 36.00` down the right, `R36.00`, `1.00`, `40.00`,
+`30.00`, `45deg`, six-hole pattern. Section J-J now sits inside the sheet
+border - the r23 overflow (12.00/18.00/12.00 dimensions running past the
+frame edge) is gone. Section still renders landscape (wide), not the
+reference's portrait orientation.
+
+**Not confirmed from the screenshot at this resolution:** whether the
+section's cross-section shape itself changed versus r23 in a way traceable
+to the new cut path, as opposed to the same shape with one more dimension
+labelled. The sketch-readback evidence above proves the cut *line* is
+correctly stepped; it does not by itself prove the resulting section *view*
+renders that cut correctly. Treated as proven by the readback plus the
+absence of any error, not by pixel-level comparison to the reference.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment + readback | `VERIFY: PASS`, embedded `trunk-2026-08-06-r24` |
+| VBA compile | pre-flight `verdict=Clean` |
+| Live macro execution | ran, `PASS` |
+| Ordinate chains | unaffected, still match reference exactly |
+| Section stepped-cut creation | succeeded - 3 segments, non-Nothing view |
+| Section coordinate-frame scale | proven - readback matches requested values, no scale factor |
+| Section within sheet border | confirmed by screenshot |
+| Section geometry correctness (precise visual match to reference) | not verified at pixel level |
+| Section portrait orientation | not addressed - still landscape |
+| Right view 0 dimensions / GENERAL NOTES overlap / mass units / duplicate notes | unaddressed, unchanged from prior entry |
+
+## r24 source written, deploy interrupted before any live evidence
+
+`src/baseline-model-dims/Module2_DrawingPipeline.bas` gained a stepped
+("jogged") section-cut planner and `Module1_Main.bas` was bumped to
+`MACRO_SOURCE_REVISION = "trunk-2026-08-06-r24"`. **Both files are
+uncommitted. Neither has been deployed. r24 has never run against
+SOLIDWORKS.** The production run was launched and the user interrupted the
+tool call before it executed; no deploy evidence, no QA report, no sheet
+exists for r24. Do not read anything below as a result - it is a description
+of source code only.
+
+### What the change does, and why
+
+Reading the reference drawing (`test_assets/reference_drawings/P-0251-14A-001.PNG`)
+alongside the r23 sheet showed Section J-J is a **stepped cut**: it runs
+through the R36 bore centre, jogs sideways once, and continues through one row
+of the counterbored holes. The trunk's section cut through r23 was a single
+straight line at `midY`, which is the model's mirror line - it passes between
+the two hole rows (at Y = ±15) and catches neither.
+
+New `PlanSteppedCut` reads `Module3_ModelAudit.GetAllHoleLikeFeatures` and
+picks the widest hole-like feature as "the bore," then the across-axis
+coordinate shared by the most non-bore holes as "the row." `CreateSectionFromConfig`
+now draws three `SketchLine` segments (bore leg, jog, row leg) and selects all
+three before calling `CreateSectionViewAt5` - its Remarks say to select "the
+section line **or lines**" (MCP-checked 2026-08-06), which is read as license
+for a multi-segment cut under the existing `swCreateSectionView_NotAligned`
+flag. `swCreateSectionView_OffsetSection` was checked and rejected: its
+description is "an aligned section view ... two lines at an angle," which MCP
+enum text ties to a revolved section, not a step.
+
+Also changed: the section view's sheet placement, previously
+`frontPos(0) + 0.18` - a fixed 180 mm offset blind to either view's actual
+width, which is what ran the section past the sheet border on the r23 sheet.
+Now `halfFront + halfSection + 15mm gutter`, derived from the part bounding
+box and the sheet scale.
+
+### The coordinate-frame question this is designed to answer
+
+CodeStack row 9 warns that drawing-view sketch entities live in the view's own
+frame and to verify the transform direction on SW2025. Every section cut before
+r24 was placed at `midY`, which for this fixture is 0 - and 0 reads back as 0
+under any scale, so it was never evidence of which frame the sketch used. r24
+is the first cut with a nonzero offset. `AddCutSegment` reads each segment's
+endpoints back via `GetStartPoint2` and reports them in the new
+`Section cut:` QA block, specifically so the live run can show whether the
+sketch kept model-mm coordinates or something scaled by the 0.6667 view
+factor. **This has not run. The frame assumption is still unverified.**
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Offline unit suite | ran, 37/37 pass (unchanged count - no new offline test added for the section planner) |
+| Deployment + readback | **not run** |
+| VBA compile | **not run** - no pre-flight this turn |
+| Live macro execution | **not run** |
+| Section stepped-cut geometry vs reference | **not run** |
+| Section sketch coordinate-frame scale | **not run** - this is the open question the change exists to answer |
+| Section placement within sheet border | **not run** |
+| Visual acceptance | **not run** |
+| Right view / Section portrait orientation / GENERAL NOTES overlap / mass units / duplicate notes | unaddressed, unchanged from prior entry |
+
+### Next step
+
+Rerun `tools/production-runner/Run-R23Production.ps1 -AllowMutation -Deploy`
+to get first live evidence for r24: deploy readback, compile verdict, the QA
+report's new `Section cut:` block, and a look at the sheet.
+
 ## r23 second run: the display-mode guard is proven
 
 Run `macro_qa/20260806_152553_P-0251-14A-001`, deploy `VERIFY: PASS` at
