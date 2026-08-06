@@ -57,10 +57,35 @@ A completed run is not a passed run. Read the stage table.
 - Prefer the smallest coherent correction.
 
 Before touching any SOLIDWORKS API member, `sw*` constant, selection contract,
-or return code, use `skills/solidworks-api-lookup/SKILL.md`. The MCP is
-evidence, not installed-build proof. Record material findings in
-`docs/SOLIDWORKS_API_VALIDATION.md`. Documentation and non-API refactoring
+or return code, use `skills/solidworks-api-lookup/SKILL.md`, and check
+`docs/CODESTACK_DRAWING_API_COVERAGE.md` for a tested pattern before designing
+one. The MCP is evidence, not installed-build proof. Record material findings
+in `docs/SOLIDWORKS_API_VALIDATION.md`. Documentation and non-API refactoring
 need no lookup.
+
+**This rule is enforced, because stating it was not enough.** On 2026-08-06
+three `swDisplayMode_e` constants were found holding values belonging to other
+enum members, having survived fifteen live runs — a wrong display mode renders
+a plausible view instead of raising.
+
+- `.claude/hooks/require_api_lookup.py` blocks an edit to a managed
+  `.bas`/`.cls` that introduces a `sw[A-Z]…` token when no solidworks-api MCP
+  lookup was recorded in the last 30 minutes.
+- `tests/test_api_constant_provenance.py` fails the suite when a `sw*`
+  constant compiled into the trunk has no provenance record in
+  `docs/SOLIDWORKS_API_VALIDATION.md`.
+
+Neither proves a value correct — only the installed SW2025 type library does.
+They make skipping the check impossible to do silently.
+
+Two contracts worth knowing before they cost a run:
+
+- Against a SOLIDWORKS COM Boolean, **only `= False` is reliable**. `Not x`
+  yields `-2`; `x = True` never matches because VBA `True` is `-1`. Use
+  `Not (x = False)`.
+- **An error raised at a COM boundary is not evidence the callee refused.**
+  `Set swSelData.View = swView` raised 91 for eleven revisions; the property
+  is `propertyput` and needs a plain assignment.
 
 ## Evidence honesty
 

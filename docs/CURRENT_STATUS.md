@@ -2,6 +2,88 @@
 
 Date: 2026-08-06
 
+## r19 live: both ordinate chains match the reference structurally
+
+`MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r19`, deployed, compiled
+`verdict=Clean`, run against P-0251 with ordinate mode, Center datum and HLR.
+
+| | trunk r19 | P-0251-14A-001 |
+|---|---|---|
+| Long axis | 159, 89, 49, 9, **0** | 160, 90, 50, 10, **0** |
+| Cross axis | 36, 15, **0**, 15, 35 | 36, 15, **0**, 15, 36 |
+
+Five stations per axis, zero dangling ordinates, correct 40 mm pitch, datums
+on a straight end face and on the centreline respectively.
+
+```
+readback: 8 dims, 0 dangling
+Ordinate edges seen: 39 (circular: 22, of which arcs: 4, linear: 17)
+Selection scope: ScopedToView(Let)
+View scale: 0.6667 (stations below are model mm, scale-normalised)
+Datum contract: LongAxis=X:FromMinEnd;ShortAxis=Y:FromCentreline
+  X: 5 stations (holes=4, edges=1), datum Edge:offsetFromTarget=159.00mm
+  Y: 5 stations (holes=3, edges=2), datum Hole:offsetFromTarget=0.50mm
+```
+
+### Closed since r7
+
+Gaps **A1-A6, A8, A10** in `BASELINE_TO_REFERENCE_DRAWING_GAP.md`.
+
+| Rev | What changed |
+|---|---|
+| r8 | `IsIsoView` replaced by `Module8_ViewClassifier`; ordinates confined to the front view |
+| r10 | Per-axis candidate sets and datums; straight edges admitted; 1-D dedup |
+| r11 | One entity belongs to one chain; alternates retained per station |
+| r13 | Coordinates normalised by `IView.ScaleDecimal` |
+| r15 | Dangling prune moved after `ForceRebuild3` |
+| r16 | `ISelectData.View` scoped again; three display-mode constants corrected |
+| r17 | HLR removes the hidden-line edges that could not hold an ordinate |
+| r19 | Arcs kept as stations; an **end** datum must be a straight edge |
+
+### Open, in order
+
+1. **The 1 mm systematic offset.** Every long-axis station is exactly 1 mm
+   below its reference counterpart; the cross axis matches on one side (36)
+   and is 1 mm short on the other (35). Candidate: the drawing's own note
+   "All corners are chamfered 0.5 x 45 deg" would put the selected straight
+   edge on the chamfer rather than the true face extreme. **Not tested.**
+2. **`swCreateOrdDimErr_OrdFailure`** on non-front views. Four failures at r7;
+   never attempted since, because ordinates are now front-view only.
+   **Undiagnosed.**
+3. **The form owns the settings, and it is unmanaged.** `ResetGlobalConfig` is
+   a no-form fallback; `UserForm1` seeds from saved registry settings and
+   overwrites `GlobalConfig` on OK. The forms are outside the deployment
+   manifest and cannot be imported, so operator-visible defaults can only be
+   changed by hand-editing in the VBE. No test covers the forms.
+4. **Section view placement and sheet layout** (C-series gaps). The section
+   view has run off the sheet frame in several runs; view placement is
+   arithmetic on the part bounding box with no bounds check (A7).
+5. **Conventional dimensions do not exist.** Everything on the reference
+   except the two ordinate chains and the hole callouts is a conventional
+   dimension that appears only if the model happens to have it marked. This is
+   the Tier C gap; see section 7 of the gap doc.
+6. `swDefaultTemplateDrawing = 10` is an inherited value, never re-queried.
+7. `IView.SetDisplayMode3` is obsolete; the trunk still calls it.
+
+### Waiting on a user decision - do not default
+
+Both confirmed on the sheet; the user has deferred them.
+
+- **Mass units.** Title block reads `MASS(KG): 1296.82` against the
+  reference's `1.30 kg`.
+- **Duplicate general notes.** Once from the template's sheet format, once
+  from `InsertNotes`. `DrawingContainsText` cannot see sheet-format text, so
+  QA cannot detect it.
+
+### Process gates added 2026-08-06
+
+Instruction text in `CLAUDE.md` did not hold across a long session: three
+`swDisplayMode_e` constants sat in the trunk with values from other enum
+members and survived fifteen live runs. Two mechanical gates now enforce the
+API-lookup contract - a `PreToolUse` hook that blocks `sw*` edits without a
+recent MCP lookup, and a test that fails the suite when a `sw*` constant has
+no provenance record. See `CLAUDE.md` and `Architecture.md`.
+
 ## r15 live: no wrong dimensions on the sheet; two stations lost
 
 `MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r15`. Report at

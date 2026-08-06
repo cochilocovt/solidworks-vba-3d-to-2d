@@ -23,6 +23,11 @@ label.
 ## Start here
 
 - [Agents.md](Agents.md) — binding contract
+- [docs/README.md](docs/README.md) — index of the 25 docs, marking which are
+  current and which describe the archived tree. Most are historical; a doc's
+  own revision label is not evidence.
+- [docs/Architecture.md](docs/Architecture.md) — component map and execution
+  order
 - [docs/BASELINE_TO_REFERENCE_DRAWING_GAP.md](docs/BASELINE_TO_REFERENCE_DRAWING_GAP.md)
   — what the trunk still needs to produce the reference drawing, and the
   phased plan

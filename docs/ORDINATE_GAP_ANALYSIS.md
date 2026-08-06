@@ -1,5 +1,23 @@
 # Ordinate Gap Analysis
 
+> **SUPERSEDED 2026-08-06.** A static comparison written before any live run.
+> It served its purpose - it started the r8-r19 work - but it is now
+> historical, and several of its premises are false today:
+>
+> - It compares against `src/active-ordinate/`, which is history, and treats
+>   `src/baseline-model-dims/` as a protected baseline. Baseline is now the
+>   trunk and has been rewritten.
+> - Its gap list A1-A10 is tracked with current status in
+>   `BASELINE_TO_REFERENCE_DRAWING_GAP.md`. A1-A6, A8 and A10 are closed.
+> - It could not see the defects that actually blocked the engine, because
+>   every one of them needed a live run: the COM Boolean contract,
+>   hidden-line edges being undimensionable, `ICurve.IsCircle` returning true
+>   for arcs, and the view scale carried by `ModelToViewTransform`.
+>
+> For current state read `CURRENT_STATUS.md`; for API contracts read
+> `SOLIDWORKS_API_VALIDATION.md`.
+
+
 ## Scope and evidence
 
 This is a static comparison of the current exported files in:

@@ -2,6 +2,20 @@
 
 Planning session, 2026-08-05. No source file was edited.
 
+> **Live status 2026-08-06 (r19).** Phases 1 and 2 are complete and Phase 3
+> item 9 is complete. Gaps **A1-A6, A8, A10, B1, B2** are closed; **A7, A9**
+> and the whole of section 7 remain open. Both ordinate chains now match the
+> reference structurally:
+>
+> | | trunk r19 | reference |
+> |---|---|---|
+> | Long axis | 159, 89, 49, 9, 0 | 160, 90, 50, 10, 0 |
+> | Cross axis | 36, 15, 0, 15, 35 | 36, 15, 0, 15, 36 |
+>
+> The per-gap table below carries individual status. Live API contracts are in
+> `SOLIDWORKS_API_VALIDATION.md`; current open work is in `CURRENT_STATUS.md`.
+> Section 12 records what the live runs taught that no static analysis could.
+
 Target: `test_assets/reference_drawings/P-0251-14A-001.PNG`.
 Subject: `src/baseline-model-dims/` (abbreviated **B** below).
 Inputs reviewed: `docs/ORDINATE_GAP_ANALYSIS.md`,
@@ -127,16 +141,16 @@ refuse to trust them; they pass. No numeric correction is needed there.
 
 | # | Gap | Evidence | Reference demands |
 |---|---|---|---|
-| A1 | No `SetPickMode` | `B:238-252` | see §1.1 |
-| A2 | One datum for both axes | `ResolveDatumIndex` `B:161-188`, one `datumIdx` used by both chains `B:86-87` | X datum = centreline, Y datum = bottom edge — different entities, different rules |
-| A3 | Datum must be a circle | candidate array is circles only, `B:44-79` | neither reference datum is a hole |
-| A4 | Only circular edges are candidates | `If Not swCurve.IsCircle Then GoTo NextEdge`, `B:52` | X chain dimensions the `±36` silhouette edges |
+| A1 | ~~No `SetPickMode`~~ **CLOSED r7** | called unconditionally after every `AddOrdinateDimension`, success and failure paths | see §1.1 |
+| A2 | ~~One datum for both axes~~ **CLOSED r10** | independent `AxisCandidates` per axis, independent datums in `ResolveAxisDatums` | X datum = centreline, Y datum = bottom edge — different entities, different rules |
+| A3 | ~~Datum must be a circle~~ **CLOSED r10/r19** | datum kind is free; an **end** datum is further restricted to a straight edge (r19), a centreline datum is unrestricted | neither reference datum is a hole |
+| A4 | ~~Only circular edges are candidates~~ **CLOSED r10** | straight model edges admitted as stations; the cross chain now reaches `36` | X chain dimensions the `±36` silhouette edges |
 | A5 | ~~Ordinates applied to every non-ISO view~~ **CLOSED r8** | now `Module8_ViewClassifier.AllowsOrdinateDimensions`, front-only | ordinates on the front view **only**; section and left views use conventional dims |
 | A6 | ~~View classification by name string~~ **CLOSED r8** | `IsIsoView` deleted; `Module8_ViewClassifier.ClassifyView` uses `IView.Type` + `IView.GetOrientationName` | see §6, now resolved with live evidence |
-| A7 | Fixed 15 mm placement offset, no bounds check | `B:243-245` | chains sit clear of the view, inside the frame, clear of the title block |
-| A8 | 2-D proximity test used to dedupe a 1-D chain | `HasNearbyPoint` `B:151-159` used for both axes | a horizontal chain cares only about X; a Y difference must not keep two points that share an X |
-| A9 | 1.5 mm tolerance is an unjustified magic number | `B:154`, `B:221` | derive from model/drawing resolution |
-| A10 | Chain failures only reach `Debug.Print` | `B:248-250` | QA must see them (§7) |
+| A7 | Fixed 15 mm placement offset, no bounds check | unchanged | chains sit clear of the view, inside the frame, clear of the title block. **Still open** — the section view has run off the sheet in several runs |
+| A8 | ~~2-D proximity test used to dedupe a 1-D chain~~ **CLOSED r10** | dedup is per axis and 1-D, in `AddAxisCandidate` | a horizontal chain cares only about X; a Y difference must not keep two points that share an X |
+| A9 | 1.5 mm tolerance is an unjustified magic number | `COORD_DEDUP_TOL_M`. **Still open**, but no longer scale-dependent: r13 normalises coordinates by `IView.ScaleDecimal`, which fixed the macro emitting different dimensions at different scales | derive from model/drawing resolution |
+| A10 | ~~Chain failures only reach `Debug.Print`~~ **CLOSED r7-r15** | `OrdinateRunStatus` threaded to QA; plus a post-rebuild `IAnnotation.IsDangling` readback that reports what was actually created, not what was intended | QA must see them (§7) |
 
 **A8 is a real correctness bug independent of the reference drawing.**
 `CreateOneOrdinateChain` dedupes correctly on the single coordinate array
@@ -245,7 +259,7 @@ mechanical, need no new architecture, and each maps to a symptom the user
 reported. Phase 3 needs a decision from the user, not more API lookups.
 Phase 4 is the Tier C rearchitecture already agreed.
 
-### Phase 1 — contract-verified fixes (no new design)
+### Phase 1 — contract-verified fixes (no new design) — **DONE r7**
 
 1. `SetPickMode` after every `AddOrdinateDimension`, success and failure paths
    (A1).
@@ -257,13 +271,13 @@ Phase 4 is the Tier C rearchitecture already agreed.
 Then run the probe runner and judge against the fixture. Items 1 and 2 are the
 ones expected to change observable behaviour.
 
-### Phase 2 — read-only probe, then classification
+### Phase 2 — read-only probe, then classification — **DONE r8**
 
 6. Probe what `IView.Type` and `IView.GetOrientationName` return for each view
    this pipeline creates (§6).
 7. Replace `IsIsoView` with the API-backed test (A6).
 
-### Phase 3 — needs a user decision first
+### Phase 3 — needs a user decision first — **items 8 and 9 DONE (r8, r10-r19); item 10 open**
 
 8. **Per-view dimension-style policy** (A5). Which views get ordinates, which
    get conventional dims. The reference says front-only, but that is one
@@ -292,3 +306,54 @@ ones expected to change observable behaviour.
    the model has none? Drives §7.
 4. **Is the reference's view layout a fixed template or a computed one?**
    Drives C4.
+
+
+## 12. What the live runs taught, r7 to r19
+
+This document was written statically. Every defect that actually blocked the
+engine needed a run to find, and three of them were invisible to any amount of
+source reading. Recorded here because the same traps will recur.
+
+### The engine failed by succeeding
+
+Not one of these raised an error. Each produced a plausible drawing.
+
+| Defect | How it presented | Found by |
+|---|---|---|
+| `If Not <comBool>` yields -2 | 349 edges, **0 circles**, on a part with 12 holes | counting edges in the report |
+| `<comBool> = True` never matches | drawing with **zero** dimensions | a run after an apparently equivalent refactor |
+| `GetVisibleEntities2(Nothing, …)` | no edges at all | trying the component route |
+| Wrong `swDisplayMode_e` values | views rendered in the wrong mode for 15 runs | the constant-provenance test |
+| `ModelToViewTransform` carries scale | **different dimensions at different scales** | the operator running at 1:2 |
+| Hidden-line edges undimensionable | two ordinates reading `0.00` | an HLR/HLV A-B run |
+| `ICurve.IsCircle` true for arcs | datum 60 mm inside the part | reading the Remarks |
+| `Set` on a `propertyput` property | error 91, carried as an "API refusal" for 11 revisions | reading the Remarks |
+
+### Two rules that came out of it
+
+1. **An error at a COM boundary is not evidence the callee refused.** Check
+   the VBA binding before recording an API limitation.
+2. **`GetVisibleEntities2` visibility is not the same question as "can this
+   entity carry a dimension".** An edge drawn in hidden-line font is returned,
+   selects, and yields `swCreateOrdDimErr_Success` — and the ordinate dangles.
+
+### The instruments that actually resolved things
+
+Three diagnoses of the dangling ordinates were inferred from station counts
+and sheet positions. All three were wrong. What settled it was measurement:
+
+- the intended station list, in model mm, printed every run;
+- `IAnnotation.IsDangling` + `IDimension.GetValue3` read back **after the
+  rebuild** — the flag is not set before one;
+- the per-view roster carrying raw `IView.Type` / `GetOrientationName`.
+
+Each cost one function. Each mechanism guess cost a full deploy-run cycle.
+
+### A gap this document did not anticipate
+
+`ResetGlobalConfig` is **not** the user-visible default. `UserForm1` seeds its
+controls from saved registry settings and writes them back over `GlobalConfig`
+on OK, so the form wins on every run that shows it. The forms are outside
+`deployment-manifest.json` and cannot be imported, so operator-visible
+defaults can only be changed by hand-editing in the VBE, and no test covers
+them. See `Architecture.md`.

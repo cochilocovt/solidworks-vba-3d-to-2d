@@ -1,5 +1,16 @@
 # Reference Drawing Analysis and Target Macro Specification
 
+> **HISTORICAL 2026-08-06.** The status block below calls this a "living
+> production specification", names `src/target-spec-hybrid-v2/` as the
+> implementation and `src/baseline-model-dims/` as protected. Both are now
+> false: hybrid-v2 is in `archive/`, and baseline is the trunk. Do not follow
+> this document's instructions.
+>
+> Its analysis of the reference drawing itself is still worth reading. Its
+> claims about which source tree is authoritative, and its r4-r62 revision
+> labels, are not.
+
+
 > **Status:** Living production specification  
 > **Updated:** 2026-07-26  
 > **Applies to:** clean replacement source `src/target-spec-hybrid-v2/`; the existing `src/active-ordinate/active_ordinate.swp` is retained as runtime evidence until the replacement is compiled and validated  
