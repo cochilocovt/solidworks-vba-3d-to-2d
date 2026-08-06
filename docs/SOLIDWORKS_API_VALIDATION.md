@@ -2719,3 +2719,54 @@ stations and no dangling ordinate is created.
 
 The post-rebuild dangling prune stays. It is now a safety net rather than the
 mitigation, and it correctly reports zero under HLR.
+
+## 2026-08-06 r18/r19 ICurve.IsCircle is true for arcs; the datum must be an edge
+
+`ICurve.IsCircle` Remarks: *"Use IEdge::GetCurveParams2 or
+IEdge::IGetCurveParams2 to determine if a circular edge is a complete circle
+or an arc."* The trunk never made that distinction, so P-0251's rounded end
+was treated as a hole and its arc **centre** became the long-axis datum - the
+chain started 60 mm inside the part.
+
+`IsFullCircle` now distinguishes them from `IEdge.GetStartVertex` /
+`GetEndVertex`, whose Remarks state the two "return distinct vertices, unless
+the edge is closed". It fails closed to "full circle": misreading an arc as a
+hole is the defect being prevented, misreading a hole as an arc only loses a
+station.
+
+### r18 excluded arcs, and that was an over-correction
+
+| | X chain | Y chain |
+|---|---|---|
+| r17 (arcs kept, no edge rule) | 0, 70, 110, 150, 159 | 36, 15, 0, 15, 35 |
+| r18 (arcs excluded + edge rule) | **89, 49, 9, 0** | **21, 0, 30, 50** broken |
+| r19 (arcs kept + edge rule) | **159, 89, 49, 9, 0** | **36, 15, 0, 15, 35** |
+
+The rounded end's arc centre lies exactly on the part's axis of symmetry and
+was the only entity on it. Excluding arcs removed the Y centreline datum and
+left it 14.5 mm off centre.
+
+**An arc's centre is a true, dimensionable coordinate** - it is what an
+ordinate attached to that edge reads, and for a rounded end it is the axis of
+symmetry. The r17 defect was not that the centre is wrong, but that it was
+mistaken for the part's *extreme*. Requiring an end datum to be a straight
+edge fixes that on its own.
+
+`ResolveOneDatum` therefore restricts an **end** datum to straight-edge
+candidates when any exist, and leaves a **centreline** datum unrestricted.
+
+### Result against the reference drawing
+
+| | trunk r19 | P-0251-14A-001 |
+|---|---|---|
+| Long axis | 159, 89, 49, 9, 0 | 160, 90, 50, 10, 0 |
+| Cross axis | 36, 15, 0, 15, 35 | 36, 15, 0, 15, 36 |
+
+Five stations per axis on both chains, zero dangling ordinates.
+
+**Unexplained, and not to be assumed:** every long-axis station is exactly
+1 mm below its reference counterpart, and the cross-axis chain matches on one
+side (36) and is 1 mm short on the other (35). One candidate is the drawing's
+own general note - *"All corners are chamfered 0.5 x 45 deg"* - which would put
+the selected straight edge on the chamfer rather than the true face extreme.
+That has **not** been tested.

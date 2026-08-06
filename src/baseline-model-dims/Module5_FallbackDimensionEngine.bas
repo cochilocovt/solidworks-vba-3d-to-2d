@@ -90,6 +90,7 @@ Public Type OrdinateRunStatus
     CandidateEdgesSeen As Long
     CircularEdgesSeen As Long
     LinearEdgesSeen As Long
+    ArcEdgesSeen As Long
     AxisRoleBasis As String
     XAxisReport As String
     YAxisReport As String
@@ -342,6 +343,30 @@ Private Sub CollectAxisCandidates( _
         isLine = Not (swCurve.IsLine = False)
 
         If isCircle Then
+            ' ICurve.IsCircle is true for an ARC as well as a full circle -
+            ' its Remarks say to use IEdge::GetCurveParams2 to tell them
+            ' apart (MCP, 2026-08-06). The trunk did not, so P-0251's rounded
+            ' end was treated as a hole and its arc CENTRE became the X datum.
+            ' That is the 60 mm offset between this chain and the reference.
+            '
+            ' An arc is KEPT as a station. r18 excluded them and that was an
+            ' over-correction: it fixed the X datum and broke the Y one,
+            ' because P-0251's rounded end has its arc centre exactly on the
+            ' part's centreline and was the only entity there. The Y chain
+            ' went from 36/15/0/15/35 to 21/0/30/50 with the datum 14.5 mm off
+            ' centre.
+            '
+            ' An arc's centre is a true, dimensionable coordinate - it is what
+            ' an ordinate attached to that edge reads, and for a rounded end
+            ' it is exactly the axis of symmetry. The r17 defect was never
+            ' that the centre is wrong; it was that the centre was mistaken
+            ' for the part's EXTREME. That is fixed in ResolveOneDatum by
+            ' requiring an end datum to be a straight edge, which is
+            ' sufficient on its own.
+            If IsFullCircle(swEdge) = False Then
+                status.ArcEdgesSeen = status.ArcEdgesSeen + 1
+            End If
+
             status.CircularEdgesSeen = status.CircularEdgesSeen + 1
 
             Dim cp As Variant
@@ -463,30 +488,45 @@ Private Sub ResolveAxisDatums( _
 
     Dim xTarget As Double
     Dim yTarget As Double
+    Dim xFromExtreme As Boolean
+    Dim yFromExtreme As Boolean
     Dim basis As String
 
     If datumType = "Top-Left" Then
         xTarget = xMin
         yTarget = yMax
+        xFromExtreme = True
+        yFromExtreme = True
         basis = "CornerTopLeft"
     ElseIf datumType = "Bottom-Left" Then
         xTarget = xMin
         yTarget = yMin
+        xFromExtreme = True
+        yFromExtreme = True
         basis = "CornerBottomLeft"
     ElseIf (xMax - xMin) >= (yMax - yMin) Then
         xTarget = xMin
         yTarget = (yMin + yMax) / 2#
+        xFromExtreme = True
+        yFromExtreme = False
         basis = "LongAxis=X:FromMinEnd;ShortAxis=Y:FromCentreline"
     Else
         xTarget = (xMin + xMax) / 2#
         yTarget = yMin
+        xFromExtreme = False
+        yFromExtreme = True
         basis = "LongAxis=Y:FromMinEnd;ShortAxis=X:FromCentreline"
     End If
 
     status.AxisRoleBasis = basis
 
-    ResolveOneDatum xs, xTarget
-    ResolveOneDatum ys, yTarget
+    ' An "from the end" datum is a datum FACE - a straight edge at an extreme
+    ' of the part - not whichever feature happens to sit nearest the extreme.
+    ' On P-0251 the nearest thing to xMin was the rounded end's arc centre,
+    ' which is why the long chain started 60 mm inside the part. A centreline
+    ' datum takes no such restriction: it is normally a hole or an axis.
+    ResolveOneDatum xs, xTarget, xFromExtreme
+    ResolveOneDatum ys, yTarget, yFromExtreme
 End Sub
 
 Private Sub AxisRange( _
@@ -515,34 +555,47 @@ End Sub
 ' detail.
 Private Sub ResolveOneDatum( _
     ByRef axis As AxisCandidates, _
-    ByVal target As Double)
+    ByVal target As Double, _
+    ByVal requireStraightEdge As Boolean)
 
     axis.DatumIndex = 0
     axis.DatumBasis = "NoCandidates"
     If axis.Count < 1 Then Exit Sub
 
+    ' A datum face is a straight edge. Restrict to those when the datum is an
+    ' end datum and any exist; fall back to the whole set otherwise, so a part
+    ' with no straight edge on that axis still gets a chain.
+    Dim edgesOnly As Boolean
+    edgesOnly = (requireStraightEdge = True) And (axis.EdgeCount > 0)
+
     Dim bestIdx As Long
     Dim bestDist As Double
-    bestIdx = 0
-    bestDist = Abs(axis.Coord(0) - target)
+    bestIdx = -1
+    bestDist = 0#
 
     Dim i As Long
-    For i = 1 To axis.Count - 1
-        Dim dist As Double
-        dist = Abs(axis.Coord(i) - target)
+    For i = 0 To axis.Count - 1
+        If edgesOnly = False Or axis.IsEdgeKind(i) = True Then
+            Dim dist As Double
+            dist = Abs(axis.Coord(i) - target)
 
-        If dist < bestDist - AXIS_PARALLEL_TOL_M Then
-            bestDist = dist
-            bestIdx = i
-        ElseIf Abs(dist - bestDist) <= AXIS_PARALLEL_TOL_M Then
-            If axis.IsEdgeKind(i) = True And _
-                axis.IsEdgeKind(bestIdx) = False Then
+            If bestIdx < 0 Then
+                bestIdx = i
+                bestDist = dist
+            ElseIf dist < bestDist - AXIS_PARALLEL_TOL_M Then
                 bestDist = dist
                 bestIdx = i
+            ElseIf Abs(dist - bestDist) <= AXIS_PARALLEL_TOL_M Then
+                If axis.IsEdgeKind(i) = True And _
+                    axis.IsEdgeKind(bestIdx) = False Then
+                    bestDist = dist
+                    bestIdx = i
+                End If
             End If
         End If
     Next i
 
+    If bestIdx < 0 Then bestIdx = 0
     axis.DatumIndex = bestIdx
 
     Dim kind As String
@@ -720,6 +773,48 @@ End Function
 ' needed - the caller compares the two transformed endpoints - which avoids
 ' transforming a direction vector through IView.ModelToViewTransform, a
 ' contract this project has not established.
+' True when a circular edge closes on itself, false when it is an arc.
+'
+' IEdge.GetStartVertex Remarks: it and GetEndVertex "return distinct vertices,
+' unless the edge is closed", and return null when the edge has no vertex at
+' all. Both of those are the closed case; two distinct vertices is an arc.
+' Fails closed to True, because misreading an arc as a hole is the defect this
+' exists to prevent and misreading a hole as an arc only loses a station.
+Private Function IsFullCircle(ByRef swEdge As SldWorks.Edge) As Boolean
+    On Error GoTo Failed
+
+    Dim v1 As Object
+    Dim v2 As Object
+    Set v1 = swEdge.GetStartVertex
+    Set v2 = swEdge.GetEndVertex
+
+    If v1 Is Nothing Then
+        IsFullCircle = True
+        Exit Function
+    End If
+    If v2 Is Nothing Then
+        IsFullCircle = True
+        Exit Function
+    End If
+
+    Dim p1 As Variant
+    Dim p2 As Variant
+    p1 = v1.GetPoint
+    p2 = v2.GetPoint
+
+    If Not IsArray(p1) Then GoTo Failed
+    If Not IsArray(p2) Then GoTo Failed
+
+    IsFullCircle = _
+        (Abs(p1(0) - p2(0)) < AXIS_PARALLEL_TOL_M) And _
+        (Abs(p1(1) - p2(1)) < AXIS_PARALLEL_TOL_M) And _
+        (Abs(p1(2) - p2(2)) < AXIS_PARALLEL_TOL_M)
+    Exit Function
+
+Failed:
+    IsFullCircle = True
+End Function
+
 Private Function EdgeEndpoints( _
     ByRef swEdge As SldWorks.Edge, _
     ByRef p1 As Variant, _
@@ -803,7 +898,8 @@ Private Function CreateChainWithFallback( _
 
     ' Re-resolve the datum inside the reduced set: the edge that was the datum
     ' is no longer present.
-    ResolveOneDatum holesOnly, axis.Coord(axis.DatumIndex)
+    ' False: the holes-only set has no straight edges left to require.
+    ResolveOneDatum holesOnly, axis.Coord(axis.DatumIndex), False
 
     status.HolesOnlyRetries = status.HolesOnlyRetries + 1
     usedCount = usedBefore
@@ -945,6 +1041,7 @@ Public Function DescribeOrdinateStatus( _
     text = "Ordinate views processed: " & status.ViewsProcessed & vbCrLf
     text = text & "Ordinate edges seen: " & status.CandidateEdgesSeen & _
         " (circular: " & status.CircularEdgesSeen & _
+        ", of which arcs: " & status.ArcEdgesSeen & _
         ", linear: " & status.LinearEdgesSeen & ")" & vbCrLf
 
     If Len(status.EdgeRoute) > 0 Then

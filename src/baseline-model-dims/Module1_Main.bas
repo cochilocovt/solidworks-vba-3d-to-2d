@@ -48,7 +48,7 @@ Public GlobalSectionCount As Long
 ' deployment-request.txt from this; never hand-edit that file. Bump whenever
 ' deployable behaviour changes.
 Public Const MACRO_SOURCE_REVISION As String = _
-    "trunk-2026-08-06-r17"
+    "trunk-2026-08-06-r19"
 
 ' User-confirmed 2026-08-05. The baseline snapshot carried "V:\SW_data\..."
 ' with the VEEMAP segment missing, so the controlled template never resolved
@@ -157,7 +157,16 @@ Public Sub ResetGlobalConfig()
 
         .SheetScale = 1#
         .CustomScaleText = vbNullString
-        ' HLR by default. Evidence, 2026-08-06: run twice on the same r16
+        ' NOTE: this value does NOT reach the operator. UserForm1 seeds its
+        ' checkbox from a saved registry setting -
+        ' chkHLR.Value = ReadBoolSetting("UseHLR", False) - and writes it back
+        ' over GlobalConfig on OK, so the form wins for every run that shows
+        ' it, which is every run. The same applies to the other fields below.
+        ' ResetGlobalConfig is the no-form fallback, not the user-visible
+        ' default. Changing what the operator sees means changing the form,
+        ' which lives outside the deployment manifest.
+        '
+        ' HLR is still the right fallback. Evidence, 2026-08-06: run twice on the same r16
         ' binary, HLV against HLR, nothing else changed.
         '   HLV  64 edges -> X 9 stations, Y 7, TWO dangling ordinates
         '   HLR  39 edges -> X 5 stations, Y 5, zero dangling

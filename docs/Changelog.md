@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-08-06 (53) - r18/r19: both ordinate chains match the reference
+
+| | trunk r19 | P-0251-14A-001 |
+|---|---|---|
+| Long axis | 159, 89, 49, 9, 0 | 160, 90, 50, 10, 0 |
+| Cross axis | 36, 15, 0, 15, 35 | 36, 15, 0, 15, 36 |
+
+Five stations per axis, zero dangling.
+
+**`ICurve.IsCircle` is true for arcs.** Its Remarks say to use
+`IEdge::GetCurveParams2` to tell a full circle from an arc; the trunk never
+did, so P-0251's rounded end was treated as a hole and its arc *centre* became
+the long-axis datum - the chain started 60 mm inside the part.
+
+**r18 over-corrected and r19 fixed it.** r18 made two changes; only one was
+needed:
+
+| change | effect |
+|---|---|
+| end datum must be a straight edge | fixed X: 89, 49, 9, 0 |
+| exclude arcs as stations | broke Y: 21, 0, 30, 50 |
+
+The rounded end's arc centre lies exactly on the part's axis of symmetry and
+was the only entity there. An arc's centre is a true, dimensionable
+coordinate - it is what an ordinate on that edge reads. The r17 defect was not
+that the centre is wrong but that it was mistaken for the part's *extreme*,
+which the straight-edge rule fixes on its own. r19 keeps arcs as stations.
+
+### Correction to entry 52
+
+Entry 52 said "HLR becomes the default". That is wrong as written.
+`UserForm1` seeds its checkbox from a saved registry setting
+(`ReadBoolSetting("UseHLR", False)`) and writes it back over `GlobalConfig` on
+OK, so the form wins on every run that shows it. `ResetGlobalConfig` is the
+no-form fallback, not the user-visible default, and the same applies to its
+other fields. The form lives outside the deployment manifest, so changing what
+the operator sees is a separate job. Corrected in the code comment.
+
+### Open, unexplained
+
+Every long-axis station is exactly 1 mm below its reference counterpart, and
+the cross-axis chain matches on one side (36) and is 1 mm short on the other
+(35). One candidate is the drawing's own note - "All corners are chamfered
+0.5 x 45 deg" - which would put the selected straight edge on the chamfer
+rather than the true face extreme. **Not tested.**
+
+
 ## 2026-08-06 (52) - r16/r17: dangling root cause found; HLR is the default
 
 Two findings, both from following the API-lookup contract the new gates
