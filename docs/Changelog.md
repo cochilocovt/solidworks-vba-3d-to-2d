@@ -1,5 +1,77 @@
 # Changelog
 
+## 2026-08-06 (49) - r9/r10: per-axis datum contract; a Boolean rule widened
+
+Gaps A2, A3, A4 and A8 in `BASELINE_TO_REFERENCE_DRAWING_GAP.md`.
+
+- **A2** - X and Y carried one shared 2-D datum index. They are independent
+  problems with different answers, so each axis now has its own candidate set
+  and its own datum (`AxisCandidates`).
+- **A3** - the datum no longer has to be a circle.
+- **A4** - straight model edges are admitted as stations. A line whose two
+  view-space endpoints share an X is a station on the X chain, and vice versa.
+  Endpoints come from `IEdge.GetStartVertex`/`GetEndVertex` + `IVertex.GetPoint`
+  and are transformed as points, which avoids pushing a direction vector
+  through `IView.ModelToViewTransform` - a contract this repo has not
+  established.
+- **A8** - deduplication was a 2-D proximity test. Two holes sharing an X but
+  40 mm apart in Y are two points to that test and one station to the X chain.
+  Now per-axis and 1-D.
+
+### r9 was a regression, and it widened a standing rule
+
+r9 produced a drawing with **zero dimensions**. While restructuring, the
+proven `If swCurve.IsCircle = False Then GoTo NextEdge` was rewritten as
+`If swCurve.IsCircle = True Then`. Those are not mirror images:
+
+| form | circular edges found in the same view |
+|---|---|
+| `If Not swCurve.IsCircle` | 0 (r6, over 349 edges) |
+| `If swCurve.IsCircle = True` | **0** (r9) |
+| `If swCurve.IsCircle = False` | 35 (r8, r10) |
+
+VBA `True` is `-1`; the returned value is truthy but not `-1`. The safe form is
+`Not (<comBooleanCall> = False)`. The 2026-07-31 rule named only `If Not
+<comBooleanCall>`; it now covers **any** comparison other than `= False`.
+
+### r10 result
+
+```
+Ordinate edges seen: 64 (circular: 35, linear: 29)
+Datum contract: CornerBottomLeft
+  X: 9 stations (holes=6, edges=3), datum Hole:offsetFromTarget=0.00mm
+    offsets(mm): 0.00, 43.00, 45.00, 55.00, 70.00, 110.00, 135.00, 150.00, 159.00
+  Y: 7 stations (holes=5, edges=2), datum Edge:offsetFromTarget=0.00mm
+    offsets(mm): 0.00, 12.40, 21.00, 36.00, 51.00, 59.60, 71.00
+Ordinate chains created: 2 of 2 attempted
+```
+
+**A linear edge is a valid ordinate base entity on this build.** The engine was
+written to retry with holes-only candidates if the richer set was rejected and
+to count the retries; there were none, and the Y datum is an edge. Restricting
+candidates to circles was self-imposed, not an API constraint.
+
+### The r8 "three zeros" defect is located, not fixed
+
+Printing the intended stations was the point of the `offsets(mm)` line, and it
+worked. The sheet and the report agree on every station *position* and
+disagree on three *values*: X=55.00 and X=135.00 render `0.00`, as does
+Y=36.00, all three in the dangling-dimension colour. Creation places them
+correctly; the attachment fails for a subset of entities. Narrow question now.
+
+### Also open
+
+- The X datum sits on the bore centre while the part extends ~56 mm further
+  left. A rounded end is an arc, and arcs are not admitted as stations, so the
+  left outline is not a candidate.
+- Station counts are too high: X 9 against the reference's 5, Y 7 against 5.
+  Admitting every axis-parallel edge over-corrected; stations need a selection
+  rule, not just a wider net.
+- The default `Center` datum contract did not execute - the operator chose
+  Bottom-Left on the form - so the long-axis/centreline rule that matches the
+  reference is still unproven live.
+
+
 ## 2026-08-06 (48) - r8: view classification is API-backed and characterised
 
 `IsIsoView` is deleted. It tested `InStr(viewName, "ISO")` against names

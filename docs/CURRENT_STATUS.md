@@ -2,6 +2,64 @@
 
 Date: 2026-08-06
 
+## r10 live: per-axis datum contract works; three stations dangle
+
+`MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r10`, deployed, compiled
+`verdict=Clean`. Report at
+`macro_qa/20260806_054312_P-0251-14A-001/QA_REPORT.txt`.
+
+```
+Total drawing view dimensions: 14
+Ordinate edges seen: 64 (circular: 35, linear: 29)
+Datum contract: CornerBottomLeft
+  X: 9 stations (holes=6, edges=3), datum Hole:offsetFromTarget=0.00mm
+    offsets(mm): 0.00, 43.00, 45.00, 55.00, 70.00, 110.00, 135.00, 150.00, 159.00
+  Y: 7 stations (holes=5, edges=2), datum Edge:offsetFromTarget=0.00mm
+    offsets(mm): 0.00, 12.40, 21.00, 36.00, 51.00, 59.60, 71.00
+Ordinate chains created: 2 of 2 attempted
+```
+
+Gaps **A2, A4 and A8 are closed**: independent candidate sets and datums per
+axis, straight model edges admitted as stations, and per-axis 1-D
+deduplication. **A3 is closed in code** - the datum is no longer required to be
+a circle, and the Y datum resolved to an edge.
+
+A linear edge is confirmed valid as an ordinate base entity on this build
+(zero holes-only retries). See `SOLIDWORKS_API_VALIDATION.md`.
+
+### The r8 "three zeros" defect is located
+
+The sheet and the report agree on station *positions* and disagree on three
+*values*. X=55.00 and X=135.00 render `0.00`, as does Y=36.00, all three in the
+dangling-dimension colour, while the report lists their true offsets. Creation
+is placing them correctly; the **attachment** is failing for a subset of
+entities. That is the next thing to fix, and it is now a narrow question:
+which candidate entities produce an attachment that does not survive.
+
+### Open, in order
+
+1. **Three dangling stations** (above). Identify the entity class that fails to
+   hold an attachment and reject it at collection time.
+2. **The X datum is not the part extreme.** X=0 sits on the bore centre while
+   the part visibly extends ~56 mm further left, so the left-hand outline is
+   not in the candidate set - a rounded end is an arc, not a line, and arcs are
+   not yet admitted as stations.
+3. **Too many stations.** X has 9 against the reference's 5, Y has 7 against 5.
+   Admitting every axis-parallel edge over-corrected A4; stations now need a
+   selection rule, not just a wider net.
+4. `GetDisplayDimensions` returned 14 while 16 ordinate labels are on the
+   sheet. Unexplained, minor.
+5. Diagnose `swCreateOrdDimErr_OrdFailure` - the 4 failures at r7 were on
+   non-front views and have not been attempted since. **Undiagnosed.**
+6. `ISelectData.View` error 91 - worked around, not solved.
+
+### Untested
+
+The run used `CornerBottomLeft`: the operator selected Bottom-Left on the
+form. The default `Center` contract - long axis measured from its minimum end,
+short axis from the centreline, which is what the reference drawing does - did
+**not** execute and remains unproven live.
+
 ## r8 live: ordinates land on the front view only; values still wrong
 
 `MACRO_SOURCE_REVISION` is `trunk-2026-08-06-r8`, deployed (13/13 managed

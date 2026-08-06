@@ -2491,3 +2491,58 @@ exercised on this build.
 
 This is view-classification evidence only. It says nothing about datum
 selection or ordinate values.
+
+## 2026-08-06 r9/r10 SOLIDWORKS COM Boolean: only "= False" is reliable
+
+The rule recorded on 2026-07-31 said `If Not <comBooleanCall>` is a defect
+because `Not` yields `-2`, which VBA treats as True. r9 shows the rule was too
+narrow. **`= True` is not the mirror image of `= False`.**
+
+Same test, same view, same 64 visible edges, three forms:
+
+| form | circular edges found |
+|---|---|
+| `If Not swCurve.IsCircle Then GoTo NextEdge` | 0 (r6, over 349 edges) |
+| `If swCurve.IsCircle = True Then` | **0** (r9) |
+| `If swCurve.IsCircle = False Then GoTo NextEdge` | 35 (r8, r10) |
+
+VBA `True` is `-1`. The value `ICurve.IsCircle` returns is truthy but is not
+`-1`, so an equality test against `True` never matches. r9 produced a drawing
+with zero dimensions from a rewrite that looked like a no-op refactor of a
+proven line.
+
+**The safe form is `Not (<comBooleanCall> = False)`**: compare against `False`,
+which works, then negate the resulting VBA Boolean, which is a real VBA
+Boolean and safe to negate. `Module5_FallbackDimensionEngine` uses this for
+both `ICurve.IsCircle` and `ICurve.IsLine`.
+
+Widen the standing rule: any comparison other than `= False` against a
+SOLIDWORKS COM Boolean is a defect, including `= True` and bare truthiness.
+
+## 2026-08-06 r10 a linear edge is accepted as an ordinate datum
+
+Open question from r9: `IModelDocExtension.AddOrdinateDimension` documents only
+"select the base entity to act as the datum point", and nothing said whether a
+straight edge qualifies. The engine was written to retry with holes-only
+candidates if the richer set was rejected, and to count the retries.
+
+The r10 run at
+`test_assets/iteration_evidence/macro_qa/20260806_054312_P-0251-14A-001/QA_REPORT.txt`
+created both chains with **zero holes-only retries**, with the Y chain's datum
+reported as `Edge:offsetFromTarget=0.00mm`:
+
+```
+Ordinate edges seen: 64 (circular: 35, linear: 29)
+X: 9 stations (holes=6, edges=3), datum Hole:offsetFromTarget=0.00mm
+Y: 7 stations (holes=5, edges=2), datum Edge:offsetFromTarget=0.00mm
+Ordinate chains created: 2 of 2 attempted
+```
+
+So on this build a straight model edge is valid both as the base entity and as
+a member of an ordinate group. Gap A4's premise is confirmed: restricting
+candidates to circles was a self-imposed limit, not an API constraint.
+
+**Not established:** whether every axis-parallel edge yields a *stable*
+attachment. Three stations on the r10 sheet render `0.00` in the dangling
+colour while the report shows their true offsets, so some attachments do not
+survive. See CURRENT_STATUS.md.

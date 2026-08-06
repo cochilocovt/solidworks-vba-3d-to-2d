@@ -6,9 +6,7 @@ Private Const swHorizontalOrdinate As Long = 3
 Private Const swVerticalOrdinate As Long = 2
 Private Const swCreateOrdDimErr_Success As Long = 0
 
-' swViewEntityType_e, MCP-confirmed 2026-08-05. The baseline passed a bare 1.
-' swViewEntityType_SilhouetteEdge = 4 is the route to the reference drawing's
-' +/-36 silhouette ordinates; not used yet (gap A4).
+' swViewEntityType_e, MCP-confirmed 2026-08-06.
 Private Const swViewEntityType_Edge As Long = 1
 
 ' Outcome codes returned by CreateOneOrdinateChain in addition to the
@@ -20,6 +18,44 @@ Private Const CHAIN_SELECTION_FAILED As Long = -101
 ' unset code of 0 reads as a successful chain in the report. The r3 run
 ' reported "Last code=0 (Unrecognised code)" for exactly that reason.
 Public Const ORDINATE_CODE_UNSET As Long = -999
+
+' Drawing-space tolerances, metres.
+'
+' AXIS_PARALLEL_TOL is how far a line's two endpoints may differ on an axis
+' before it stops counting as parallel to the other one. 0.05 mm in view
+' space, well below anything a drawing distinguishes.
+'
+' MIN_EDGE_LENGTH_M rejects slivers: a 1 mm chamfer face edge is axis-parallel
+' and useless as an ordinate station.
+'
+' COORD_DEDUP_TOL_M is the r7 value, retained. It is still an unjustified
+' magic number (gap A9) and should be derived from drawing resolution.
+Private Const AXIS_PARALLEL_TOL_M As Double = 0.00005
+Private Const MIN_EDGE_LENGTH_M As Double = 0.002
+Private Const COORD_DEDUP_TOL_M As Double = 0.0015
+
+' Candidate stations for ONE axis.
+'
+' Gap A2: the r7 engine resolved a single 2-D datum index and used it for both
+' chains. X and Y are independent problems with different answers - on the
+' reference drawing the short axis is measured from the part centreline and
+' the long axis from an end - so they now carry independent candidate sets and
+' independent datums.
+'
+' Gap A3/A4: IsEdgeKind distinguishes a straight model edge from a hole
+' centre. Both are admitted. The r7 engine admitted circles only, which is why
+' its chain terminated on the outermost hole (23.60) instead of the part
+' silhouette (36.00).
+Private Type AxisCandidates
+    Objs() As Object
+    Coord() As Double
+    IsEdgeKind() As Boolean
+    Count As Long
+    HoleCount As Long
+    EdgeCount As Long
+    DatumIndex As Long
+    DatumBasis As String
+End Type
 
 ' Structured ordinate outcome, so a failed chain cannot be masked in QA by a
 ' healthy imported-model-item count.
@@ -41,6 +77,11 @@ Public Type OrdinateRunStatus
     SelDataViewError As Long
     CandidateEdgesSeen As Long
     CircularEdgesSeen As Long
+    LinearEdgesSeen As Long
+    AxisRoleBasis As String
+    XAxisReport As String
+    YAxisReport As String
+    HolesOnlyRetries As Long
 End Type
 
 Public Sub CreateHoleOrdinateDims( _
@@ -151,76 +192,29 @@ Public Sub CreateHoleOrdinateDims( _
     Set swTransform = swView.ModelToViewTransform
 
     stage = "ScanEdges"
+    Dim xs As AxisCandidates
+    Dim ys As AxisCandidates
+    CollectAxisCandidates edges, swMathUtil, swTransform, xs, ys, status
 
-    Dim objs() As Object
-    Dim px() As Double
-    Dim py() As Double
-    Dim cnt As Long
-    cnt = 0
-
-    Dim i As Long
-    For i = LBound(edges) To UBound(edges)
-        Dim swEdge As SldWorks.Edge
-        Set swEdge = edges(i)
-        If swEdge Is Nothing Then GoTo NextEdge
-
-        status.CandidateEdgesSeen = status.CandidateEdgesSeen + 1
-
-        Dim swCurve As SldWorks.Curve
-        Set swCurve = swEdge.GetCurve
-        If swCurve Is Nothing Then GoTo NextEdge
-
-        ' "If Not <SOLIDWORKS COM Boolean>" is unsafe on this build. The
-        ' contract recorded in docs/SOLIDWORKS_API_VALIDATION.md (2026-07-31
-        ' third run) is that Not yields -2, which VBA treats as True, so this
-        ' test rejected every edge: r6 read 349 edges and found 0 circles on
-        ' a part with 12 holes. That table also records CBool(comCall) then
-        ' Not failing specifically for ICurve.IsCircle, so "= False" is the
-        ' safe form here, not a CBool round-trip.
-        If swCurve.IsCircle = False Then GoTo NextEdge
-
-        status.CircularEdgesSeen = status.CircularEdgesSeen + 1
-
-        Dim cp As Variant
-        cp = swCurve.CircleParams
-
-        Dim ctr(2) As Double
-        ctr(0) = cp(0)
-        ctr(1) = cp(1)
-        ctr(2) = cp(2)
-
-        Dim swPt As SldWorks.MathPoint
-        Set swPt = swMathUtil.CreatePoint(ctr)
-        Set swPt = swPt.MultiplyTransform(swTransform)
-
-        Dim arr As Variant
-        arr = swPt.ArrayData
-
-        If Not HasNearbyPoint(px, py, cnt, arr(0), arr(1)) Then
-            ReDim Preserve objs(0 To cnt)
-            ReDim Preserve px(0 To cnt)
-            ReDim Preserve py(0 To cnt)
-            Set objs(cnt) = swEdge
-            px(cnt) = arr(0)
-            py(cnt) = arr(1)
-            cnt = cnt + 1
-        End If
-NextEdge:
-    Next i
-
-    If cnt < 2 Then
+    If xs.Count < 2 And ys.Count < 2 Then
         status.ViewsWithTooFewCandidates = _
             status.ViewsWithTooFewCandidates + 1
         Exit Sub
     End If
 
-    Dim datumIdx As Long
-    datumIdx = ResolveDatumIndex(swView, viewOutline, px, py, cnt, datumType)
+    stage = "ResolveDatums"
+    ResolveAxisDatums xs, ys, datumType, status
 
+    status.XAxisReport = DescribeAxis("X", xs)
+    status.YAxisReport = DescribeAxis("Y", ys)
+
+    stage = "CreateChains"
     RecordChainOutcome status, swView.Name, _
-        CreateOneOrdinateChain(swModel, swModelExt, swView, swSelData, objs, px, cnt, datumIdx, True, viewOutline)
+        CreateChainWithFallback(swModel, swModelExt, swView, swSelData, _
+            xs, True, viewOutline, status)
     RecordChainOutcome status, swView.Name, _
-        CreateOneOrdinateChain(swModel, swModelExt, swView, swSelData, objs, py, cnt, datumIdx, False, viewOutline)
+        CreateChainWithFallback(swModel, swModelExt, swView, swSelData, _
+            ys, False, viewOutline, status)
     Exit Sub
 
 Failed:
@@ -234,6 +228,307 @@ Failed:
     Debug.Print "Fallback ordinate error in view " & swView.Name & _
         " at stage " & stage & ": " & CStr(Err.Number) & " " & Err.Description
 End Sub
+
+' Walks the visible edges once and feeds both axis candidate sets.
+'
+' A circle contributes its centre to BOTH axes: a hole is a station on the X
+' chain and on the Y chain. A straight line contributes to ONE axis only - the
+' axis it is perpendicular to - because a line parallel to the X axis has no
+' single X to dimension.
+Private Sub CollectAxisCandidates( _
+    ByRef edges As Variant, _
+    ByRef swMathUtil As SldWorks.MathUtility, _
+    ByRef swTransform As SldWorks.MathTransform, _
+    ByRef xs As AxisCandidates, _
+    ByRef ys As AxisCandidates, _
+    ByRef status As OrdinateRunStatus)
+
+    Dim i As Long
+    For i = LBound(edges) To UBound(edges)
+        Dim swEdge As SldWorks.Edge
+        Set swEdge = edges(i)
+        If swEdge Is Nothing Then GoTo NextEdge
+
+        status.CandidateEdgesSeen = status.CandidateEdgesSeen + 1
+
+        Dim swCurve As SldWorks.Curve
+        Set swCurve = swEdge.GetCurve
+        If swCurve Is Nothing Then GoTo NextEdge
+
+        ' ONLY "= False" is safe against a SOLIDWORKS COM Boolean here, and
+        ' "= True" is NOT its mirror image.
+        '
+        ' Two live findings, both on this build. r6: "If Not <comBool>" yields
+        ' -2, which VBA treats as True, so it rejected every edge - 349 edges,
+        ' 0 circles on a part with 12 holes. r9: rewriting the fixed
+        ' "IsCircle = False" test as "IsCircle = True" took the circular count
+        ' from 35 to 0 on the identical 64 edges. VBA True is -1; the value
+        ' the call returns is truthy but not -1, so "= True" never matches.
+        '
+        ' Comparing against False and negating the resulting VBA Boolean is
+        ' the only form proved to work. Keep it.
+        Dim isCircle As Boolean
+        Dim isLine As Boolean
+        isCircle = Not (swCurve.IsCircle = False)
+        isLine = Not (swCurve.IsLine = False)
+
+        If isCircle Then
+            status.CircularEdgesSeen = status.CircularEdgesSeen + 1
+
+            Dim cp As Variant
+            cp = swCurve.CircleParams
+
+            Dim centre As Variant
+            centre = ToViewPoint(swMathUtil, swTransform, _
+                cp(0), cp(1), cp(2))
+
+            AddAxisCandidate xs, swEdge, centre(0), False
+            AddAxisCandidate ys, swEdge, centre(1), False
+            GoTo NextEdge
+        End If
+
+        If isLine Then
+            Dim p1 As Variant
+            Dim p2 As Variant
+            If EdgeEndpoints(swEdge, p1, p2) = False Then GoTo NextEdge
+
+            Dim v1 As Variant
+            Dim v2 As Variant
+            v1 = ToViewPoint(swMathUtil, swTransform, p1(0), p1(1), p1(2))
+            v2 = ToViewPoint(swMathUtil, swTransform, p2(0), p2(1), p2(2))
+
+            Dim dx As Double
+            Dim dy As Double
+            dx = Abs(v1(0) - v2(0))
+            dy = Abs(v1(1) - v2(1))
+
+            status.LinearEdgesSeen = status.LinearEdgesSeen + 1
+
+            If dx < AXIS_PARALLEL_TOL_M And dy >= MIN_EDGE_LENGTH_M Then
+                ' Runs vertically in the view: one constant X.
+                AddAxisCandidate xs, swEdge, v1(0), True
+            ElseIf dy < AXIS_PARALLEL_TOL_M And dx >= MIN_EDGE_LENGTH_M Then
+                ' Runs horizontally in the view: one constant Y.
+                AddAxisCandidate ys, swEdge, v1(1), True
+            End If
+        End If
+NextEdge:
+    Next i
+End Sub
+
+' Adds one station, deduplicating in ONE dimension.
+'
+' Gap A8: the r7 engine deduplicated with a 2-D proximity test, which is the
+' wrong question for a 1-D chain. Two holes sharing an X but 40 mm apart in Y
+' are two points to a 2-D test and one station to the X chain.
+Private Sub AddAxisCandidate( _
+    ByRef axis As AxisCandidates, _
+    ByRef obj As Object, _
+    ByVal coord As Double, _
+    ByVal isEdgeKind As Boolean)
+
+    Dim i As Long
+    For i = 0 To axis.Count - 1
+        If Abs(axis.Coord(i) - coord) < COORD_DEDUP_TOL_M Then
+            ' A straight edge at the same station displaces a hole. The
+            ' reference drawing's chains terminate on the silhouette, so when
+            ' both exist the edge is the one worth keeping.
+            If isEdgeKind = True And axis.IsEdgeKind(i) = False Then
+                Set axis.Objs(i) = obj
+                axis.IsEdgeKind(i) = True
+                axis.HoleCount = axis.HoleCount - 1
+                axis.EdgeCount = axis.EdgeCount + 1
+            End If
+            Exit Sub
+        End If
+    Next i
+
+    ReDim Preserve axis.Objs(0 To axis.Count)
+    ReDim Preserve axis.Coord(0 To axis.Count)
+    ReDim Preserve axis.IsEdgeKind(0 To axis.Count)
+
+    Set axis.Objs(axis.Count) = obj
+    axis.Coord(axis.Count) = coord
+    axis.IsEdgeKind(axis.Count) = isEdgeKind
+    axis.Count = axis.Count + 1
+
+    If isEdgeKind = True Then
+        axis.EdgeCount = axis.EdgeCount + 1
+    Else
+        axis.HoleCount = axis.HoleCount + 1
+    End If
+End Sub
+
+' Per-axis datum resolution (gap A2).
+'
+' The reference drawing measures its LONG axis from one end (0, 10, 50, 90,
+' 160) and its SHORT axis from the part centreline (36, 15, 0, 15, 36). That
+' asymmetry is the contract implemented here for the default "Center" origin:
+' the axis with the larger candidate span is measured from its minimum
+' station, the other from its midpoint.
+'
+' Whether front-view ordinates measured this way are a general rule or an
+' instance of one drawing is open question 2 in
+' docs/BASELINE_TO_REFERENCE_DRAWING_GAP.md. The basis is recorded in the QA
+' report on every run so the choice is visible rather than implicit.
+'
+' "Top-Left" and "Bottom-Left" keep their corner meaning on both axes.
+Private Sub ResolveAxisDatums( _
+    ByRef xs As AxisCandidates, _
+    ByRef ys As AxisCandidates, _
+    ByVal datumType As String, _
+    ByRef status As OrdinateRunStatus)
+
+    Dim xMin As Double, xMax As Double
+    Dim yMin As Double, yMax As Double
+    AxisRange xs, xMin, xMax
+    AxisRange ys, yMin, yMax
+
+    Dim xTarget As Double
+    Dim yTarget As Double
+    Dim basis As String
+
+    If datumType = "Top-Left" Then
+        xTarget = xMin
+        yTarget = yMax
+        basis = "CornerTopLeft"
+    ElseIf datumType = "Bottom-Left" Then
+        xTarget = xMin
+        yTarget = yMin
+        basis = "CornerBottomLeft"
+    ElseIf (xMax - xMin) >= (yMax - yMin) Then
+        xTarget = xMin
+        yTarget = (yMin + yMax) / 2#
+        basis = "LongAxis=X:FromMinEnd;ShortAxis=Y:FromCentreline"
+    Else
+        xTarget = (xMin + xMax) / 2#
+        yTarget = yMin
+        basis = "LongAxis=Y:FromMinEnd;ShortAxis=X:FromCentreline"
+    End If
+
+    status.AxisRoleBasis = basis
+
+    ResolveOneDatum xs, xTarget
+    ResolveOneDatum ys, yTarget
+End Sub
+
+Private Sub AxisRange( _
+    ByRef axis As AxisCandidates, _
+    ByRef minCoord As Double, _
+    ByRef maxCoord As Double)
+
+    minCoord = 0#
+    maxCoord = 0#
+    If axis.Count < 1 Then Exit Sub
+
+    minCoord = axis.Coord(0)
+    maxCoord = axis.Coord(0)
+
+    Dim i As Long
+    For i = 1 To axis.Count - 1
+        If axis.Coord(i) < minCoord Then minCoord = axis.Coord(i)
+        If axis.Coord(i) > maxCoord Then maxCoord = axis.Coord(i)
+    Next i
+End Sub
+
+' Picks the station nearest the target. A straight edge wins a tie against a
+' hole, because gap A3 records that neither datum on the reference drawing is
+' a hole. Whatever is chosen, its kind and its distance from the ideal target
+' go into the report - a datum 12 mm from the centreline is a finding, not a
+' detail.
+Private Sub ResolveOneDatum( _
+    ByRef axis As AxisCandidates, _
+    ByVal target As Double)
+
+    axis.DatumIndex = 0
+    axis.DatumBasis = "NoCandidates"
+    If axis.Count < 1 Then Exit Sub
+
+    Dim bestIdx As Long
+    Dim bestDist As Double
+    bestIdx = 0
+    bestDist = Abs(axis.Coord(0) - target)
+
+    Dim i As Long
+    For i = 1 To axis.Count - 1
+        Dim dist As Double
+        dist = Abs(axis.Coord(i) - target)
+
+        If dist < bestDist - AXIS_PARALLEL_TOL_M Then
+            bestDist = dist
+            bestIdx = i
+        ElseIf Abs(dist - bestDist) <= AXIS_PARALLEL_TOL_M Then
+            If axis.IsEdgeKind(i) = True And _
+                axis.IsEdgeKind(bestIdx) = False Then
+                bestDist = dist
+                bestIdx = i
+            End If
+        End If
+    Next i
+
+    axis.DatumIndex = bestIdx
+
+    Dim kind As String
+    If axis.IsEdgeKind(bestIdx) = True Then
+        kind = "Edge"
+    Else
+        kind = "Hole"
+    End If
+
+    axis.DatumBasis = kind & ":offsetFromTarget=" & _
+        Format$(bestDist * 1000#, "0.00") & "mm"
+End Sub
+
+Private Function DescribeAxis( _
+    ByVal axisName As String, _
+    ByRef axis As AxisCandidates) As String
+
+    DescribeAxis = axisName & ": " & axis.Count & " stations (holes=" & _
+        axis.HoleCount & ", edges=" & axis.EdgeCount & "), datum " & _
+        axis.DatumBasis
+
+    If axis.Count < 1 Then Exit Function
+
+    DescribeAxis = DescribeAxis & vbCrLf & "    offsets(mm): " & _
+        DescribeAxisOffsets(axis)
+End Function
+
+' The ordinate values the chain should render, in millimetres from the datum.
+' The r8 sheet showed a horizontal chain reading 0 / 0.00 / 70.00 / 110.00 /
+' 0.00 / 150.00 and nothing in the report could confirm or deny it. Printing
+' the intended stations makes the next sheet checkable against the code
+' instead of against a screenshot.
+Private Function DescribeAxisOffsets(ByRef axis As AxisCandidates) As String
+    Dim sorted() As Double
+    ReDim sorted(0 To axis.Count - 1)
+
+    Dim datumCoord As Double
+    datumCoord = axis.Coord(axis.DatumIndex)
+
+    Dim i As Long
+    For i = 0 To axis.Count - 1
+        sorted(i) = (axis.Coord(i) - datumCoord) * 1000#
+    Next i
+
+    Dim j As Long
+    For i = 1 To axis.Count - 1
+        Dim key As Double
+        key = sorted(i)
+        j = i - 1
+        Do While j >= 0
+            If sorted(j) <= key Then Exit Do
+            sorted(j + 1) = sorted(j)
+            j = j - 1
+        Loop
+        sorted(j + 1) = key
+    Next i
+
+    For i = 0 To axis.Count - 1
+        If i > 0 Then DescribeAxisOffsets = DescribeAxisOffsets & ", "
+        DescribeAxisOffsets = DescribeAxisOffsets & _
+            Format$(sorted(i), "0.00")
+    Next i
+End Function
 
 ' IView.GetVisibleComponents returns the drawing-context components for the
 ' view. A part drawing view has exactly one. Returns Nothing when the call
@@ -296,6 +591,140 @@ Private Function GetVisibleEdges( _
     GetVisibleEdges = result
 End Function
 
+Private Function ToViewPoint( _
+    ByRef swMathUtil As SldWorks.MathUtility, _
+    ByRef swTransform As SldWorks.MathTransform, _
+    ByVal x As Double, _
+    ByVal y As Double, _
+    ByVal z As Double) As Variant
+
+    Dim raw(2) As Double
+    raw(0) = x
+    raw(1) = y
+    raw(2) = z
+
+    Dim swPt As SldWorks.MathPoint
+    Set swPt = swMathUtil.CreatePoint(raw)
+    Set swPt = swPt.MultiplyTransform(swTransform)
+
+    ToViewPoint = swPt.ArrayData
+End Function
+
+' IEdge.GetStartVertex returns null for an edge with no vertex (the Help gives
+' a newly created cylinder as the case), so both are checked. Direction is not
+' needed - the caller compares the two transformed endpoints - which avoids
+' transforming a direction vector through IView.ModelToViewTransform, a
+' contract this project has not established.
+Private Function EdgeEndpoints( _
+    ByRef swEdge As SldWorks.Edge, _
+    ByRef p1 As Variant, _
+    ByRef p2 As Variant) As Boolean
+
+    On Error GoTo Failed
+
+    EdgeEndpoints = False
+
+    Dim v1 As Object
+    Dim v2 As Object
+    Set v1 = swEdge.GetStartVertex
+    Set v2 = swEdge.GetEndVertex
+
+    If v1 Is Nothing Then Exit Function
+    If v2 Is Nothing Then Exit Function
+
+    p1 = v1.GetPoint
+    p2 = v2.GetPoint
+
+    If Not IsArray(p1) Then Exit Function
+    If Not IsArray(p2) Then Exit Function
+
+    EdgeEndpoints = True
+    Exit Function
+
+Failed:
+    EdgeEndpoints = False
+End Function
+
+' Creates one chain, and on failure retries once with holes only.
+'
+' Admitting straight edges is new at r9. Whether AddOrdinateDimension accepts
+' a linear edge as its base entity is NOT established on this build - the Help
+' says only "select the base entity to act as the datum point". If the richer
+' candidate set is rejected, the run falls back to the r8 behaviour rather
+' than losing the chain, and the retry is counted so the report says which
+' route produced the drawing.
+Private Function CreateChainWithFallback( _
+    ByRef swModel As SldWorks.ModelDoc2, _
+    ByRef swModelExt As SldWorks.ModelDocExtension, _
+    ByRef swView As SldWorks.View, _
+    ByRef swSelData As SldWorks.SelectData, _
+    ByRef axis As AxisCandidates, _
+    ByVal isHorizontal As Boolean, _
+    ByVal viewOutline As Variant, _
+    ByRef status As OrdinateRunStatus) As Long
+
+    Dim rc As Long
+    rc = CreateOneOrdinateChain(swModel, swModelExt, swView, swSelData, _
+        axis, isHorizontal, viewOutline)
+
+    If rc = swCreateOrdDimErr_Success Then
+        CreateChainWithFallback = rc
+        Exit Function
+    End If
+
+    If rc = CHAIN_SKIPPED_TOO_FEW Then
+        CreateChainWithFallback = rc
+        Exit Function
+    End If
+
+    If axis.EdgeCount < 1 Then
+        CreateChainWithFallback = rc
+        Exit Function
+    End If
+
+    Dim holesOnly As AxisCandidates
+    holesOnly = HolesOnlySubset(axis)
+    If holesOnly.Count < 2 Then
+        CreateChainWithFallback = rc
+        Exit Function
+    End If
+
+    ' Re-resolve the datum inside the reduced set: the edge that was the datum
+    ' is no longer present.
+    ResolveOneDatum holesOnly, axis.Coord(axis.DatumIndex)
+
+    status.HolesOnlyRetries = status.HolesOnlyRetries + 1
+
+    Dim retryRc As Long
+    retryRc = CreateOneOrdinateChain(swModel, swModelExt, swView, swSelData, _
+        holesOnly, isHorizontal, viewOutline)
+
+    If isHorizontal Then
+        status.XAxisReport = status.XAxisReport & vbCrLf & _
+            "    RETRY holes-only after code " & rc & ": code " & retryRc
+    Else
+        status.YAxisReport = status.YAxisReport & vbCrLf & _
+            "    RETRY holes-only after code " & rc & ": code " & retryRc
+    End If
+
+    CreateChainWithFallback = retryRc
+End Function
+
+Private Function HolesOnlySubset( _
+    ByRef axis As AxisCandidates) As AxisCandidates
+
+    Dim result As AxisCandidates
+
+    Dim i As Long
+    For i = 0 To axis.Count - 1
+        If axis.IsEdgeKind(i) = False Then
+            AddAxisCandidate result, axis.Objs(i), axis.Coord(i), False
+        End If
+    Next i
+
+    HolesOnlySubset = result
+End Function
+
 Private Sub RecordChainOutcome( _
     ByRef status As OrdinateRunStatus, _
     ByVal viewName As String, _
@@ -322,7 +751,8 @@ Public Function DescribeOrdinateStatus( _
     Dim text As String
     text = "Ordinate views processed: " & status.ViewsProcessed & vbCrLf
     text = text & "Ordinate edges seen: " & status.CandidateEdgesSeen & _
-        " (circular: " & status.CircularEdgesSeen & ")" & vbCrLf
+        " (circular: " & status.CircularEdgesSeen & _
+        ", linear: " & status.LinearEdgesSeen & ")" & vbCrLf
 
     If Len(status.EdgeRoute) > 0 Then
         text = text & "Ordinate edge route: " & status.EdgeRoute & vbCrLf
@@ -337,8 +767,26 @@ Public Function DescribeOrdinateStatus( _
         text = text & "Selection scope: " & status.SelDataScope & vbCrLf
     End If
 
+    If Len(status.AxisRoleBasis) > 0 Then
+        text = text & "Datum contract: " & status.AxisRoleBasis & vbCrLf
+    End If
+
+    If Len(status.XAxisReport) > 0 Then
+        text = text & "  " & status.XAxisReport & vbCrLf
+    End If
+
+    If Len(status.YAxisReport) > 0 Then
+        text = text & "  " & status.YAxisReport & vbCrLf
+    End If
+
     text = text & "Ordinate chains created: " & status.ChainsCreated & _
         " of " & status.ChainsAttempted & " attempted" & vbCrLf
+
+    If status.HolesOnlyRetries > 0 Then
+        text = text & "NOTE: " & status.HolesOnlyRetries & _
+            " chain(s) fell back to holes-only candidates. A linear edge " & _
+            "was rejected as an ordinate entity on this build." & vbCrLf
+    End If
 
     If status.ViewsWithTooFewCandidates > 0 Then
         text = text & "NOTE: " & status.ViewsWithTooFewCandidates & _
@@ -402,7 +850,7 @@ Public Sub InsertHoleCalloutsForView(ByRef swDraw As SldWorks.DrawingDoc, ByRef 
     On Error GoTo Failed
 
     Dim edges As Variant
-    edges = swView.GetVisibleEntities2(Nothing, 1)
+    edges = swView.GetVisibleEntities2(Nothing, swViewEntityType_Edge)
     If IsEmpty(edges) Then Exit Sub
 
     Dim swModel As SldWorks.ModelDoc2
@@ -456,53 +904,20 @@ Failed:
     swModel.ClearSelection2 True
 End Sub
 
-Private Function HasNearbyPoint(ByRef px() As Double, ByRef py() As Double, ByVal cnt As Long, ByVal x As Double, ByVal y As Double) As Boolean
-    Dim i As Long
-    For i = 0 To cnt - 1
-        If Abs(px(i) - x) < 0.0015 And Abs(py(i) - y) < 0.0015 Then
-            HasNearbyPoint = True
-            Exit Function
-        End If
-    Next i
-End Function
-
-Private Function ResolveDatumIndex(ByRef swView As SldWorks.View, ByVal viewOutline As Variant, ByRef ptX() As Double, ByRef ptY() As Double, ByVal ptsCount As Long, ByVal datumType As String) As Long
-    Dim tx As Double, ty As Double
-
-    If datumType = "Center" Then
-        tx = (viewOutline(0) + viewOutline(2)) / 2 - swView.Position(0)
-        ty = (viewOutline(1) + viewOutline(3)) / 2 - swView.Position(1)
-    ElseIf datumType = "Top-Left" Then
-        tx = viewOutline(0) - swView.Position(0)
-        ty = viewOutline(3) - swView.Position(1)
-    Else
-        tx = viewOutline(0) - swView.Position(0)
-        ty = viewOutline(1) - swView.Position(1)
-    End If
-
-    Dim i As Long
-    Dim minDist As Double
-    minDist = 1E+30
-    ResolveDatumIndex = 0
-
-    For i = 0 To ptsCount - 1
-        Dim dist As Double
-        dist = Sqr((ptX(i) - tx) ^ 2 + (ptY(i) - ty) ^ 2)
-        If dist < minDist Then
-            minDist = dist
-            ResolveDatumIndex = i
-        End If
-    Next i
-End Function
-
 ' Creates one ordinate group and returns its outcome: a swCreateOrdDimError_e
 ' value, or one of the CHAIN_* codes above.
 '
 ' IModelDocExtension.AddOrdinateDimension Remarks (MCP, 2026-08-05):
+'   "Before using this method, select the base entity to act as the datum
+'    point for the ordinate dimension and any additional entities to include
+'    in the group of ordinate dimensions."
 '   "Selections made immediately after calling this method continue to add
 '    ordinate dimensions to the group of ordinate dimensions. When you finish
 '    adding ordinate dimensions to the group, use IModelDoc2::SetPickMode to
 '    return to the default selection mode."
+'
+' The datum is therefore selection index 0, which is why the datum entity is
+' written into the array first rather than in coordinate order.
 '
 ' The horizontal chain runs first, so without SetPickMode the vertical
 ' chain's MultiSelect2 is a selection made after the call and appends to the
@@ -514,54 +929,33 @@ Private Function CreateOneOrdinateChain( _
     ByRef swModelExt As SldWorks.ModelDocExtension, _
     ByRef swView As SldWorks.View, _
     ByRef swSelData As SldWorks.SelectData, _
-    ByRef objs() As Object, _
-    ByRef coords() As Double, _
-    ByVal cnt As Long, _
-    ByVal datumIdx As Long, _
+    ByRef axis As AxisCandidates, _
     ByVal isHorizontal As Boolean, _
     ByVal viewOutline As Variant) As Long
 
-    Dim uniq() As Double
-    Dim uniqCnt As Long
-    Dim selObjs() As Object
-    Dim selCnt As Long
-
-    ReDim uniq(0 To 0)
-    ReDim selObjs(0 To 0)
-
-    uniq(0) = coords(datumIdx)
-    Set selObjs(0) = objs(datumIdx)
-    uniqCnt = 1
-    selCnt = 1
-
-    Dim i As Long, j As Long
-    For i = 0 To cnt - 1
-        If i <> datumIdx Then
-            Dim isDup As Boolean
-            isDup = False
-            For j = 0 To uniqCnt - 1
-                If Abs(coords(i) - uniq(j)) < 0.0015 Then
-                    isDup = True
-                    Exit For
-                End If
-            Next j
-
-            If Not isDup Then
-                ReDim Preserve uniq(0 To uniqCnt)
-                ReDim Preserve selObjs(0 To selCnt)
-                uniq(uniqCnt) = coords(i)
-                Set selObjs(selCnt) = objs(i)
-                uniqCnt = uniqCnt + 1
-                selCnt = selCnt + 1
-            End If
-        End If
-    Next i
-
     ' A single-entity chain is the datum alone: nothing to dimension against.
-    If selCnt < 2 Then
+    If axis.Count < 2 Then
         CreateOneOrdinateChain = CHAIN_SKIPPED_TOO_FEW
         Exit Function
     End If
+
+    ' Stations are already deduplicated per axis by AddAxisCandidate, so the
+    ' selection is the datum followed by every other station in order.
+    Dim selObjs() As Object
+    ReDim selObjs(0 To axis.Count - 1)
+
+    Set selObjs(0) = axis.Objs(axis.DatumIndex)
+
+    Dim selCnt As Long
+    selCnt = 1
+
+    Dim i As Long
+    For i = 0 To axis.Count - 1
+        If i <> axis.DatumIndex Then
+            Set selObjs(selCnt) = axis.Objs(i)
+            selCnt = selCnt + 1
+        End If
+    Next i
 
     swModel.ClearSelection2 True
     If swModelExt.MultiSelect2(selObjs, False, swSelData) <> selCnt Then
