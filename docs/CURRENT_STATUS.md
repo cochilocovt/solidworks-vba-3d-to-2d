@@ -20,8 +20,22 @@ drawing needs both at once. Group removed; both producers always run.
 **The form is outside `deployment-manifest.json` and cannot be imported.** The
 `.frm` in source is the record; the running form must be updated by pasting
 the generated code into the VBE. Until then the deployed macro still shows the
-old option group. No compile, deployment, execution or visual gate has run for
-r21.
+old option group.
+
+**Verification gates for r21:**
+
+| Gate | Status |
+|---|---|
+| Offline companion suite | 37/37 pass |
+| Residual-reference grep (`optDimModel`, `optDimOrdinate`, `DimStyle`) | clean, no hits |
+| VBA compile in SOLIDWORKS | **not run** |
+| Deployment + readback | **not run** |
+| Live macro execution | **not run** |
+| Visual acceptance | **not run** |
+| Manual VBE paste of `UserForm1` | **not done** |
+
+`MACRO_SOURCE_REVISION` was bumped to `trunk-2026-08-06-r21` because
+deployable behaviour in `Module1_Main` changed, but nothing has been deployed.
 
 ### Native import coverage, measured 2026-08-06
 
