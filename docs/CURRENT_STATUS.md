@@ -2,6 +2,63 @@
 
 Date: 2026-08-06
 
+## r21 live: both producers ran together; the Y ordinate chain lost its edges
+
+Run `macro_qa/20260806_144628_P-0251-14A-001`, after the operator pasted the
+updated `UserForm1` into the VBE. First drawing in this project's history with
+native import and the ordinate engine both active.
+
+```
+Imported model items: 19
+Total drawing view dimensions: 23
+  Drawing View1  (Front)          12 dims, 0 dangling
+  Section View J-J                11 dims, 0 dangling
+Ordinate chains created: 2 of 2 attempted
+Shared entities: 4 substituted, 0 still shared
+  Y: RETRY holes-only after code 1: code 0
+NOTE: 1 chain(s) fell back to holes-only candidates.
+```
+
+### New regression: the holes-only fallback fired for the first time
+
+The Y chain failed with `swCreateOrdDimErr_OrdFailure` (code 1) and only
+succeeded on the holes-only retry. That fallback has existed since r10 and had
+**never fired** in any prior run; r20 built both chains with straight edges
+intact.
+
+Shared-entity substitutions rose **2 -> 4** in the same run. Working
+hypothesis, **not probed**: native import now runs first and consumes model
+entities, so the two silhouette edges at `+/-36` were already taken when
+`AddOrdinateDimension` tried to use them.
+
+Consequence if that holds: the `+/-36` silhouette stations are absent from the
+sheet and the Y chain is holes-only. The report's `offsets(mm)` line still
+shows `-36, -15, 0, 15, 36` because it is computed **before** creation and
+describes intent, not what landed. **No visual confirmation yet** - the
+`readback` live values cannot be attributed to a chain without a screenshot.
+
+### Front view is crowded
+
+Front carries 12 dimensions: the X chain (`10, 50, 90, 160`) plus imported
+`72, 40, 30, 10, 36, 1, 1, 45`. The reference shows only `R36`, a hole callout
+and the two chains there. `1.00` twice and `45.00` are likely chamfer sketch
+dimensions. No placement or collision handling exists (gap A7).
+
+### Verification gates for this run
+
+| Gate | Status |
+|---|---|
+| Live macro execution | ran, `PASS` verdict |
+| Dimension readback | 23 dims, 0 dangling |
+| Offline companion suite | 37/37 pass (unchanged from r21 source) |
+| Deployment + readback | **not run this turn** - form was pasted manually, no redeploy |
+| Visual acceptance | **not done** - no screenshot of this sheet |
+| `+/-36` station presence | **unverified** |
+| Cause of the `OrdFailure` | **not probed** |
+
+No source file changed this turn. `MACRO_SOURCE_REVISION` remains
+`trunk-2026-08-06-r21`.
+
 ## r21 source: the two dimension producers can finally run together
 
 **Not deployed, not run.** Source change only; the form half needs a manual
