@@ -2680,3 +2680,42 @@ produce zero danglers. That test needs no code change — only the form option �
 and it is now meaningful for the first time, because before r16
 `swDisplayMode_HiddenLinesRemoved` was 3 (`swSHADED`) and the HLR option never
 actually selected HLR.
+
+## 2026-08-06 r16 HLR test: hidden-line edges cannot hold an ordinate
+
+The dangling-station root cause, open since r10 and wrong three times before
+this. Confirmed by a zero-code experiment: the same deployed r16 binary, run
+twice, differing only in the form's HLR setting.
+
+| | HLV (`swHIDDEN_GREYED`) | HLR (`swHIDDEN`) |
+|---|---|---|
+| `GetVisibleEntities2` edges | 64 (circular 35, linear 29) | **39 (circular 22, linear 17)** |
+| X stations | 9 | **5** |
+| Y stations | 7 | **5** |
+| Dangling ordinates | 2 | **0** |
+
+`IView.GetVisibleEntities2` returns edges that the view draws in hidden-line
+font when the display mode is Hidden Lines Visible. The Help defines the call
+as excluding entities *completely* obscured, and an edge rendered as a dashed
+hidden line is not completely obscured — so it is returned, it selects
+successfully, `MultiSelect2` counts it, `AddOrdinateDimension` returns
+`swCreateOrdDimErr_Success`, and the resulting ordinate is **dangling**. Every
+gate the engine had said yes.
+
+Under HLR those edges are not in the view at all, so they never become
+stations and no dangling ordinate is created.
+
+**Consequences.**
+
+- `GetVisibleEntities2` visibility is not the same question as "can this
+  entity carry a dimension". Do not treat the former as evidence of the
+  latter.
+- The three earlier diagnoses were all wrong and all plausible: shared
+  entities (r11), select/delete refusal (r14), unscoped selection (r16). Each
+  was eliminated by a measurement, none by reasoning.
+- The station counts under HLR match the reference drawing exactly — five per
+  axis — and the cross-axis chain reads `36, 15, 0, 15, 35` against the
+  reference's `36, 15, 0, 15, 36`.
+
+The post-rebuild dangling prune stays. It is now a safety net rather than the
+mitigation, and it correctly reports zero under HLR.

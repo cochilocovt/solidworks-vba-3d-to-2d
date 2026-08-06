@@ -48,7 +48,7 @@ Public GlobalSectionCount As Long
 ' deployment-request.txt from this; never hand-edit that file. Bump whenever
 ' deployable behaviour changes.
 Public Const MACRO_SOURCE_REVISION As String = _
-    "trunk-2026-08-06-r16"
+    "trunk-2026-08-06-r17"
 
 ' User-confirmed 2026-08-05. The baseline snapshot carried "V:\SW_data\..."
 ' with the VEEMAP segment missing, so the controlled template never resolved
@@ -157,7 +157,21 @@ Public Sub ResetGlobalConfig()
 
         .SheetScale = 1#
         .CustomScaleText = vbNullString
-        .UseHLR = False
+        ' HLR by default. Evidence, 2026-08-06: run twice on the same r16
+        ' binary, HLV against HLR, nothing else changed.
+        '   HLV  64 edges -> X 9 stations, Y 7, TWO dangling ordinates
+        '   HLR  39 edges -> X 5 stations, Y 5, zero dangling
+        ' An edge drawn in hidden-line font is returned by
+        ' GetVisibleEntities2, selects, and yields
+        ' swCreateOrdDimErr_Success - and the ordinate dangles. Under HLR
+        ' those edges are not in the view, so the failure cannot arise, and
+        ' the station counts match the reference drawing exactly.
+        '
+        ' Tradeoff, stated rather than hidden: HLR also removes the stepped
+        ' bore from the front view. That is what the reference drawing does
+        ' too - it dimensions that bore in SECTION J-J, not in the front
+        ' view. Untick HLR on the form to restore hidden-line display.
+        .UseHLR = True
         .ShowLayoutPreview = True
         .TotalCostManual = vbNullString
 

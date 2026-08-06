@@ -1,5 +1,70 @@
 # Changelog
 
+## 2026-08-06 (52) - r16/r17: dangling root cause found; HLR is the default
+
+Two findings, both from following the API-lookup contract the new gates
+enforce.
+
+### ISelectData.View error 91 was VBA syntax
+
+Open since r5, recorded twice in `SOLIDWORKS_API_VALIDATION.md` as an
+unexplained API refusal, and worked around for eleven revisions. The property
+is `propertyput`, not `propertyputref`: VBA needs a plain assignment and
+raises 91 on `Set`.
+
+```vba
+swSelData.View = swView       ' works
+Set swSelData.View = swView   ' raises 91
+```
+
+Every selection between r5 and r15 was unscoped. **An error raised at a COM
+boundary is not evidence the callee refused.**
+
+### Hidden-line edges cannot hold an ordinate
+
+The dangling-station root cause, wrong three times before this. Confirmed by a
+zero-code experiment - the same deployed r16 binary run twice, differing only
+in the form's HLR setting:
+
+| | HLV | HLR |
+|---|---|---|
+| Edges | 64 (35 circular) | **39 (22 circular)** |
+| X stations | 9 | **5** |
+| Y stations | 7 | **5** |
+| Dangling | 2 | **0** |
+
+An edge drawn in hidden-line font is not *completely* obscured, so
+`GetVisibleEntities2` returns it. It selects, `MultiSelect2` counts it,
+`AddOrdinateDimension` returns `swCreateOrdDimErr_Success` - and the ordinate
+dangles. Every gate the engine had said yes.
+
+**`GetVisibleEntities2` visibility is not the same question as "can this
+entity carry a dimension".**
+
+### Station counts now match the reference
+
+| | ours (HLR) | reference |
+|---|---|---|
+| Cross axis | 36, 15, 0, 15, **35** | 36, 15, 0, 15, 36 |
+| Long axis | 0, 70, 110, 150, 159 | 0, 10, 50, 90, 160 |
+
+Five stations per axis, as the reference has. The cross-axis chain is
+structurally identical bar the 35/36 asymmetry. The long axis has the right
+count and the right 40 mm pitch between intermediate stations, offset by 60 mm
+because the datum is still the bore centre rather than the part end - the left
+end is a rounded arc and arcs are not admitted as stations.
+
+### r17
+
+`UseHLR` now defaults True, with the tradeoff recorded in the code: HLR also
+removes the stepped bore from the front view, which is what the reference
+drawing does - it dimensions that bore in SECTION J-J. One line to revert, and
+the form option is unchanged.
+
+Also fixed at r16: three `swDisplayMode_e` constants (see entry 51). The
+isometric view now renders shaded with edges for the first time.
+
+
 ## 2026-08-06 (51) - r15: the sheet carries no wrong dimensions
 
 `readback: 12 dims, 0 dangling`. Every ordinate on the front view is correct.
