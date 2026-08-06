@@ -2629,3 +2629,54 @@ acceptance.
 guess. It only affects the fallback path when the controlled VEEMAP template is
 missing, so a wrong value degrades to "no template found" rather than a silently
 wrong drawing — but it has not been verified.
+
+## 2026-08-06 r16 ISelectData.View error 91 was VBA syntax, not the API
+
+Open since r5 and recorded here twice as an unexplained API refusal. It was
+neither unexplained nor the API.
+
+`ISelectData.View` is documented as `View {get; set;}`, *"Gets or sets the
+drawing view that contains the selected object"*, with **no error condition**
+(MCP, 2026-08-06). A refusal with both operands proved non-Nothing, after a
+successful `ActivateView`, was therefore not SOLIDWORKS declining.
+
+The property is exposed as `propertyput`, not `propertyputref`. VBA requires a
+plain assignment for that; `Set` against it raises 91.
+
+```vba
+swSelData.View = swView       ' works
+Set swSelData.View = swView   ' raises 91
+```
+
+r16 tries the let-assignment first and keeps `Set` as a fallback, recording
+which the build accepted. The run reported **`Selection scope:
+ScopedToView(Let)`** — first scoped selection since r5.
+
+Two lessons worth keeping:
+
+- Every selection this macro made between r5 and r15 was **unscoped**. It
+  happened to work because the owning view was activated first, but it was not
+  the pattern `docs/CODESTACK_DRAWING_API_COVERAGE.md` rows 17 and 31
+  prescribe, and it was carried as a known-unresolved defect for eleven
+  revisions.
+- An error raised at a COM boundary is not evidence the callee refused. Check
+  the VBA binding before recording an API limitation.
+
+**This did not fix the dangling stations.** X=55.00 and X=135.00 still dangle
+with selection correctly scoped, which rules scoping out as their cause
+alongside entity sharing.
+
+### Next hypothesis for the dangling stations, with a zero-code test
+
+Both failing stations sit on features drawn in **hidden-line font** on the
+sheet. Runs to date used `UseHLR = False`, which passes `swHIDDEN_GREYED`
+(Hidden Lines Visible), so obscured features are drawn and are returned by
+`GetVisibleEntities2` — the Help defines that call as excluding only entities
+*completely* obscured.
+
+If an ordinate cannot hold an attachment to an edge that is not truly visible,
+running with `UseHLR = True` should drop the X station count from 9 to 7 and
+produce zero danglers. That test needs no code change — only the form option —
+and it is now meaningful for the first time, because before r16
+`swDisplayMode_HiddenLinesRemoved` was 3 (`swSHADED`) and the HLR option never
+actually selected HLR.

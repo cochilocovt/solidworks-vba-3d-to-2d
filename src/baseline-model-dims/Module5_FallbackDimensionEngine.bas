@@ -166,16 +166,36 @@ Public Sub CreateHoleOrdinateDims( _
     ' selects into it; scoping is a correctness guard, not a precondition.
     ' Record which route was taken so the report says whether the drawing
     ' was built with scoped or unscoped selection.
+    ' ISelectData.View is documented as "Gets or sets the drawing view that
+    ' contains the selected object", with no error condition (MCP,
+    ' 2026-08-06). Error 91 from "Set swSelData.View = swView", with both
+    ' operands proved non-Nothing, is therefore not the API refusing - it is
+    ' VBA. A property exposed as propertyput rather than propertyputref takes
+    ' a plain assignment; using Set against it fails.
+    '
+    ' So try the let-assignment first and keep Set as the fallback, recording
+    ' which one the build accepts. This matters beyond tidiness: scoping the
+    ' SelectData to the view is the pattern
+    ' docs/CODESTACK_DRAWING_API_COVERAGE.md rows 17 and 31 prescribe for
+    ' selecting entities returned by GetVisibleEntities2, and every run since
+    ' r5 has been selecting unscoped instead.
     stage = "SetSelectDataView"
     On Error Resume Next
-    Set swSelData.View = swView
 
-    If Err.Number <> 0 Then
-        status.SelDataViewError = Err.Number
-        status.SelDataScope = "Unscoped(err=" & CStr(Err.Number) & ")"
-        Err.Clear
+    swSelData.View = swView
+    If Err.Number = 0 Then
+        status.SelDataScope = "ScopedToView(Let)"
     Else
-        status.SelDataScope = "ScopedToView"
+        Err.Clear
+        Set swSelData.View = swView
+
+        If Err.Number = 0 Then
+            status.SelDataScope = "ScopedToView(Set)"
+        Else
+            status.SelDataViewError = Err.Number
+            status.SelDataScope = "Unscoped(err=" & CStr(Err.Number) & ")"
+            Err.Clear
+        End If
     End If
 
     On Error GoTo Failed
