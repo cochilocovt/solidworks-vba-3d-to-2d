@@ -2823,6 +2823,14 @@ runs before r16.
 `swDisplayMode_e` values re-confirmed 2026-08-06: `swHIDDEN=2` is Hidden Lines
 Removed (HLR), `swHIDDEN_GREYED=1` is Hidden Lines Visible (HLV), `swSHADED=3`.
 
-**Not verified:** whether an ordinate created under HLR survives a restore to
-HLV still attached. r23 restores the operator's mode after the harvest and
-relies on the post-rebuild prune to report any dangling that results.
+**Verified 2026-08-06** (`macro_qa/20260806_152553`, operator unticked HLR):
+an ordinate created under forced HLR survives the restore to HLV still
+attached. The post-rebuild prune, which runs after `ForceRebuild3` when
+`IAnnotation.IsDangling` is meaningful, reported 0 dangling. The same run
+proves the forcing path itself: `Harvest display mode: HLR forced (was 1)`,
+39 candidate edges rather than HLV's 64, and the X datum on the end face at
+160 mm.
+
+**Still not verified:** whether `SetDisplayMode3` succeeds on the restore call.
+`RestoreDisplayMode` runs under `On Error Resume Next` and discards the return
+value.

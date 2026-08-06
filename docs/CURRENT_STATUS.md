@@ -2,6 +2,56 @@
 
 Date: 2026-08-06
 
+## r23 second run: the display-mode guard is proven
+
+Run `macro_qa/20260806_152553_P-0251-14A-001`, deploy `VERIFY: PASS` at
+`trunk-2026-08-06-r23`. Deliberate experiment: the operator **unticked HLR**,
+so the form requested HLV.
+
+```
+Harvest display mode: HLR forced (was 1)
+Ordinate edges seen: 39 (circular: 22, of which arcs: 4, linear: 17)
+X: 5 stations, datum Edge:offsetFromTarget=160.00mm  ->  10, 50, 90, 160
+Y: 5 stations, datum Hole:offsetFromTarget=0.00mm    ->  15, 36, 15, 36
+Ordinate display dimensions actually created: 8
+readback: 16 dims, 0 dangling
+```
+
+`was 1` is `swHIDDEN_GREYED`, HLV. The engine overrode the form and harvested
+under HLR anyway. Output is byte-identical to the run where the operator ticked
+HLR. **The checkbox no longer reaches ordinate quality**, which was the point.
+
+Both halves of the guard are now covered by live evidence: `HLR (already)` on
+the ticked run, `HLR forced (was 1)` on the unticked one.
+
+### Closed: ordinates survive the restore to HLV
+
+`SOLIDWORKS_API_VALIDATION.md` recorded this as unverified when the guard was
+written. The prune runs after `ForceRebuild3`, when `IAnnotation.IsDangling` is
+meaningful, and reports **0 dangling**. An ordinate created against HLR
+geometry stays attached when the view is restored to HLV.
+
+### Still not instrumented
+
+Whether `RestoreDisplayMode` succeeded. It is called with `On Error Resume
+Next` and reports nothing. Inferable only from the sheet showing hidden lines.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment + readback | `VERIFY: PASS`, embedded `trunk-2026-08-06-r23` |
+| VBA compile | pre-flight `verdict=Clean` |
+| Live macro execution | ran, `PASS` |
+| Display-mode forcing path | **proven** - `HLR forced (was 1)`, 39 edges, 160 mm datum |
+| Ordinate survival across restore | **proven** - 0 dangling post-rebuild |
+| `RestoreDisplayMode` success | not instrumented |
+| Section cut misses every hole | **not addressed** - next |
+| Right view carries 0 dimensions | **not addressed** |
+| Section J-J landscape vs reference portrait | **not addressed** |
+| GENERAL NOTES overlaps the title block | **not addressed** |
+| Mass units, duplicate notes | **awaiting user decision** |
+
 ## r23 live: best run to date - both chains match, retry gone, guard unproven
 
 Run `macro_qa/20260806_151955_P-0251-14A-001`. Deploy `VERIFY: PASS`, embedded
