@@ -95,6 +95,15 @@ Private Function BuildPerViewSummary(ByRef swDraw As SldWorks.DrawingDoc) As Str
             Module4_ModelItemImporter.CountDisplayDimensionsInView(swView) & _
             " dims" & vbCrLf
 
+        ' Only where dimensions exist: a readback line per empty view is
+        ' noise, and every failure so far has been in the ordinated view.
+        If Module4_ModelItemImporter.CountDisplayDimensionsInView(swView) > 0 _
+            Then
+            BuildPerViewSummary = BuildPerViewSummary & "    " & _
+                Module5_FallbackDimensionEngine.DescribeDimensionReadback( _
+                    swView) & vbCrLf
+        End If
+
         Set swView = swView.GetNextView
     Loop
 End Function

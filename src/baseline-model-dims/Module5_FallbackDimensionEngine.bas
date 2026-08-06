@@ -9,6 +9,10 @@ Private Const swCreateOrdDimErr_Success As Long = 0
 ' swViewEntityType_e, MCP-confirmed 2026-08-06.
 Private Const swViewEntityType_Edge As Long = 1
 
+' swInConfigurationOpts_e, MCP-confirmed 2026-08-06. Used by the dimension
+' readback in DescribeDimensionReadback.
+Private Const swThisConfiguration As Long = 1
+
 ' Outcome codes returned by CreateOneOrdinateChain in addition to the
 ' swCreateOrdDimError_e values, which are all >= -1.
 Private Const CHAIN_SKIPPED_TOO_FEW As Long = -100
@@ -92,6 +96,11 @@ Public Type OrdinateRunStatus
     HolesOnlyRetries As Long
     SharedEntitySubstitutions As Long
     SharedEntityUnresolved As Long
+    ViewScale As Double
+    DanglingFound As Long
+    DanglingPruned As Long
+    PruneSelectFailed As Long
+    PruneDeleteFailed As Long
 End Type
 
 Public Sub CreateHoleOrdinateDims( _
@@ -201,10 +210,24 @@ Public Sub CreateHoleOrdinateDims( _
     Dim swTransform As SldWorks.MathTransform
     Set swTransform = swView.ModelToViewTransform
 
+    ' ModelToViewTransform carries the view scale. r12 ran at 1:2 and every
+    ' station offset came out at exactly half its r10 value while the
+    ' dimensions SOLIDWORKS rendered stayed true, which proved two defects at
+    ' once: the reported offsets were view-space units mislabelled as
+    ' millimetres, and COORD_DEDUP_TOL_M was being applied in view space, so
+    ' stations merged differently at different scales - the 43 mm and 45 mm
+    ' stations collapsed into one at 1:2. Dividing by the scale puts every
+    ' coordinate, tolerance and report back into model units.
+    stage = "ReadViewScale"
+    Dim viewScale As Double
+    viewScale = ReadViewScale(swView)
+    status.ViewScale = viewScale
+
     stage = "ScanEdges"
     Dim xs As AxisCandidates
     Dim ys As AxisCandidates
-    CollectAxisCandidates edges, swMathUtil, swTransform, xs, ys, status
+    CollectAxisCandidates edges, swMathUtil, swTransform, viewScale, _
+        xs, ys, status
 
     If xs.Count < 2 And ys.Count < 2 Then
         status.ViewsWithTooFewCandidates = _
@@ -234,6 +257,9 @@ Public Sub CreateHoleOrdinateDims( _
     RecordChainOutcome status, swView.Name, _
         CreateChainWithFallback(swModel, swModelExt, swView, swSelData, _
             ys, False, viewOutline, usedObjs, usedCount, status)
+
+    stage = "PruneDangling"
+    PruneDanglingOrdinates swModel, swView, status
     Exit Sub
 
 Failed:
@@ -258,6 +284,7 @@ Private Sub CollectAxisCandidates( _
     ByRef edges As Variant, _
     ByRef swMathUtil As SldWorks.MathUtility, _
     ByRef swTransform As SldWorks.MathTransform, _
+    ByVal viewScale As Double, _
     ByRef xs As AxisCandidates, _
     ByRef ys As AxisCandidates, _
     ByRef status As OrdinateRunStatus)
@@ -298,7 +325,7 @@ Private Sub CollectAxisCandidates( _
             cp = swCurve.CircleParams
 
             Dim centre As Variant
-            centre = ToViewPoint(swMathUtil, swTransform, _
+            centre = ToModelUnitPoint(swMathUtil, swTransform, viewScale, _
                 cp(0), cp(1), cp(2))
 
             AddAxisCandidate xs, swEdge, centre(0), False
@@ -313,8 +340,10 @@ Private Sub CollectAxisCandidates( _
 
             Dim v1 As Variant
             Dim v2 As Variant
-            v1 = ToViewPoint(swMathUtil, swTransform, p1(0), p1(1), p1(2))
-            v2 = ToViewPoint(swMathUtil, swTransform, p2(0), p2(1), p2(2))
+            v1 = ToModelUnitPoint(swMathUtil, swTransform, viewScale, _
+                p1(0), p1(1), p1(2))
+            v2 = ToModelUnitPoint(swMathUtil, swTransform, viewScale, _
+                p2(0), p2(1), p2(2))
 
             Dim dx As Double
             Dim dy As Double
@@ -616,9 +645,15 @@ Private Function GetVisibleEdges( _
     GetVisibleEdges = result
 End Function
 
-Private Function ToViewPoint( _
+' Transforms a model point into the view frame and removes the view scale, so
+' every station, tolerance and reported offset is in model units regardless of
+' the scale the operator picked. Only differences between these coordinates
+' are ever used, so dividing the translation component by the same factor is
+' harmless.
+Private Function ToModelUnitPoint( _
     ByRef swMathUtil As SldWorks.MathUtility, _
     ByRef swTransform As SldWorks.MathTransform, _
+    ByVal viewScale As Double, _
     ByVal x As Double, _
     ByVal y As Double, _
     ByVal z As Double) As Variant
@@ -632,7 +667,29 @@ Private Function ToViewPoint( _
     Set swPt = swMathUtil.CreatePoint(raw)
     Set swPt = swPt.MultiplyTransform(swTransform)
 
-    ToViewPoint = swPt.ArrayData
+    Dim arr As Variant
+    arr = swPt.ArrayData
+
+    Dim scaled(2) As Double
+    scaled(0) = arr(0) / viewScale
+    scaled(1) = arr(1) / viewScale
+    scaled(2) = arr(2) / viewScale
+
+    ToModelUnitPoint = scaled
+End Function
+
+' IView.ScaleDecimal. Falls back to 1 rather than 0: a zero divisor would make
+' every station infinite, and an unscaled reading is a visible wrong answer
+' instead of a crash.
+Private Function ReadViewScale(ByRef swView As SldWorks.View) As Double
+    On Error GoTo Failed
+
+    ReadViewScale = swView.ScaleDecimal
+    If ReadViewScale <= 0 Then ReadViewScale = 1#
+    Exit Function
+
+Failed:
+    ReadViewScale = 1#
 End Function
 
 ' IEdge.GetStartVertex returns null for an edge with no vertex (the Help gives
@@ -880,6 +937,11 @@ Public Function DescribeOrdinateStatus( _
         text = text & "Selection scope: " & status.SelDataScope & vbCrLf
     End If
 
+    If status.ViewScale > 0 Then
+        text = text & "View scale: " & Format$(status.ViewScale, "0.####") & _
+            " (stations below are model mm, scale-normalised)" & vbCrLf
+    End If
+
     If Len(status.AxisRoleBasis) > 0 Then
         text = text & "Datum contract: " & status.AxisRoleBasis & vbCrLf
     End If
@@ -898,6 +960,19 @@ Public Function DescribeOrdinateStatus( _
     text = text & "Shared entities: " & status.SharedEntitySubstitutions & _
         " substituted, " & status.SharedEntityUnresolved & _
         " still shared" & vbCrLf
+
+    If status.DanglingFound > 0 Then
+        text = text & "Dangling ordinates: " & status.DanglingFound & _
+            " found, " & status.DanglingPruned & " deleted (" & _
+            status.PruneSelectFailed & " select-refused, " & _
+            status.PruneDeleteFailed & " delete-refused)" & vbCrLf
+    End If
+
+    If status.DanglingPruned > 0 Then
+        text = text & "WARNING: " & status.DanglingPruned & _
+            " dangling ordinate(s) deleted. Those stations are NOT on the " & _
+            "drawing; root cause is still open." & vbCrLf
+    End If
 
     If status.SharedEntityUnresolved > 0 Then
         text = text & "WARNING: " & status.SharedEntityUnresolved & _
@@ -935,6 +1010,189 @@ Public Function DescribeOrdinateStatus( _
     End If
 
     DescribeOrdinateStatus = text
+End Function
+
+' Removes ordinates whose attachment did not survive creation.
+'
+' A dangling ordinate renders 0.00 at a geometrically correct position, which
+' on a manufacturing drawing is worse than a missing station: it reads as a
+' real dimension of zero. The root cause for the two X stations on P-0251 is
+' still unknown, so this does not claim to fix it - it removes the wrong value
+' and counts what it removed, so the loss stays visible in the report rather
+' than being papered over.
+Private Sub PruneDanglingOrdinates( _
+    ByRef swModel As SldWorks.ModelDoc2, _
+    ByRef swView As SldWorks.View, _
+    ByRef status As OrdinateRunStatus)
+
+    On Error GoTo Failed
+
+    Dim vDims As Variant
+    vDims = swView.GetDisplayDimensions
+    If Not IsArray(vDims) Then Exit Sub
+
+    ' Collect first, delete after. Deleting while walking the array
+    ' SOLIDWORKS returned is what invalidates the rest of it.
+    Dim doomed() As Object
+    Dim doomedCount As Long
+    doomedCount = 0
+
+    Dim i As Long
+    For i = LBound(vDims) To UBound(vDims)
+        Dim swDispDim As SldWorks.DisplayDimension
+        Set swDispDim = vDims(i)
+        If swDispDim Is Nothing Then GoTo NextDim
+
+        Dim swAnn As SldWorks.Annotation
+        Set swAnn = swDispDim.GetAnnotation
+        If swAnn Is Nothing Then GoTo NextDim
+
+        ' COM Boolean: compare against False only.
+        If Not (swAnn.IsDangling = False) Then
+            ReDim Preserve doomed(0 To doomedCount)
+            Set doomed(doomedCount) = swAnn
+            doomedCount = doomedCount + 1
+        End If
+NextDim:
+    Next i
+
+    status.DanglingFound = status.DanglingFound + doomedCount
+    If doomedCount < 1 Then Exit Sub
+
+    Dim swModelExt As SldWorks.ModelDocExtension
+    Set swModelExt = swModel.Extension
+
+    ' r13 pruned nothing and could not say which call declined. Annotation
+    ' selection is view-scoped, and the ordinate work leaves the pick mode and
+    ' the active view wherever the last chain left them, so re-establish the
+    ' view first and record each failure separately.
+    Dim swDraw As SldWorks.DrawingDoc
+    Set swDraw = swModel
+    swModel.SetPickMode
+    swModel.ClearSelection2 True
+    swDraw.ActivateView swView.Name
+
+    For i = 0 To doomedCount - 1
+        Dim swDoomed As SldWorks.Annotation
+        Set swDoomed = doomed(i)
+
+        swModel.ClearSelection2 True
+        If Not (swDoomed.Select3(False, Nothing) = False) Then
+            If Not (swModelExt.DeleteSelection2(0) = False) Then
+                status.DanglingPruned = status.DanglingPruned + 1
+            Else
+                status.PruneDeleteFailed = status.PruneDeleteFailed + 1
+            End If
+        Else
+            status.PruneSelectFailed = status.PruneSelectFailed + 1
+        End If
+    Next i
+
+    swModel.ClearSelection2 True
+    Exit Sub
+
+Failed:
+    swModel.ClearSelection2 True
+End Sub
+
+' Reads back what was actually created, rather than what was intended.
+'
+' Two diagnoses of the r10 dangling ordinates were inferred from station
+' counts and sheet positions, and both were wrong: r11 substituted three
+' shared entities and the two dangling values at X=55.00 and X=135.00 survived
+' unchanged. Inference has now failed twice, so this measures instead.
+'
+' IAnnotation.IsDangling (MCP, 2026-08-06) reports the state directly, and
+' IDimension.GetValue3 gives the value the sheet renders. Together they name
+' which stations failed without needing a screenshot.
+Public Function DescribeDimensionReadback( _
+    ByRef swView As SldWorks.View) As String
+
+    On Error GoTo Failed
+
+    Dim vDims As Variant
+    vDims = swView.GetDisplayDimensions
+    If Not IsArray(vDims) Then Exit Function
+
+    Dim total As Long
+    Dim danglingCount As Long
+    Dim danglingDetail As String
+    Dim liveDetail As String
+
+    Dim i As Long
+    For i = LBound(vDims) To UBound(vDims)
+        Dim swDispDim As SldWorks.DisplayDimension
+        Set swDispDim = vDims(i)
+        If swDispDim Is Nothing Then GoTo NextDim
+
+        total = total + 1
+
+        Dim shownValue As String
+        shownValue = ReadDimensionValue(swDispDim)
+
+        ' COM Boolean: only "= False" is reliable on this build, so the flag
+        ' is read by comparing against False and negating a real VBA Boolean.
+        Dim isDangling As Boolean
+        isDangling = False
+
+        Dim swAnn As SldWorks.Annotation
+        Set swAnn = swDispDim.GetAnnotation
+        If Not swAnn Is Nothing Then
+            isDangling = Not (swAnn.IsDangling = False)
+        End If
+
+        If isDangling Then
+            danglingCount = danglingCount + 1
+            If Len(danglingDetail) > 0 Then _
+                danglingDetail = danglingDetail & ", "
+            danglingDetail = danglingDetail & shownValue
+        Else
+            If Len(liveDetail) > 0 Then liveDetail = liveDetail & ", "
+            liveDetail = liveDetail & shownValue
+        End If
+NextDim:
+    Next i
+
+    DescribeDimensionReadback = "readback: " & total & " dims, " & _
+        danglingCount & " dangling"
+
+    If danglingCount > 0 Then
+        DescribeDimensionReadback = DescribeDimensionReadback & _
+            vbCrLf & "      DANGLING values: " & danglingDetail
+    End If
+
+    If Len(liveDetail) > 0 Then
+        DescribeDimensionReadback = DescribeDimensionReadback & _
+            vbCrLf & "      live values: " & liveDetail
+    End If
+
+    Exit Function
+
+Failed:
+    DescribeDimensionReadback = "readback unavailable (err=" & _
+        CStr(Err.Number) & ")"
+End Function
+
+Private Function ReadDimensionValue( _
+    ByRef swDispDim As SldWorks.DisplayDimension) As String
+
+    On Error GoTo Failed
+
+    ReadDimensionValue = "?"
+
+    Dim swDim As SldWorks.Dimension
+    Set swDim = swDispDim.GetDimension2(0)
+    If swDim Is Nothing Then Exit Function
+
+    Dim vals As Variant
+    vals = swDim.GetValue3(swThisConfiguration, Nothing)
+    If Not IsArray(vals) Then Exit Function
+
+    ReadDimensionValue = Format$(vals(LBound(vals)), "0.00")
+    Exit Function
+
+Failed:
+    ReadDimensionValue = "err" & CStr(Err.Number)
 End Function
 
 ' swCreateOrdDimError_e members, MCP-confirmed 2026-08-05.
