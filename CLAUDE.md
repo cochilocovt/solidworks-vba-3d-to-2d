@@ -44,7 +44,7 @@ label.
   useful. Rows 13, 17 and 31 cover `GetVisibleEntities2`, view-scoped
   `ISelectData`, and `IEntity.Select4`.
 
-### These two are enforced, not requested
+### These process gates are enforced, not requested
 
 Instruction text here did not hold: on 2026-08-06 three `swDisplayMode_e`
 constants sat in the trunk with values from other enum members and survived
@@ -61,6 +61,14 @@ instead of raising. Two gates now fire without depending on anyone's memory.
 
 Neither proves a value is right — only the installed SW2025 type library does
 that. They make skipping the check impossible to do silently.
+
+- `.claude/hooks/record_current_status_baseline.py` (UserPromptSubmit) records
+  the SHA-256 hash of `docs/CURRENT_STATUS.md` at the start of every turn.
+- `.claude/hooks/require_current_status_update.py` (Stop) blocks completion
+  once when that hash is unchanged and requests an evidence-honest status
+  entry. On a second unchanged Stop it warns and allows completion to prevent
+  an infinite loop. A read-only/no-change turn records `No material status
+  change`; it does not invent progress.
 
 ## Update after every iteration
 
