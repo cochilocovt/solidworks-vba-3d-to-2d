@@ -2,6 +2,49 @@
 
 Date: 2026-08-08
 
+## 2026-08-08: No material status change - delivered the C9 form code for manual paste
+
+Handover turn for the C9 section-dialog fix committed in `523dd52`. No source
+edit, no deploy, no run, no revision change.
+
+First delivery attempt was a mistake worth recording: the fix was handed over
+as a prose instruction document, and it was pasted wholesale into a VBE code
+window, producing `Compile error: Expected: end of statement`. The document
+was the input, not the code. Nothing was damaged - the last deploy had
+already written and saved r26, so closing `Fable.swp` without saving discards
+only the bad paste.
+
+Redelivered as two complete attribute-stripped VBA files generated directly
+from the trunk source (`UserForm1` 518 lines, `UserFormSection` 127 lines,
+both verified zero non-ASCII bytes), to be pasted whole after select-all in
+each code window. `UserForm1`'s only difference from what is already embedded
+is `DoAddSection`; the rest is byte-identical, so the paste cannot introduce
+drift.
+
+Lesson, same shape as the A11 finding: **anything that cannot be deployed has
+to be handed over as the artifact itself, not as instructions describing it.**
+The deploy path never produces this failure mode because it transfers files;
+only the manual path does, and these two forms are the only components on it.
+
+Note also recorded during the commit: `tools/solidworks-automation-companion/`
+is gitignored in its entirety and **no test in that suite has ever been
+tracked** - including `test_userform_state_contracts.py` written this session.
+The suite CLAUDE.md instructs everyone to run exists only in working copies.
+Not changed unilaterally; flagged for a decision.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment | none this turn |
+| VBA compile | **not run** - the C9 fix is still unpasted, so nothing has compiled it |
+| Live macro execution | none this turn |
+| C9 section-dialog fix, live | **not verified** - still requires the manual VBE paste |
+| Section view creation end-to-end | **never yet achieved through the form** |
+| Hole-callout root cause | **still not isolated** - 2 candidates, both need code |
+| Companion test suite tracked in git | **no** - newly noticed, undecided |
+| Everything else the r24 gap-doc refresh listed as open | unchanged |
+
 ## 2026-08-08: View-orientation candidate eliminated; section dialog bug found and fixed in source
 
 Two findings, one live and one static. No revision bump - the only code
