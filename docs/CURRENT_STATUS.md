@@ -2,6 +2,13 @@
 
 Date: 2026-08-06
 
+## 2026-08-06: No material status change
+
+User answered the push-loop question: confirm each push individually,
+don't auto-push trailing status commits. No repo, code, or push action this
+turn - preference noted, saved to memory. `99dd49b` remains local, unpushed,
+awaiting explicit confirmation as usual.
+
 ## 2026-08-06: Second follow-up push - same loop, flagged to the user
 
 Pushed `d6ff71e..58dc066` at user request. `origin/main` now at `58dc066`.
