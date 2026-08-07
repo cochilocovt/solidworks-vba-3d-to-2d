@@ -2,6 +2,52 @@
 
 Date: 2026-08-08
 
+## 2026-08-08: C9 fix compiled and saved into Fable.swp; run blocked on an SWP lock
+
+No source edit, no revision change. The trunk is unchanged since `523dd52`;
+this turn moved that already-committed fix into the deployed macro file.
+
+**The C9 transfer finally succeeded.** Operator reported a clean compile
+after a full replace of both form modules, on the fourth attempt. The two
+earlier failures were both transfer defects, now understood and recorded:
+a short paste (missing tail, `Sub or Function not defined`) followed by a
+paste missing the head (`Invalid outside procedure` at `Ln 1`). Neither was
+a defect in the delivered source.
+
+`Fable.swp` on disk confirmed written - mtime 04:59:16, checked 54 seconds
+later, so the compiled forms are persisted rather than living only in the
+VBE's in-memory project.
+
+The deploy that would have exercised it then failed closed:
+
+```
+The target SWP is open or locked. Close Fable.swp in the VBA editor, but
+leave SOLIDWORKS running, and retry.
+Deploy-TargetSpecHybrid.ps1:172
+```
+
+Correct behaviour by the guard - deploying into a file held open by the VBE
+is exactly how a half-written SWP would be produced. Nothing was written.
+
+**The fix is compiled and saved but still unexercised.** No run has yet
+created a section view through the dialog, so C9 remains unverified in the
+only way that counts.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| C9 fix transferred into the SWP | **done** - clean compile, `Fable.swp` written to disk |
+| VBA compile | **passing** - operator-reported, first clean compile of the C9 forms |
+| Deployment | **blocked** - SWP locked open in the VBA editor, nothing written |
+| Live macro execution | **not run** |
+| C9 fix verified live (`section=ON`, section row in the list) | **not verified** - the point of the next run |
+| Section view creation end-to-end | **still never achieved through the form** |
+| Hole-callout root cause | **still not isolated** - 2 candidates, both need code |
+| Forms importable via deployment manifest | **not attempted** - still the standing proposal if this recurs |
+| Companion test suite tracked in git | **no** - flagged, still undecided |
+| Everything else the r24 gap-doc refresh listed as open | unchanged |
+
 ## 2026-08-08: No material status change - C9 truncation confirmed, head now missing instead
 
 Third handover attempt for the same C9 one-line fix. No source edit, no
