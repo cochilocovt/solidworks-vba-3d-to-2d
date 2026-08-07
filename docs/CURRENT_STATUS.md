@@ -2,6 +2,48 @@
 
 Date: 2026-08-08
 
+## 2026-08-08: No material status change - C9 paste incomplete, diagnosis pending
+
+Second failed handover attempt for the C9 section-dialog fix. No source edit,
+no deploy, no run, no revision change this turn.
+
+Operator pasted `UserForm1` and hit `Compile error: Sub or Function not
+defined` on `LoadPreferences`, called from `UserForm_Initialize`.
+`LoadPreferences` is defined at line 246 of the 518-line file, so the most
+likely cause is a truncated paste rather than anything wrong with the code -
+the declarations and `UserForm_Initialize` visible in the operator's
+screenshot match the delivered file exactly, in order, so what did arrive is
+correct as far as it goes.
+
+**Not yet confirmed.** Asked for one decisive check - `Ctrl+End` in the code
+window and read the `Ln` indicator: 518 means the paste completed and the
+cause is something else, materially lower means truncation. Suggested
+repasting from the file opened in Notepad rather than a preview pane, since
+preview panes commonly clip long files, and gave the last procedure in each
+form (`UserForm_QueryUnload`) as a visual end-of-file marker.
+
+Two failed handovers in a row for the same one-line fix. Both failure modes
+belong to the manual path only - the first was prose pasted as code, this one
+is a probable clipboard truncation. Neither can occur on the deploy path,
+which transfers files. If a third attempt fails, adding these two forms to
+`deployment-manifest.json` (they currently lack the `VERSION 5.00` designer
+block that would make them importable) is likely cheaper than continuing to
+hand-transfer them.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment | none this turn |
+| VBA compile | **failing** - `Sub or Function not defined` on `LoadPreferences`, cause not yet confirmed |
+| Live macro execution | none this turn |
+| C9 section-dialog fix, live | **not verified** - not yet successfully pasted |
+| Paste-truncation hypothesis | **unconfirmed** - awaiting the `Ctrl+End` line count |
+| Section view creation end-to-end | **never yet achieved through the form** |
+| Hole-callout root cause | **still not isolated** - 2 candidates, both need code |
+| Companion test suite tracked in git | **no** - flagged previously, still undecided |
+| Everything else the r24 gap-doc refresh listed as open | unchanged |
+
 ## 2026-08-08: No material status change - delivered the C9 form code for manual paste
 
 Handover turn for the C9 section-dialog fix committed in `523dd52`. No source
