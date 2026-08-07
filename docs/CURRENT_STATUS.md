@@ -2,6 +2,50 @@
 
 Date: 2026-08-08
 
+## 2026-08-08: No material status change - C9 truncation confirmed, head now missing instead
+
+Third handover attempt for the same C9 one-line fix. No source edit, no
+deploy, no run, no revision change this turn.
+
+**Truncation hypothesis confirmed** by the operator: the previous paste was
+short, and the missing tail explained `Sub or Function not defined` on
+`LoadPreferences`. That diagnosis was correct.
+
+The repaste produced the mirror failure: `Compile error: Invalid outside
+procedure` at `Ln 1`, `swPart` highlighted, procedure dropdown reading
+`(General) (Declarations)`. Line 1 is `If swPart Is Nothing Then Exit Sub` -
+a statement belonging inside `RefreshHoleCount`, sitting in no procedure at
+all. The module now begins mid-procedure: the tail was repaired and the head
+lost. Asked for a clean full replace with **both** ends verified this time -
+`Ctrl+Home` must read `Option Explicit`, `Ctrl+End` must read `Ln 518`
+(`Ln 127` for `UserFormSection`).
+
+No code change was made in response to this error - it is a transfer defect,
+not a defect in the delivered source, which compiles as a whole and is
+unchanged since `523dd52`.
+
+**Decision recorded for the next failure**: stop hand-carrying these. Both
+forms build every control at runtime via `Controls.Add` and embed no designer
+resources, so they most likely need no `.frx`, meaning proper `.frm` files
+with a `VERSION 5.00` header could be generated and both forms added to
+`deployment-manifest.json` - transferred by the deploy tool like every other
+component. Unverified assumption (the no-`.frx` part), but it would retire
+this entire failure class rather than re-rolling the same dice a fourth time.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment | none this turn |
+| VBA compile | **failing** - `Invalid outside procedure` at Ln 1, transfer defect not source defect |
+| Live macro execution | none this turn |
+| C9 section-dialog fix, live | **not verified** - three transfer attempts, none complete |
+| Section view creation end-to-end | **never yet achieved through the form** |
+| Forms importable via deployment manifest | **not attempted** - proposed, `.frx` assumption unverified |
+| Hole-callout root cause | **still not isolated** - 2 candidates, both need code |
+| Companion test suite tracked in git | **no** - flagged twice now, still undecided |
+| Everything else the r24 gap-doc refresh listed as open | unchanged |
+
 ## 2026-08-08: No material status change - C9 paste incomplete, diagnosis pending
 
 Second failed handover attempt for the C9 section-dialog fix. No source edit,
