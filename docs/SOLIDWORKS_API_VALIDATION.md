@@ -1316,9 +1316,74 @@ MCP enum: `swInsertAnnotation_e`.
 | `swInsertHoleWizardProfileDimensions` | 65536 | Correct (`B/Module4:9`) | Not declared |
 | `swInsertHoleWizardLocationDimensions` | 131072 | Correct (`B/Module4:10`) | Not declared |
 | `swInsertDimensionsNotMarkedForDrawing` | 524288 | Declared, not included (`B/Module4:11`, `175-182`) | Not declared |
-| `swInsertholeCallout` | 1048576 | Correct (`B/Module4:12`) | Intended but not used |
+| `swInsertholeCallout` | 1048576 | Correct (`B/Module4:12`) | **Corrected 2026-08-06/08:** table said "Intended but not used" - stale. `GetModelItemMask` (`B/Module4:190-205`) now gates it on `GlobalConfig.ImportHoleCallouts` (default `True`) and includes it. Live evidence below shows the bit reaching the API call produces zero callouts regardless. |
 
 MCP enum `swImportModelItemsSource_e` confirms `swImportModelItemsFromEntireModel=0`, used by both snapshots (`B/Module4:4`; `A/Module4:4`).
+
+### AddHoleCallout2 is not viable for unattended automation
+
+`IDrawingDoc.AddHoleCallout2(X, Y, Z)` MCP-checked 2026-08-06. Signature:
+selects the hole by the edge already selected, places a callout at the given
+position, returns a `DisplayDimension`. Remarks, quoted in full because the
+sentence is short and the whole finding rests on it:
+
+> When you call this method, the user must click OK in the dialog that shows
+> the system-generated hole callout.
+
+This is a per-call blocking UI dialog. `src/baseline-model-dims/Module5_FallbackDimensionEngine.bas`
+had an `InsertHoleCalloutsForView` procedure that called this once per
+circular edge in a view - never invoked anywhere in the trunk, zero callers.
+Every run in this project goes through `tools/production-runner`, which
+compiles the project and calls `Module1_Main.main` from a background STA
+runspace precisely so `UserForm1`'s modal can be driven without a human
+present for the rest of the pipeline. A second, per-edge modal dialog inside
+that same unattended path is a near-certain hang, not a usable producer.
+Removed 2026-08-06 rather than fixed - fixing it would also have required
+adding the missing display-mode guard (it inherited the same
+undimensionable-hidden-edge exposure A11 closed for ordinates, independently)
+and a consolidation pass neither this method nor its call site had any way to
+provide, since one call places exactly one callout on exactly one hole.
+
+**Not verified**: whether `AddHoleCallout2`'s dialog is actually suppressible
+via `ISldWorks.CommandInProgress`, a preference, or similar, which would
+change this conclusion. Not investigated - the bulk `InsertModelAnnotations4`
+path (below) is the documented, non-modal route to the same content and was
+prioritised instead.
+
+### Hole callouts are requested, Hole-Wizard holes exist, and zero are produced
+
+Live, `macro_qa/20260808_041847_P-0251-14A-001`, r25. New instrumentation:
+`Module4_ModelItemImporter.CountHoleCalloutsInView` walks
+`IView.GetDisplayDimensions` and calls `IDisplayDimension.IsHoleCallout` on
+each entry (both MCP-checked 2026-08-06); `Module3_ModelAudit.CountHoleWizardItems`
+reports how many of the audit's detected holes carry the `IsHoleWizardItem`
+flag already computed per-feature during collection.
+
+```
+Detected hole-like features: 12 (Hole Wizard: 10, plain cut: 2)
+Hole callouts (IsHoleCallout=True) across drawing: 0 of 20 dimensions
+```
+
+10 of 12 holes are genuine Hole-Wizard features - callouts should be
+attachable in principle, per `AddHoleCallout2`'s own description ("the hole
+whose edge is selected") and `IWizardHoleFeatureData2` existing specifically
+for this case. `GetModelItemMask` requests `swInsertholeCallout` by default.
+And the result is exactly zero, confirmed by direct query on every dimension
+in the drawing rather than inferred from a screenshot. Operator screenshot
+for this run shows no `6x`/`4x`-style leader text anywhere on the sheet,
+consistent.
+
+**Not yet determined**: whether `ImportHoleCallouts` was actually `True` for
+this run (same registry-persisted-checkbox pattern as `UseHLR` before A11 -
+`GlobalConfig.ImportHoleCallouts` is not itself reported anywhere in QA, so
+this run cannot rule out "the mask bit was never requested" as the cause),
+versus the bit being requested and `InsertModelAnnotations4` declining to
+produce a callout for a reason the MCP contract doesn't state (candidates:
+the archived tree's `NATIVE_CALLOUT_COVERAGE` finding of `missing=Attachment`
+on Hole-Wizard features, unconfirmed for this trunk; `AllViews=True` vs a
+per-view targeted call, B3's untested hypothesis; or a view-orientation
+requirement, holes must read as circles in the target view). The next cheap
+step is reporting the mask/checkbox value itself before chasing any of these.
 
 ### Ordinate creation
 

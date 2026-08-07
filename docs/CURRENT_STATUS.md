@@ -121,6 +121,88 @@ a sanity check only (37/37, unchanged) - not evidence of anything new.
 | Documentation accuracy | refreshed and committed - `BASELINE_TO_REFERENCE_DRAWING_GAP.md` now reflects r24 state |
 | Everything the refreshed doc lists as open | still open - this was a documentation pass, not a fix |
 
+## 2026-08-08: r25 - hole callouts proven absent by direct query, dead callout code removed
+
+Started working the gap doc's open items one by one, per the user's
+request, MCP-first per the solidworks-api-lookup skill. First target: the
+doc's own top lead, `Module5_FallbackDimensionEngine.InsertHoleCalloutsForView`
+(zero callers).
+
+`AddHoleCallout2` MCP-checked: its Remarks require a user to click OK in a
+system dialog per call - not usable in this project's unattended
+`tools/production-runner` path. The function also had no display-mode guard
+(same class of bug A11 closed for ordinates) and no consolidation, so it
+could never have produced the reference's grouped `6x`/`4x` callouts even if
+the dialog problem didn't exist. Removed, not fixed.
+
+Added real instrumentation instead of continuing to infer from screenshots:
+`Module4_ModelItemImporter.CountHoleCalloutsInView` (`IDisplayDimension.IsHoleCallout`,
+MCP-checked) and `Module3_ModelAudit.CountHoleWizardItems` (existing
+per-feature `IsHoleWizardItem` flag, not previously summarized), surfaced in
+`Module6_QAEngine`'s report.
+
+Deploy `VERIFY: PASS` at `trunk-2026-08-06-r25`, offline suite 37/37 (after
+fixing 3 non-ASCII bytes the encoding-contract test caught - `Section 7`
+and `dia` instead of the section sign and diameter sign in new comments).
+Live run `macro_qa/20260808_041847_P-0251-14A-001`:
+
+```
+Detected hole-like features: 12 (Hole Wizard: 10, plain cut: 2)
+Hole callouts (IsHoleCallout=True) across drawing: 0 of 20 dimensions
+```
+
+Zero callouts, confirmed by direct API query on every dimension in the
+drawing, despite the mask requesting them by default and 10 of 12 holes
+being genuine Hole-Wizard features. Cause not yet isolated - ranked
+candidates and the next diagnostic are in `SOLIDWORKS_API_VALIDATION.md`.
+Ordinate chains unaffected: still exact match, 8 created, 0 dangling.
+
+### Two operator questions answered mid-run, both traced to evidence
+
+**"The isometric view disappeared?"** Not a regression. `UserForm1.frm:252`
+reads `chkIso.Value = ReadBoolSetting("IsoView", True)` and line 313 writes
+it back on every OK - the `True` is a first-ever-run fallback, not a
+per-run default, so the box is whatever it was left at last time. r25
+touched no view-creation code; `Module2_DrawingPipeline`'s `CreateIso`
+branch is unchanged. The QA roster corroborates: this run created only
+Front and Top, and Section is absent too - both checkbox-driven. The prior
+run created 8 views from the same lineage.
+
+**"I don't think the macro has stopped working yet."** It had.
+`main returned.` was already in the terminal and a complete QA report had
+been written and read before the question. `Get-Process SLDWORKS` confirmed
+`Responding: True`, same instance since 03:54 - SOLIDWORKS idling with the
+drawing open, which the macro never closes.
+
+Both point at the same instrumentation gap, and it is the real shape of
+**C8**: QA reports what was *created*, never what was *requested*. A
+silently-unticked checkbox is indistinguishable from a creation failure in
+the run record - exactly the blind spot that also prevents this run from
+ruling out "`ImportHoleCallouts` was never `True`" as the cause of the zero
+callouts above.
+
+### Doc drift fixed while in the gap doc
+
+Section 3's B-series table still described B1 (`DuplicateDims=False`) and
+B2 (dead `ImportHoleCallouts` field) as open, though the document's own top
+summary already listed both closed and the source has passed `True` /
+gated the mask for many revisions. Missed on the last refresh pass.
+Corrected, with the correction itself noted in the table.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment + readback | `VERIFY: PASS`, embedded `trunk-2026-08-06-r25` |
+| VBA compile | pre-flight `verdict=Clean` |
+| Live macro execution | ran, `PASS` |
+| Offline suite | 37/37, after an encoding-contract fix |
+| Ordinate chains | unaffected, still match reference exactly |
+| Hole-callout instrumentation | working, proven live - 0 of 20 |
+| Root cause of zero callouts | **not isolated** - next task |
+| Whether `ImportHoleCallouts` reached the mask this run | **not knowable** - nothing reports requested config |
+| Everything else the r24 gap-doc refresh listed as open | unchanged |
+
 ## 2026-08-06: No material status change
 
 Read-only review turn: full gap review of current output vs the reference

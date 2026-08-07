@@ -12,10 +12,20 @@ Public Function BuildRunSummary( _
     Dim totalDims As Long
     totalDims = CountAllViewDimensions(swDraw)
 
+    Dim totalCallouts As Long
+    totalCallouts = CountAllViewHoleCallouts(swDraw)
+
+    Dim holeWizardCount As Long
+    holeWizardCount = Module3_ModelAudit.CountHoleWizardItems(holes)
+
     report = "Drawing QA Summary" & vbCrLf & String(26, "-") & vbCrLf
-    report = report & "Detected hole-like features: " & Module3_ModelAudit.CountHoles(holes) & vbCrLf
+    report = report & "Detected hole-like features: " & Module3_ModelAudit.CountHoles(holes) & _
+        " (Hole Wizard: " & holeWizardCount & ", plain cut: " & _
+        (Module3_ModelAudit.CountHoles(holes) - holeWizardCount) & ")" & vbCrLf
     report = report & "Imported model items: " & importedModelItems & vbCrLf
     report = report & "Total drawing view dimensions: " & totalDims & vbCrLf
+    report = report & "Hole callouts (IsHoleCallout=True) across drawing: " & _
+        totalCallouts & " of " & totalDims & " dimensions" & vbCrLf
     report = report & BuildPerViewSummary(swDraw)
 
     ' Ordinate outcome is reported separately from the dimension total, so a
@@ -67,6 +77,17 @@ Public Function CountAllViewDimensions(ByRef swDraw As SldWorks.DrawingDoc) As L
     Loop
 End Function
 
+Public Function CountAllViewHoleCallouts(ByRef swDraw As SldWorks.DrawingDoc) As Long
+    Dim swView As SldWorks.View
+    Set swView = swDraw.GetFirstView
+    If Not swView Is Nothing Then Set swView = swView.GetNextView
+
+    Do While Not swView Is Nothing
+        CountAllViewHoleCallouts = CountAllViewHoleCallouts + Module4_ModelItemImporter.CountHoleCalloutsInView(swView)
+        Set swView = swView.GetNextView
+    Loop
+End Function
+
 ' Per-view roster. Carries the raw IView.Type and IView.GetOrientationName
 ' returns, not just the classification, so the run doubles as the probe for
 ' those two members -- neither has been characterised on this build.
@@ -88,12 +109,15 @@ Private Function BuildPerViewSummary(ByRef swDraw As SldWorks.DrawingDoc) As Str
             ordinatePolicy = "ordinates=skipped"
         End If
 
+        Dim viewCalloutCount As Long
+        viewCalloutCount = Module4_ModelItemImporter.CountHoleCalloutsInView(swView)
+
         BuildPerViewSummary = BuildPerViewSummary & "  " & _
             Module8_ViewClassifier.DescribeView(swView) & _
             " | " & ordinatePolicy & _
             " | " & _
             Module4_ModelItemImporter.CountDisplayDimensionsInView(swView) & _
-            " dims" & vbCrLf
+            " dims, " & viewCalloutCount & " callouts" & vbCrLf
 
         ' Only where dimensions exist: a readback line per empty view is
         ' noise, and every failure so far has been in the ordinated view.

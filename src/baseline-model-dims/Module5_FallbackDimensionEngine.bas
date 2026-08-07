@@ -1476,63 +1476,19 @@ Private Function DescribeChainFailure(ByVal code As Long) As String
     End Select
 End Function
 
-Public Sub InsertHoleCalloutsForView(ByRef swDraw As SldWorks.DrawingDoc, ByRef swView As SldWorks.View)
-    On Error GoTo Failed
-
-    Dim edges As Variant
-    edges = swView.GetVisibleEntities2(Nothing, swViewEntityType_Edge)
-    If IsEmpty(edges) Then Exit Sub
-
-    Dim swModel As SldWorks.ModelDoc2
-    Set swModel = swDraw
-
-    Dim swSelMgr As SldWorks.SelectionMgr
-    Set swSelMgr = swModel.SelectionManager
-
-    Dim swSelData As SldWorks.SelectData
-    Set swSelData = swSelMgr.CreateSelectData
-    Set swSelData.View = swView
-
-    Dim swModelExt As SldWorks.ModelDocExtension
-    Set swModelExt = swModel.Extension
-
-    Dim i As Long
-    For i = LBound(edges) To UBound(edges)
-        Dim swEdge As SldWorks.Edge
-        Set swEdge = edges(i)
-        If swEdge Is Nothing Then GoTo NextCallout
-
-        Dim swCurve As SldWorks.Curve
-        Set swCurve = swEdge.GetCurve
-        If swCurve Is Nothing Then GoTo NextCallout
-        ' Same SOLIDWORKS COM Boolean contract as CreateHoleOrdinateDims.
-        If swCurve.IsCircle = False Then GoTo NextCallout
-
-        Dim cp As Variant
-        cp = swCurve.CircleParams
-
-        swModel.ClearSelection2 True
-        Dim objs(0 To 0) As Object
-        Set objs(0) = swEdge
-        If swModelExt.MultiSelect2(objs, False, swSelData) <> 1 Then GoTo NextCallout
-
-        On Error Resume Next
-        swDraw.AddHoleCallout2 cp(0) + 0.01, cp(1) + 0.01, 0
-        If Err.Number <> 0 Then
-            Err.Clear
-            swModelExt.AddDimension2 cp(0) + 0.01, cp(1) + 0.01, 0
-        End If
-        On Error GoTo Failed
-
-NextCallout:
-        swModel.ClearSelection2 True
-    Next i
-    Exit Sub
-
-Failed:
-    Debug.Print "Hole callout fallback warning in view " & swView.Name & ": " & Err.Description
-    swModel.ClearSelection2 True
-End Sub
+' InsertHoleCalloutsForView was removed 2026-08-06, not fixed. It called
+' AddHoleCallout2 once per circular edge in GetVisibleEntities2 with no
+' display-mode guard (the same undimensionable-hidden-edge trap A11 closed
+' for ordinates, never applied here) and no consolidation, so it could only
+' ever emit one callout per edge -- never the reference's single "6x dia6.6" /
+' "4x dia4.2" grouped callouts. More importantly, IDrawingDoc.AddHoleCallout2's
+' Remarks (MCP-checked 2026-08-06) state plainly: "the user must click OK in
+' the dialog that shows the system-generated hole callout." That is a blocking
+' UI dialog per call, in a macro invoked unattended by
+' tools/production-runner -- a likely hang, not a usable automation path.
+' Zero callers existed anywhere in the trunk; nothing depended on it.
+' Full writeup: SOLIDWORKS_API_VALIDATION.md, "AddHoleCallout2 is not viable
+' for unattended automation".
 
 ' Creates one ordinate group and returns its outcome: a swCreateOrdDimError_e
 ' value, or one of the CHAIN_* codes above.

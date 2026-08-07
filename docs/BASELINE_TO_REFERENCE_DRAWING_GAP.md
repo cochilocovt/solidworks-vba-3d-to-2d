@@ -189,8 +189,8 @@ second. That works, but it means the two chains have inconsistent notions of
 
 | # | Gap | Evidence | Note |
 |---|---|---|---|
-| B1 | `DuplicateDims=False` | `B:39`, `B:93` | see §1.2 |
-| B2 | `ImportHoleCallouts` form field is dead | `GetModelItemMask` `B:175-182` ORs `swInsertholeCallout` unconditionally | the checkbox never reaches the mask |
+| B1 | ~~`DuplicateDims=False`~~ **CLOSED, pre-r20 (exact revision not logged)** | `B:39`, `B:93` now pass `True`. Table text corrected 2026-08-06 - it still described the pre-fix state though the document's own top summary already listed B1 closed | see §1.2 |
+| B2 | ~~`ImportHoleCallouts` form field is dead~~ **CLOSED, pre-r20** | `GetModelItemMask` (`B:190-205`) now gates `swInsertholeCallout` on `GlobalConfig.ImportHoleCallouts` (form default `True`). Table text corrected 2026-08-06 for the same reason as B1 | the checkbox now reaches the mask. Whether the checkbox itself reaches the operator reliably (the `UserForm1`/registry pattern that made A11 necessary) is untested for this control specifically |
 | B3 | No per-view callout targeting | `AllViews=True` `B:38` | reference puts `6x Ø6.6` on the front view and `4x Ø4.2/M5` on the left view — each where that hole axis reads as a circle |
 | B4 | Auto-arrange selects without view scoping | `swAnn.Select3 True, Nothing` `B:157` | `Nothing` SelectData = unscoped. CodeStack's recurring lesson is to scope with `ISelectData.View` |
 | B5 | `AlignDimensions` spacing `0.06` unverified | `B:161` | 60 mm if metres. Units and behaviour unconfirmed |
@@ -277,12 +277,28 @@ That is the real completeness gap, and it is exactly what the Tier C
 `R23_SCOPE_AND_GENERALIZATION_PLANNING.md`) was reaching for. It cannot be
 closed by patching Module 4 or Module 5.
 
-**Found in review, 2026-08-06, not yet investigated**: a third producer may
-already exist. `Module5_FallbackDimensionEngine.InsertHoleCalloutsForView`
-has zero callers anywhere in the trunk — it is written but never invoked.
-Check what it actually does before writing a new hole-callout producer from
-scratch; it may already be most of the answer to the `6x Ø6.6` / `4x Ø4.2`
-gap above.
+**Investigated 2026-08-06/08, resolved: not usable, removed.**
+`Module5_FallbackDimensionEngine.InsertHoleCalloutsForView` called
+`IDrawingDoc.AddHoleCallout2` once per circular edge with no display-mode
+guard (the same hidden-edge exposure A11 closed for ordinates, never applied
+here) and no consolidation - it could only ever emit one callout per edge,
+never the reference's grouped `6x Ø6.6` / `4x Ø4.2`. More decisively,
+`AddHoleCallout2`'s MCP Remarks state the call requires a user to click OK
+in a system dialog per invocation - not viable inside this project's
+unattended `tools/production-runner` path. Removed, not fixed. Full
+writeup: `SOLIDWORKS_API_VALIDATION.md`, "AddHoleCallout2 is not viable for
+unattended automation".
+
+**New live evidence, r25 (`macro_qa/20260808_041847`)**: the *other*,
+correct, non-modal path was already firing and still produces nothing.
+`GetModelItemMask` requests `swInsertholeCallout` by default, 10 of the
+fixture's 12 detected holes are genuine Hole-Wizard features (both counts
+newly instrumented this pass), and `IDisplayDimension.IsHoleCallout` across
+every dimension in the drawing reads **0 of 20**. This is now measured
+directly, not inferred from a screenshot. Cause not yet isolated - see
+`SOLIDWORKS_API_VALIDATION.md` for the ranked candidates and the cheapest
+next diagnostic (report whether `ImportHoleCallouts` actually reached the
+mask for a given run, which nothing currently surfaces).
 
 By r24, the ordinate chains and the section's stepped-cut geometry are the
 two pieces of this document that are actually solid. Everything else

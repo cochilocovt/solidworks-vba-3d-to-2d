@@ -130,6 +130,37 @@ Failed:
     CountDisplayDimensionsInView = 0
 End Function
 
+' Section 7 of BASELINE_TO_REFERENCE_DRAWING_GAP.md: whether InsertModelAnnotations4's
+' swInsertholeCallout bit (gated on GlobalConfig.ImportHoleCallouts, default
+' True) actually produces any IDisplayDimension.IsHoleCallout=True entries on
+' this fixture has never been checked -- QA has only ever counted dimensions
+' generically. IDisplayDimension.IsHoleCallout MCP-confirmed 2026-08-06:
+' "Gets whether this display dimension is a hole callout", returns Boolean.
+Public Function CountHoleCalloutsInView(ByRef swView As SldWorks.View) As Long
+    On Error GoTo Failed
+
+    Dim vDims As Variant
+    vDims = swView.GetDisplayDimensions
+    If IsEmpty(vDims) Then Exit Function
+
+    Dim i As Long
+    For i = LBound(vDims) To UBound(vDims)
+        Dim swDispDim As SldWorks.DisplayDimension
+        Set swDispDim = vDims(i)
+        If Not swDispDim Is Nothing Then
+            ' Same SOLIDWORKS COM Boolean contract as the rest of this trunk:
+            ' only "= False" is reliable.
+            If Not (swDispDim.IsHoleCallout = False) Then
+                CountHoleCalloutsInView = CountHoleCalloutsInView + 1
+            End If
+        End If
+    Next i
+    Exit Function
+
+Failed:
+    CountHoleCalloutsInView = 0
+End Function
+
 Public Sub AutoArrangeAllDrawingDimensions(ByRef swDrawModel As SldWorks.ModelDoc2, ByRef swDraw As SldWorks.DrawingDoc)
     Dim swView As SldWorks.View
     Set swView = swDraw.GetFirstView

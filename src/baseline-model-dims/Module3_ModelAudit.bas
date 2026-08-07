@@ -76,6 +76,25 @@ Public Function IsHoleWizardItem(ByVal holeInfo As Variant) As Boolean
     IsHoleWizardItem = CBool(holeInfo(IDX_IS_HOLEWIZARD))
 End Function
 
+' Section 7 of BASELINE_TO_REFERENCE_DRAWING_GAP.md: InsertModelAnnotations4's hole
+' callouts attach to Hole Wizard features, not plain cuts (MCP: AddHoleCallout2
+' "Adds a hole callout ... to the hole whose edge is selected", and the related
+' IWizardHoleFeatureData2 interface exists specifically for Hole-Wizard-authored
+' holes). Whether this fixture's holes are Hole-Wizard or plain-cut features was
+' never reported, only detected internally per-feature.
+Public Function CountHoleWizardItems(ByVal holes As Collection) As Long
+    On Error GoTo SafeExit
+    If holes Is Nothing Then Exit Function
+
+    Dim i As Long
+    For i = 1 To holes.Count
+        If IsHoleWizardItem(holes(i)) Then
+            CountHoleWizardItems = CountHoleWizardItems + 1
+        End If
+    Next i
+SafeExit:
+End Function
+
 Public Function DescribeFeatureType(ByRef swFeat As SldWorks.Feature) As String
     Dim t2 As String
     Dim t1 As String
