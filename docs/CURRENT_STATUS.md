@@ -2,6 +2,23 @@
 
 Date: 2026-08-06
 
+## 2026-08-06: Follow-up push - the prior status entry itself reached origin/main
+
+User asked to also push the just-created status commit (`d6ff71e`, logging
+the earlier trunk-to-main push). Pushed: `4b53855..d6ff71e
+trunk-baseline-r4 -> main`. `origin/main` now at `d6ff71e`. No source,
+deploy, or run. This entry itself will be one commit ahead of origin/main
+again the moment it's committed - normal for a doc-logging turn, not a gap.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment | none this turn |
+| Live macro execution | none this turn |
+| Push to origin/main | confirmed - `4b53855..d6ff71e` |
+| Everything the r24 gap-doc refresh lists as open | unchanged, still open |
+
 ## 2026-08-06: Local trunk pushed to origin/main - repo, not code, change
 
 At the user's explicit request ("commit the current state of the
