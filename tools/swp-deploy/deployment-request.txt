@@ -1,10 +1,10 @@
 SCHEMA=1
 EXPECTED_PROJECT=Fable
-EXPECTED_REVISION=trunk-2026-08-06-r25
-INPUT_SWP=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260808_041831\candidate-input.swp
-OUTPUT_SWP=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260808_041831\candidate-output.swp
-RESULT_FILE=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260808_041831\deployment-result.txt
-COMPILE_RESULT_FILE=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260808_041831\compile-result.txt
+EXPECTED_REVISION=trunk-2026-08-08-r26
+INPUT_SWP=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260808_042615\candidate-input.swp
+OUTPUT_SWP=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260808_042615\candidate-output.swp
+RESULT_FILE=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260808_042615\deployment-result.txt
+COMPILE_RESULT_FILE=C:\Users\V.T\Documents\VBA 3D TO 2D\test_assets\iteration_evidence\swp_deployment\20260808_042615\compile-result.txt
 PRUNE_UNMANAGED=1
 PROTECTED=Module0_SourceDeployment
 PROTECTED=ThisLibrary

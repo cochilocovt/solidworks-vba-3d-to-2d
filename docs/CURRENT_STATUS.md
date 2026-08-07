@@ -121,6 +121,65 @@ a sanity check only (37/37, unchanged) - not evidence of anything new.
 | Documentation accuracy | refreshed and committed - `BASELINE_TO_REFERENCE_DRAWING_GAP.md` now reflects r24 state |
 | Everything the refreshed doc lists as open | still open - this was a documentation pass, not a fix |
 
+## 2026-08-08: r26 - requested-config header closes the callout ambiguity on its first run
+
+Added `Module4_ModelItemImporter.DescribeRequestedConfig`, reported at the
+top of every QA report before any produced number: resolved model-item mask
+with the callout bit called out by name, producer flags, all eight view
+checkboxes, and HLR. Plus a classifier in `Module6_QAEngine` that turns a
+zero-callout run into either a `FINDING` (requested but not produced - a
+real API result) or a `NOTE` (not requested - not evidence of anything).
+
+Deploy `VERIFY: PASS` at `trunk-2026-08-08-r26`, compile `Clean`, offline
+suite 37/37. Live `macro_qa/20260808_042707_P-0251-14A-001`:
+
+```
+Model item mask: 1277992 (holeCallout bit ON)
+Views requested: front=ON top=ON bottom=off left=off right=off back=off iso=off section=off
+Display: HLR=off (ordinate harvest forces HLR regardless)
+
+FINDING: 10 Hole Wizard feature(s) present and swInsertholeCallout WAS
+requested, yet InsertModelAnnotations4 produced no IsHoleCallout dimension.
+Not an operator setting.
+```
+
+**The r25 ambiguity is closed.** `1277992` decomposes exactly as
+`8|32|32768|65536|131072|1048576` - the callout bit reached the API call.
+SOLIDWORKS was asked, on a part with 10 Hole-Wizard features, and produced
+none. That is now a real API finding rather than a possible unticked box,
+and the run states it itself instead of relying on anyone's reading.
+
+It also retroactively confirms the isometric diagnosis from the previous
+turn: `iso=off section=off`, sticky registry checkboxes, no code fault.
+
+Ordinate chains unaffected again - `160,90,50,10,0` / `36,15,0,15,36`, 8
+created, 0 dangling, `HLR forced (was 1)` despite `HLR=off` requested,
+which is A11 working as designed and now visible as such in one report.
+
+### Next: three candidates, cheapest first
+
+Recorded in `SOLIDWORKS_API_VALIDATION.md`. (1) `missing=Attachment`, the
+archived tree's unreproduced `NATIVE_CALLOUT_COVERAGE` finding. (2)
+`AllViews=True` versus per-view targeting, gap B3. (3) **View orientation** -
+the reference puts `6x Ø6.6` on the front and `4x Ø4.2/M5` on the side, each
+where that hole axis reads as a circle, and neither r25 nor r26 created a
+side view at all. (3) needs no code, only more view boxes ticked, and would
+eliminate or confirm orientation before code is written for (1) or (2).
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment + readback | `VERIFY: PASS`, embedded `trunk-2026-08-08-r26` |
+| VBA compile | pre-flight `verdict=Clean` |
+| Live macro execution | ran, `PASS` |
+| Offline suite | 37/37 |
+| Requested-config reporting | working, proven live on first run |
+| Callout "declined vs never asked" ambiguity | **closed** - mask confirmed `1277992`, bit ON |
+| Root cause of zero callouts | **still not isolated** - 3 candidates, none tested |
+| Side-view callout behaviour | **never exercised** - no run has created a side view |
+| Everything else the r24 gap-doc refresh listed as open | unchanged |
+
 ## 2026-08-08: r25 - hole callouts proven absent by direct query, dead callout code removed
 
 Started working the gap doc's open items one by one, per the user's

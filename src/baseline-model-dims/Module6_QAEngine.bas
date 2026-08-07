@@ -19,6 +19,12 @@ Public Function BuildRunSummary( _
     holeWizardCount = Module3_ModelAudit.CountHoleWizardItems(holes)
 
     report = "Drawing QA Summary" & vbCrLf & String(26, "-") & vbCrLf
+
+    ' Requested config first, before any produced number. A report that opens
+    ' with output invites reading a zero as a failure when it may only be an
+    ' unticked box.
+    report = report & Module4_ModelItemImporter.DescribeRequestedConfig() & vbCrLf
+
     report = report & "Detected hole-like features: " & Module3_ModelAudit.CountHoles(holes) & _
         " (Hole Wizard: " & holeWizardCount & ", plain cut: " & _
         (Module3_ModelAudit.CountHoles(holes) - holeWizardCount) & ")" & vbCrLf
@@ -52,6 +58,22 @@ Public Function BuildRunSummary( _
         Module1_Main.GlobalConfig.UseOrdinateDims And _
         (ordinateStatus.ChainsAttempted > 0) And _
         (ordinateStatus.ChainsCreated = 0)
+
+    ' Now that requested config is reported, a zero-callout run can be
+    ' classified rather than merely observed. Only the first branch is a real
+    ' API finding; the second is an operator setting and must not be reported
+    ' as a defect.
+    If totalCallouts = 0 And holeWizardCount > 0 Then
+        If Module1_Main.GlobalConfig.ImportHoleCallouts Then
+            report = report & "FINDING: " & holeWizardCount & _
+                " Hole Wizard feature(s) present and swInsertholeCallout WAS requested, " & _
+                "yet InsertModelAnnotations4 produced no IsHoleCallout dimension. " & _
+                "Not an operator setting." & vbCrLf
+        Else
+            report = report & "NOTE: no hole callouts, but ImportHoleCallouts was off. " & _
+                "Not evidence of an API problem." & vbCrLf
+        End If
+    End If
 
     If totalDims = 0 Then
         report = report & "WARNING: No drawing dimensions were found. Review model-item import and fallback logic." & vbCrLf

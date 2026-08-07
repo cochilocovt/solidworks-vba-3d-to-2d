@@ -235,6 +235,55 @@ Private Function GetModelItemMask() As Long
     GetModelItemMask = mask
 End Function
 
+' What the run ASKED FOR, as distinct from what it produced.
+'
+' Every QA number before this reported created output only. That made two
+' different failures indistinguishable in the run record: "SOLIDWORKS was
+' asked and declined" versus "nothing ever asked". r25 hit this twice in one
+' run - zero hole callouts with no way to tell whether the mask bit was set,
+' and a missing isometric view that turned out to be an unticked, registry-
+' persisted checkbox rather than any creation failure.
+'
+' UserForm1 seeds every one of these from SaveSetting/ReadBoolSetting and
+' writes them back on OK, so GlobalConfig at report time is the operator's
+' actual answer for this run - which is exactly the value that was never
+' recorded anywhere. Same root cause as A11.
+Public Function DescribeRequestedConfig() As String
+    Dim text As String
+
+    text = "Requested config (what the run asked for, not what it produced):" & vbCrLf
+
+    text = text & "  Model item mask: " & GetModelItemMask() & _
+        " (holeCallout bit " & OnOff(Module1_Main.GlobalConfig.ImportHoleCallouts) & ")" & vbCrLf
+
+    text = text & "  Producers: modelDims=" & OnOff(Module1_Main.GlobalConfig.UseModelDimensions) & _
+        " ordinates=" & OnOff(Module1_Main.GlobalConfig.UseOrdinateDims) & _
+        " autoArrange=" & OnOff(Module1_Main.GlobalConfig.AutoArrange) & vbCrLf
+
+    text = text & "  Views requested: " & _
+        "front=" & OnOff(Module1_Main.GlobalConfig.CreateFront) & _
+        " top=" & OnOff(Module1_Main.GlobalConfig.CreateTop) & _
+        " bottom=" & OnOff(Module1_Main.GlobalConfig.CreateBottom) & _
+        " left=" & OnOff(Module1_Main.GlobalConfig.CreateLeft) & _
+        " right=" & OnOff(Module1_Main.GlobalConfig.CreateRight) & _
+        " back=" & OnOff(Module1_Main.GlobalConfig.CreateBack) & _
+        " iso=" & OnOff(Module1_Main.GlobalConfig.CreateIso) & _
+        " section=" & OnOff(Module1_Main.GlobalConfig.CreateSection) & vbCrLf
+
+    text = text & "  Display: HLR=" & OnOff(Module1_Main.GlobalConfig.UseHLR) & _
+        " (ordinate harvest forces HLR regardless - see HarvestDisplayMode)" & vbCrLf
+
+    DescribeRequestedConfig = text
+End Function
+
+Private Function OnOff(ByVal flag As Boolean) As String
+    If flag Then
+        OnOff = "ON"
+    Else
+        OnOff = "off"
+    End If
+End Function
+
 Private Function CountVariantItems(ByVal vItems As Variant) As Long
     On Error GoTo Failed
 

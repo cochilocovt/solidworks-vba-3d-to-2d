@@ -1373,17 +1373,46 @@ in the drawing rather than inferred from a screenshot. Operator screenshot
 for this run shows no `6x`/`4x`-style leader text anywhere on the sheet,
 consistent.
 
-**Not yet determined**: whether `ImportHoleCallouts` was actually `True` for
-this run (same registry-persisted-checkbox pattern as `UseHLR` before A11 -
-`GlobalConfig.ImportHoleCallouts` is not itself reported anywhere in QA, so
-this run cannot rule out "the mask bit was never requested" as the cause),
-versus the bit being requested and `InsertModelAnnotations4` declining to
-produce a callout for a reason the MCP contract doesn't state (candidates:
-the archived tree's `NATIVE_CALLOUT_COVERAGE` finding of `missing=Attachment`
-on Hole-Wizard features, unconfirmed for this trunk; `AllViews=True` vs a
-per-view targeted call, B3's untested hypothesis; or a view-orientation
-requirement, holes must read as circles in the target view). The next cheap
-step is reporting the mask/checkbox value itself before chasing any of these.
+**Resolved r26** (`macro_qa/20260808_042707`). The r25 ambiguity - "declined"
+versus "never asked" - is closed by reporting the resolved mask:
+
+```
+Model item mask: 1277992 (holeCallout bit ON)
+FINDING: 10 Hole Wizard feature(s) present and swInsertholeCallout WAS
+requested, yet InsertModelAnnotations4 produced no IsHoleCallout dimension.
+Not an operator setting.
+```
+
+`1277992` decomposes exactly as `swInsertDimensions`(8) `|`
+`swInsertGTols`(32) `|` `swInsertDimensionsMarkedForDrawing`(32768) `|`
+`swInsertHoleWizardProfileDimensions`(65536) `|`
+`swInsertHoleWizardLocationDimensions`(131072) `|`
+`swInsertholeCallout`(1048576). The callout bit reached the API call.
+**`InsertModelAnnotations4` was asked for hole callouts, on a part with 10
+Hole-Wizard features, and returned none.** No operator setting explains it.
+
+Remaining candidates, none yet tested:
+
+1. **`missing=Attachment`.** The archived `target-spec-hybrid-v2` tree's
+   `NATIVE_CALLOUT_COVERAGE` stage recorded `incomplete=2, missing=Attachment`
+   on `op:HOLEWIZARD` - never reproduced or refuted against this trunk. If
+   the callout is created but has nowhere to attach in the target view, a
+   zero `IsHoleCallout` count is the expected symptom.
+2. **`AllViews=True` versus per-view targeting** (gap B3). This trunk's
+   primary call passes `AllViews=True` with no selected view. An earlier
+   archived probe recorded that a selected-primary `AllViews=True` call
+   distributed annotations unevenly (8 primary / 17 section / **0 side**),
+   which is at least consistent with view targeting mattering here.
+3. **View orientation.** Both r25 and r26 created only Front and Top. The
+   reference places `6x Ø6.6` on the front view and `4x Ø4.2/M5` on the
+   side - each where that hole axis reads as a circle. Neither run created a
+   side view at all, so the run that would show a side-face callout has not
+   happened yet.
+
+Cheapest next test is (3): it needs no code change, only the Left/Right and
+Section boxes ticked, and it would either produce the side-face callouts or
+eliminate orientation as the explanation before any code is written for (1)
+or (2).
 
 ### Ordinate creation
 
