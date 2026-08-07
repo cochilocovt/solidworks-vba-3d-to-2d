@@ -1403,16 +1403,15 @@ Remaining candidates, none yet tested:
    archived probe recorded that a selected-primary `AllViews=True` call
    distributed annotations unevenly (8 primary / 17 section / **0 side**),
    which is at least consistent with view targeting mattering here.
-3. **View orientation.** Both r25 and r26 created only Front and Top. The
-   reference places `6x Ø6.6` on the front view and `4x Ø4.2/M5` on the
-   side - each where that hole axis reads as a circle. Neither run created a
-   side view at all, so the run that would show a side-face callout has not
-   happened yet.
+3. ~~**View orientation.**~~ **ELIMINATED, `macro_qa/20260808_044112`.** Run
+   with `left=ON right=ON iso=ON`; Left, Right and Isometric views were all
+   created and the drawing still reported `0 of 20` hole callouts, with
+   `0 callouts` on every individual view row including Left and Right. The
+   views where `4x Ø4.2/M5` reads as a circle now exist and carry no callout,
+   so orientation does not explain the absence.
 
-Cheapest next test is (3): it needs no code change, only the Left/Right and
-Section boxes ticked, and it would either produce the side-face callouts or
-eliminate orientation as the explanation before any code is written for (1)
-or (2).
+Candidates (1) and (2) remain, and both need code. (2) is the cheaper of the
+two to test and is already written up as gap B3.
 
 ### Ordinate creation
 

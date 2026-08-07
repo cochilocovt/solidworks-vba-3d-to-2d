@@ -375,9 +375,18 @@ Public Sub DoAddSection()
     UserFormSection.SetupDefaults SuggestedSectionLabel
     UserFormSection.Show
 
-    If UserFormSection.Cancelled Then Exit Sub
-
+    ' UserFormSection now hides rather than unloading, so these three reads
+    ' still see what DoOk assigned. Copy everything out before unloading:
+    ' the Unload below is what resets the instance for the next Add Section,
+    ' and after it these properties are back to their type defaults.
+    Dim wasCancelled As Boolean
+    Dim pickedVertical As Boolean
+    wasCancelled = UserFormSection.Cancelled
     newLabel = UCase$(Left$(Trim$(UserFormSection.SectionLabel), 2))
+    pickedVertical = UserFormSection.SectionVertical
+    Unload UserFormSection
+
+    If wasCancelled Then Exit Sub
     If Len(newLabel) = 0 Then Exit Sub
 
     If SectionLabelExists(newLabel) Then
@@ -387,7 +396,7 @@ Public Sub DoAddSection()
 
     mSectionCount = mSectionCount + 1
     mSections(mSectionCount).Label = newLabel
-    mSections(mSectionCount).Vertical = UserFormSection.SectionVertical
+    mSections(mSectionCount).Vertical = pickedVertical
 
     RefreshSectionList
 End Sub

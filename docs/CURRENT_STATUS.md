@@ -1,6 +1,173 @@
 # Current Status
 
-Date: 2026-08-06
+Date: 2026-08-08
+
+## 2026-08-08: View-orientation candidate eliminated; section dialog bug found and fixed in source
+
+Two findings, one live and one static. No revision bump - the only code
+changed is in two `.frm` files, which are not deployable.
+
+### Candidate (3) for the missing hole callouts is eliminated
+
+Live `macro_qa/20260808_044112_P-0251-14A-001`, deploy `VERIFY: PASS` at
+`trunk-2026-08-08-r26`, compile `Clean`, operator ticked Left/Right/Iso.
+
+```
+Views requested: front=ON top=ON bottom=off left=ON right=ON back=off iso=ON section=off
+  Drawing View3 | *Right     | 0 dims, 0 callouts
+  Drawing View4 | *Left      | 1 dims, 0 callouts
+  Drawing View5 | *Isometric | 0 dims, 0 callouts
+Hole callouts (IsHoleCallout=True) across drawing: 0 of 20 dimensions
+FINDING: 10 Hole Wizard feature(s) present and swInsertholeCallout WAS
+requested, yet InsertModelAnnotations4 produced no IsHoleCallout dimension.
+```
+
+The views where `4x Ø4.2/M5` reads as a circle now exist, and carry no
+callout. **View orientation does not explain the missing callouts.** Two
+candidates left, both needing code: `missing=Attachment`, and `AllViews=True`
+versus per-view targeting (gap B3, the cheaper of the two).
+
+Ordinate chains unaffected again - `160,90,50,10,0` / `36,15,0,15,36`, 8
+created, 0 dangling.
+
+### New gap C9: the section dialog discarded every result
+
+Reported by the operator mid-run: picking a section and pressing OK adds
+nothing to the list. Confirmed by the QA header (`section=off`) and located
+statically.
+
+`UserFormSection.DoOk` assigned its three result properties and then called
+`Unload Me`. `Unload` destroys the form instance and resets every
+module-level variable to its type default, so `UserForm1.DoAddSection` read
+`Cancelled = False` - the Boolean default, indistinguishable from a genuine
+OK - and `SectionLabel = ""`, then exited at its own `If Len(newLabel) = 0`
+guard. Silent, no error. Cancel only appeared to work because it reached the
+same empty string by a different route.
+
+This is why **no run in this project has ever created a section through the
+form**; every section view in earlier evidence came from a config path that
+bypassed the dialog.
+
+Fixed in source: `Me.Hide` on both exit paths, caller copies values out then
+unloads. Regression test added, `tests/test_userform_state_contracts.py` -
+verified to fail against the original code before being accepted (2 failures,
+both naming the real defect). Suite 37 -> 40, all passing.
+
+**Not deployable.** `UserForm1.frm` and `UserFormSection.frm` are outside
+`deployment-manifest.json` with no `VERSION 5.00` designer block, so the fix
+needs a manual VBE paste; instructions were handed to the operator. Nothing
+live has exercised it.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment + readback | `VERIFY: PASS`, `trunk-2026-08-08-r26` |
+| VBA compile | pre-flight `verdict=Clean` |
+| Live macro execution | ran, `PASS` |
+| Offline suite | 40/40, including 3 new form-contract tests |
+| New test proven against the real bug | yes - reintroduced the defect, confirmed the test fails |
+| Hole-callout candidate (3), view orientation | **eliminated** by live evidence |
+| Hole-callout root cause | **still not isolated** - 2 candidates, both need code |
+| Section dialog fix | **fixed in source, NOT deployed, NOT run** - needs manual VBE paste |
+| Section view creation end-to-end | **never yet achieved through the form** |
+| Everything else the r24 gap-doc refresh listed as open | unchanged |
+
+## 2026-08-08: No material status change - side-view callout run aborted before it started
+
+Attempted the r26 deploy+run to test candidate (3) for the missing hole
+callouts (view orientation - no run so far has created a side view, and the
+reference places `4x Ø4.2/M5` there). The deploy failed immediately:
+
+```
+No running SOLIDWORKS instance is available. Start SOLIDWORKS and retry.
+Deploy-TargetSpecHybrid.ps1:231
+```
+
+`Get-Process SLDWORKS` showed a process, but a **new** one (PID 31996,
+started 04:38:33) rather than the instance earlier runs used (PID 22496) -
+17s uptime, empty `MainWindowTitle`, not yet registered in the running
+object table. The user confirmed they had closed and were relaunching
+SOLIDWORKS. Waited; it became COM-reachable at 32s with
+`P-0251-14A-001.SLDPRT [Viewing]` open.
+
+**Nothing was deployed, run, or changed.** No source edits this turn; the
+trunk remains at `trunk-2026-08-08-r26` as committed in `7aaa419`. The
+`VERIFY: PASS` and QA evidence in the r26 entry below are from that
+revision's own earlier run and are untouched by this turn.
+
+Worth keeping: the failure is a plain startup race, not a tooling defect -
+the deploy script's own guard caught it and refused rather than proceeding
+against a half-loaded instance, which is the correct behaviour.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Deployment | **not run** - aborted, no SOLIDWORKS COM instance at invocation |
+| VBA compile | **not run** |
+| Live macro execution | **not run** |
+| Side-view callout test (candidate 3) | **not run** - still the open next step |
+| Root cause of zero hole callouts | **still not isolated** - 3 candidates, none tested |
+| Everything the r24 gap-doc refresh listed as open | unchanged |
+
+## 2026-08-08: No material status change - dropped claude-code-router gateway (outside project)
+
+User asked to remove the router (Fix B from the prior diagnosis entry).
+Backed up `~/.claude/settings.json` to `settings.json.bak`, then removed the
+`apiKeyHelper` line and the entire `env` block (`ANTHROPIC_BASE_URL`,
+`ANTHROPIC_API_BASE_URL`, `CLAUDE_AGENT_API_BASE_URL`, `ANTHROPIC_MODEL`,
+`CCR_CLAUDE_CODE_MODEL`, `CODEXL_CLAUDE_CODE_MODEL`,
+`CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY`) so the CLI talks to
+`api.anthropic.com` directly instead of the dead `127.0.0.1:3456` gateway.
+Not yet verified end-to-end: current process still holds the old env vars
+in memory, so the fix only takes effect after a full CLI restart + `/login`
+- told to the user, not yet confirmed by them.
+
+Files outside this repo only: `~/.claude/settings.json`,
+`~/.claude/settings.json.bak` (new). No file under this repo changed except
+this entry.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Offline unittest suite | not run this turn |
+| Deployment | none this turn |
+| Static/compile check | none this turn |
+| Live macro execution | none this turn |
+| Visual verification | none this turn |
+| Push to origin/main | none this turn |
+| CLI restart + working connection after edit | not confirmed by user yet |
+| Everything the r24 gap-doc refresh lists as open | unchanged, still open |
+
+## 2026-08-08: No material status change - CLI connectivity diagnosis only
+
+Off-project turn. Diagnosed the user's `claude` CLI
+`Unable to connect to API (ConnectionRefused)` error. Evidence gathered
+read-only: nothing listening on TCP 3456
+(`Get-NetTCPConnection -LocalPort 3456 -State Listen` empty), `ccr` absent
+from PATH, `https://api.anthropic.com/v1/models` returned 401 (network
+reachable, no key), and `~/.claude/settings.json` pins
+`ANTHROPIC_BASE_URL`/`ANTHROPIC_API_BASE_URL`/`CLAUDE_AGENT_API_BASE_URL`
+to `http://127.0.0.1:3456` with an `apiKeyHelper` pointing at
+`%APPDATA%\claude-code-router\bin\`. Cause is the claude-code-router
+desktop gateway not running.
+
+No repo file changed except this entry. No settings edit made - both fixes
+were offered and left for the user to choose.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| Offline unittest suite | not run this turn |
+| Deployment | none this turn |
+| Static/compile check | none this turn |
+| Live macro execution | none this turn |
+| Visual verification | none this turn |
+| Push to origin/main | none this turn |
+| Everything the r24 gap-doc refresh lists as open | unchanged, still open |
 
 ## 2026-08-06: No material status change
 

@@ -113,12 +113,21 @@ Public Sub DoOk()
     SectionLabel = cleanLabel
     SectionVertical = optVertical.Value
     Cancelled = False
-    Unload Me
+    ' Hide, NOT Unload. Unload destroys the instance and resets every
+    ' module-level variable to its type default, so the three values set
+    ' immediately above were wiped before UserForm1.DoAddSection could read
+    ' them back: Cancelled reverted to False and SectionLabel to "", and the
+    ' caller's own "If Len(newLabel) = 0 Then Exit Sub" guard then swallowed
+    ' the add silently. Symptom was "picking a section and pressing OK does
+    ' nothing" -- no error, no listbox row, and section=off in the QA header.
+    ' Cancel only appeared to work because it reaches the same empty string
+    ' by a different route. The caller unloads once it has the values.
+    Me.Hide
 End Sub
 
 Public Sub DoCancel()
     Cancelled = True
-    Unload Me
+    Me.Hide
 End Sub
 
 Private Sub UserForm_QueryUnload(Cancel As Integer, CloseMode As Integer)
