@@ -2,6 +2,55 @@
 
 Date: 2026-08-08
 
+## 2026-08-08: C9 form transfer resolved - all four failures were transfer errors, not source defects
+
+No source edit, no revision change, no run this turn. Trunk unchanged since
+`523dd52`; `MACRO_SOURCE_REVISION` still `trunk-2026-08-08-r26`.
+
+The C9 form transfer is finally clean. Operator reports the forms compile and
+behave correctly. All four failed attempts are now explained, and **none was a
+defect in the delivered source**:
+
+| Attempt | Symptom | Actual cause |
+|---|---|---|
+| 1 | `Sub or Function not defined` (`LoadPreferences`) | short paste - tail missing |
+| 2 | `Invalid outside procedure` at `Ln 1` | paste missing the head |
+| 3 | compiled, but `Section Settings` opened with no main form | `UserFormSection` code pasted into `UserForm1` |
+| 4 | - | corrected, works |
+
+Attempt 3's live symptom was diagnosed here as a stale modal blocking the
+SOLIDWORKS UI thread. That reading was **wrong**; the operator found the real
+cause. The dialog appeared without its parent because `UserForm1` contained
+`UserFormSection`'s code, so `UserForm1.Show` was showing the section dialog.
+Recording the bad call rather than quietly dropping it: the `ActiveDoc:
+<none>` and "no QA report" evidence was consistent with both explanations,
+and nothing was done to distinguish them before asserting one.
+
+`Me.Hide` in `UserFormSection.DoOk` (the C9 fix, committed `523dd52`) is not
+implicated in any of the four failures.
+
+### Still unverified
+
+The fix compiles and the dialog behaves, but **no run has yet created a
+section view end-to-end through the form**. `section=ON` in a QA header and a
+`Section View J-J` row in the view roster remain the acceptance evidence, and
+neither exists yet.
+
+### Verification gates
+
+| Gate | Status |
+|---|---|
+| C9 forms transferred and compiling | **done** - operator-confirmed |
+| Section dialog behaviour | **operator-confirmed** - not yet in a QA report |
+| Deployment | done earlier this turn - `VERIFY: PASS`, `trunk-2026-08-08-r26` |
+| Live macro execution producing evidence | **not achieved** - last invocation emitted no QA report |
+| C9 verified live (`section=ON`, section row in roster) | **not verified** |
+| Section view creation end-to-end | **still never achieved through the form** |
+| Hole-callout root cause | **still not isolated** - 2 candidates, both need code |
+| Forms importable via deployment manifest | **not attempted** - standing proposal, would retire this whole failure class |
+| Companion test suite tracked in git | **no** - flagged, still undecided |
+| Everything else the r24 gap-doc refresh listed as open | unchanged |
+
 ## 2026-08-08: C9 fix compiled and saved into Fable.swp; run blocked on an SWP lock
 
 No source edit, no revision change. The trunk is unchanged since `523dd52`;
