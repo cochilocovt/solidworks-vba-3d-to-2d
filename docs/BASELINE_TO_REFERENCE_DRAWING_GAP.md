@@ -2,11 +2,12 @@
 
 Planning session, 2026-08-05. No source file was edited.
 
-> **Live status 2026-08-06 (r24).** Phases 1 and 2 are complete; Phase 3 item
-> 9 is complete. Gaps **A1-A6, A8, A10, B1, B2, C1, C2** are closed; **A7,
-> A9, C3, C4 (partial), C5, C6, C7, D1-D6** and the whole of section 7 remain
-> open, plus new item **C8** below. Both ordinate chains match the reference
-> exactly and have since r20:
+> **Live status 2026-08-08 (r43).** Phases 1 and 2 are complete; Phase 3 items
+> 9 and 10 are complete for P-0251. Gaps **A1-A8, A10, B1, B2, C1, C2, C4**
+> are closed; **A9, B5, C3, C5-C8, D1-D6** and the conventional-dimension
+> portion of section 7 remain open. Both ordinate
+> chains match the required coverage exactly and have since r20. Both
+> hole-callout families now match the required coverage as of r42:
 >
 > | | trunk (r20-r24) | reference |
 > |---|---|---|
@@ -31,8 +32,8 @@ Planning session, 2026-08-05. No source file was edited.
 >   model-mm coordinates with no view-scale factor applied. Full detail in
 >   `SOLIDWORKS_API_VALIDATION.md`.
 >
-> What remains is everything that is not an ordinate or the section cut's
-> geometry: hole callouts, the H7 tolerance, title block content, and which
+> What remains is everything not closed in the per-gap table, including the
+> H7 tolerance, title block content, conventional-dimension policy, and which
 > views get created at all (**C8**, new).
 >
 > The per-gap table below carries individual status. Live API contracts are in
@@ -170,7 +171,7 @@ refuse to trust them; they pass. No numeric correction is needed there.
 | A4 | ~~Only circular edges are candidates~~ **CLOSED r10** | straight model edges admitted as stations; the cross chain now reaches `36` | X chain dimensions the `±36` silhouette edges |
 | A5 | ~~Ordinates applied to every non-ISO view~~ **CLOSED r8** | now `Module8_ViewClassifier.AllowsOrdinateDimensions`, front-only | ordinates on the front view **only**; section and left views use conventional dims |
 | A6 | ~~View classification by name string~~ **CLOSED r8** | `IsIsoView` deleted; `Module8_ViewClassifier.ClassifyView` uses `IView.Type` + `IView.GetOrientationName` | see §6, now resolved with live evidence |
-| A7 | Fixed 15 mm placement offset, no bounds check | unchanged through r24 | chains sit clear of the view, inside the frame, clear of the title block. **Still open** — the section view ran off the sheet as late as r23 (fixed by C1/C2, not A7: that fix changed the section's own placement formula, not general collision logic). Front-view dimension count fell 22 to 14 across r22-r24, which reduces how often A7 bites without closing it |
+| A7 | ~~Fixed placement without stable post-rebuild clearance~~ **CLOSED r43 for P-0251** | r42 correctly rejected and restored a plan after rebuild reduced an exact 6 mm gap to 5.809 mm. R43 reserves 1 mm during planning while retaining exact final clearances; the six-view run passed at factor 0.729 and the supplied screenshot confirms separated view content inside the frame and clear of the title block | chains sit clear of the view, inside the frame, clear of the title block |
 | A8 | ~~2-D proximity test used to dedupe a 1-D chain~~ **CLOSED r10** | dedup is per axis and 1-D, in `AddAxisCandidate` | a horizontal chain cares only about X; a Y difference must not keep two points that share an X |
 | A9 | 1.5 mm tolerance is an unjustified magic number | `COORD_DEDUP_TOL_M`. **Still open**, unchanged through r24, but no longer scale-dependent: r13 normalises coordinates by `IView.ScaleDecimal`, which fixed the macro emitting different dimensions at different scales | derive from model/drawing resolution |
 | A10 | ~~Chain failures only reach `Debug.Print`~~ **CLOSED r7-r15** | `OrdinateRunStatus` threaded to QA; plus a post-rebuild `IAnnotation.IsDangling` readback that reports what was actually created, not what was intended | QA must see them (§7) |
@@ -191,10 +192,10 @@ second. That works, but it means the two chains have inconsistent notions of
 |---|---|---|---|
 | B1 | ~~`DuplicateDims=False`~~ **CLOSED, pre-r20 (exact revision not logged)** | `B:39`, `B:93` now pass `True`. Table text corrected 2026-08-06 - it still described the pre-fix state though the document's own top summary already listed B1 closed | see §1.2 |
 | B2 | ~~`ImportHoleCallouts` form field is dead~~ **CLOSED, pre-r20** | `GetModelItemMask` (`B:190-205`) now gates `swInsertholeCallout` on `GlobalConfig.ImportHoleCallouts` (form default `True`). Table text corrected 2026-08-06 for the same reason as B1 | the checkbox now reaches the mask. Whether the checkbox itself reaches the operator reliably (the `UserForm1`/registry pattern that made A11 necessary) is untested for this control specifically |
-| B3 | No per-view callout targeting | `AllViews=True` `B:38` | reference puts `6x Ø6.6` on the front view and `4x Ø4.2/M5` on the left view — each where that hole axis reads as a circle |
-| B4 | Auto-arrange selects without view scoping | `swAnn.Select3 True, Nothing` `B:157` | `Nothing` SelectData = unscoped. CodeStack's recurring lesson is to scope with `ISelectData.View` |
+| B3 | ~~No per-view callout targeting~~ **CLOSED r27/r42** | r27 changed model-item import to deterministic selected-view transactions. R42 then attributed the resulting native M5 callout to its exact Hole Wizard family by attached drawing-entity identity and created only the uncovered counterbore fallback | reference puts `6x Ø6.6` on the front view and `4x Ø4.2/M5` on the side view — each where that hole axis reads as a circle |
+| B4 | ~~Auto-arrange selects without view scoping~~ **CLOSED r7** | selection is scoped to the owning drawing view; Phase 1 item 4 already recorded this closure | CodeStack's recurring lesson is to scope with `ISelectData.View` |
 | B5 | `AlignDimensions` spacing `0.06` unverified | `B:161` | 60 mm if metres. Units and behaviour unconfirmed |
-| B6 | Per-view fallback triggers only on a zero total | `B:48-50` | a partial whole-drawing result leaves the remaining views bare and unnoticed |
+| B6 | ~~Fallback triggers only on a zero total~~ **CLOSED r42** | one native M5 family no longer suppresses controlled fallback globally. `macro_qa/20260808_134847_P-0251-14A-001` proves one native family retained plus one controlled counterbore family created, against two required families with zero callout failures | reconciliation is per feature family and attachment identity; unattributed or duplicate native callouts fail closed |
 
 On **B3**: consolidation into `6x` / `4x` comes from the Hole Wizard feature
 carrying instances, with the callout inserted once. Fixing B1 may be
@@ -208,8 +209,8 @@ conclusion.
 | C1 | ~~Section line placed at the model bbox mid-plane~~ **CLOSED r24** | `PlanSteppedCut` (`Module2_DrawingPipeline.bas`) reads `Module3_ModelAudit.GetAllHoleLikeFeatures`, takes the widest hole-like feature as the bore and the across-axis coordinate shared by the most non-bore holes as the row, and cuts a 3-segment stepped line (bore leg, jog, row leg) through both. Intent, not luck. Live: `macro_qa/20260806_165529`, `Section cut: stepped, 3 segments` |
 | C2 | ~~Section sketch created in raw model coordinates~~ **CLOSED r24** | Verified rather than assumed: `AddCutSegment` reads each segment's endpoints back via `ISketchLine.GetStartPoint2` after creation. Requested bore leg at Y=0, row leg at Y=15mm, jog at X=-27mm; readback `-127.4,0`, `-27,0`, `-27,15` — matches exactly, no 0.6667 view-scale factor applied anywhere. Drawing-view sketch geometry is stored at model scale; the view's own scale is a display-time transform only. Closes the CodeStack pages 9/30 question for SW2025 |
 | C3 | Only one section is ever created — and until 2026-08-08, **zero** could be | `GetPrimarySectionSettings` reads `GlobalSections(1)` only, `B:273-275` — the form promises up to 5. Compounded by C9 below: no section could be added at all through the dialog, so `GlobalSectionCount` was always 0 and this limit was never even reached |
-| C9 | ~~Section dialog silently discards every result~~ **FIXED in source 2026-08-08, not yet live** | `UserFormSection.DoOk` assigned `SectionLabel`/`SectionVertical`/`Cancelled` and then called `Unload Me`. `Unload` destroys the instance and resets every module-level variable to its type default, so `UserForm1.DoAddSection` read `Cancelled=False` (the Boolean default, indistinguishable from a real OK) and `SectionLabel=""`, then exited at its own empty-label guard. Operator symptom: picking a section and pressing OK does nothing — no error, no listbox row, `section=off` in the QA header. Cancel only appeared to work because it reached the same empty string by another route. Fixed to `Me.Hide` with the caller copying values out before unloading. **Both files are outside `deployment-manifest.json` and cannot be deployed** — requires a manual VBE paste, and no live run has exercised the fix yet. Regression test: `tests/test_userform_state_contracts.py`, verified to fail against the original bug |
-| C4 | View placement is fixed sheet fractions | **partially addressed, r24**: the section view's own sheet placement was fixed — was `frontPos(0) + 0.18`, a blind 180mm offset that ran the section past the sheet border on r23; now `halfFront + halfSection + 15mm gutter`, derived from the part bounding box and sheet scale, confirmed by screenshot to sit inside the border. Every other view (front, top, bottom, left, right, back, iso) is still placed by fixed sheet fractions, `sheetW*0.42` etc., `B:137-167` — no collision logic, no title-block exclusion. **Still open** for everything but the section |
+| C9 | ~~Section dialog silently discards every result~~ **CLOSED 2026-08-08** | `UserFormSection.DoOk` assigned `SectionLabel`/`SectionVertical`/`Cancelled` and then called `Unload Me`. `Unload` destroys the instance and resets every module-level variable to its type default, so `UserForm1.DoAddSection` read `Cancelled=False` (the Boolean default, indistinguishable from a real OK) and `SectionLabel=""`, then exited at its own empty-label guard. Fixed to `Me.Hide` with the caller copying values out before unloading. The authorized P-0251 run `macro_qa/20260808_061024_P-0251-14A-001` records `section=ON` and a `Section View J-J` row with 13 dimensions; the supplied full-sheet screenshot visibly confirms the hatched section. Both forms remain outside `deployment-manifest.json`, so form deployment is a separate reliability task. |
+| C4 | ~~View placement is fixed sheet fractions / unstable at exact clearance~~ **CLOSED r43 for P-0251** | Module10 plans from measured complete envelopes and adds a 1 mm planning-only reserve at sheet and obstacle edges. Deployment matched 15/15 components, full VBE compile was clean, and `macro_qa/20260808_141927_P-0251-14A-001` passed six-view final validation at factor 0.729; the supplied full-sheet screenshot confirms the result | accepted against the three-view reference fixture and six-view P-0251 configuration; other authorized fixtures remain broader generalization testing |
 | C5 | `ConfigureView` is `On Error Resume Next` with every return ignored | unchanged through r24, `B:201-207` |
 | C6 | No `IView.ProjectedDimensions` policy | unchanged through r24. CodeStack page 29 — affects whether section dims read true or projected |
 | C7 | Section arrow direction unmanaged | unchanged through r24. reference J–J arrows point left; nothing in the pipeline controls this |
@@ -301,12 +302,10 @@ directly, not inferred from a screenshot. Cause not yet isolated - see
 next diagnostic (report whether `ImportHoleCallouts` actually reached the
 mask for a given run, which nothing currently surfaces).
 
-By r24, the ordinate chains and the section's stepped-cut geometry are the
-two pieces of this document that are actually solid. Everything else
-listed here — hole callouts, the H7 tolerance, five of six title-block
-gaps, and now C8's view-set mismatch — is exactly as open as when this
-document was written on 2026-08-05, or newly found. The live-run discipline
-that closed A1-A11 and C1-C2 has not yet been pointed at any of it.
+By r42, the ordinate chains, section stepped-cut geometry, and both required
+hole-callout families have live evidence. The H7 tolerance, title-block gaps,
+C8's view-set mismatch, and broader cross-fixture layout generalization remain
+open; A7/C4 are closed for P-0251 at r43.
 
 ## 8. Recommended sequence
 
@@ -333,14 +332,16 @@ ones expected to change observable behaviour.
    this pipeline creates (§6).
 7. Replace `IsIsoView` with the API-backed test (A6).
 
-### Phase 3 — needs a user decision first — **items 8 and 9 DONE (r8, r10-r19); item 10 open**
+### Phase 3 — needs a user decision first — **items 8, 9, and 10 DONE for P-0251**
 
 8. **Per-view dimension-style policy** (A5). Which views get ordinates, which
    get conventional dims. The reference says front-only, but that is one
    drawing.
 9. **Per-axis datum contract** (A2, A3, A4). X and Y resolved separately,
    against edges and centrelines as well as holes.
-10. Sheet-aware placement (A7), tolerance derivation (A9). (A8 closed r10;
+10. Sheet-aware placement (A7/C4) closed for P-0251 at r43 after the exact
+    six-view rerun passed final validation and the supplied full-sheet visual
+    gate. Tolerance derivation (A9) remains open. (A8 closed r10;
     stale reference to it here removed 2026-08-06.)
 
 ### Phase 4 — Tier C — **not started, 2026-08-06 re-check**

@@ -56,6 +56,11 @@ Public Function GetHoleLabel(ByVal holeInfo As Variant) As String
     GetHoleLabel = CStr(holeInfo(IDX_LABEL))
 End Function
 
+Public Function GetHoleFeatureName(ByVal holeInfo As Variant) As String
+    On Error Resume Next
+    GetHoleFeatureName = CStr(holeInfo(IDX_NAME))
+End Function
+
 Public Function GetHoleX(ByVal holeInfo As Variant) As Double
     On Error Resume Next
     GetHoleX = CDbl(holeInfo(IDX_X))

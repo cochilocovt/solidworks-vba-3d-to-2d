@@ -10,7 +10,13 @@ Private Const swInsertHoleWizardLocationDimensions As Long = 131072
 Private Const swInsertDimensionsNotMarkedForDrawing As Long = 524288
 Private Const swInsertholeCallout As Long = 1048576
 
+' Installed SW2025 Phase 0 import logs recorded selectionType=12 for each
+' selected drawing view. MCP swSelectType_e confirms swSelDRAWINGVIEWS=12.
+Private Const swSelDRAWINGVIEWS As Long = 12
+
 Private Const swAlignDimensionType_AutoArrange As Long = 0
+
+Private mLastImportDiagnostics As String
 
 Public Function ImportModelItemsAcrossDrawing( _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
@@ -25,55 +31,63 @@ Public Function ImportModelItemsAcrossDrawing( _
     Dim mask As Long
     mask = GetModelItemMask()
 
-    Dim total As Long
-    total = 0
-
-    swDrawModel.ClearSelection2 True
-    swDraw.ActivateView ""
-
-    ' Parameter 4 is DuplicateDims. Its documented contract reads backwards
-    ' from its name: "True to eliminate duplicate dimensions, false to allow
-    ' duplicate dimensions" (IDrawingDoc.InsertModelAnnotations4, MCP
-    ' 2026-08-05). Passing False alongside AllViews=True inserted the same
-    ' annotation into every view, which is the repeated-hole-callout defect.
-    Dim inserted As Variant
-    inserted = swDraw.InsertModelAnnotations4( _
-                    swImportModelItemsFromEntireModel, _
-                    mask, _
-                    True, _
-                    True, _
-                    False, _
-                    False, _
-                    False, _
-                    False)
-
-    total = CountVariantItems(inserted)
-
-    If total = 0 Then
-        total = ImportModelItemsPerView(swDrawModel, swDraw, mask)
+    If Len(Trim$(anchorViewName)) = 0 Then
+        anchorViewName = GetFirstRealViewName(swDraw)
     End If
 
+    mLastImportDiagnostics = "Model item import transactions:" & vbCrLf & _
+        "  strategy=SelectedViews; anchor=" & SafeText(anchorViewName) & _
+        "; mask=" & CStr(mask) & _
+        "; allViews=False; duplicateDims=True" & vbCrLf
+
+    ' IDrawingDoc.InsertModelAnnotations4 inserts into the currently selected
+    ' drawing view. The previous whole-drawing call cleared selection, activated
+    ' sheet context, and then used AllViews=True. Because it returned ordinary
+    ' dimensions, the selected-view retry was never reached even when the
+    ' hole-callout category stayed at zero. Selected-view import is now the only
+    ' transaction, with the anchor first and every other eligible view second.
+    Dim total As Long
+    total = ImportModelItemsPerView( _
+        swDrawModel, swDraw, mask, anchorViewName)
+
     swDrawModel.ClearSelection2 True
-    swDraw.ActivateView ""
 
     ImportModelItemsAcrossDrawing = total
     Exit Function
 
 Failed:
+    AppendImportDiagnostic "  IMPORT_FATAL|error=" & CStr(Err.Number) & _
+        "|description=" & SafeText(Err.Description)
     swDrawModel.ClearSelection2 True
-    swDraw.ActivateView ""
     ImportModelItemsAcrossDrawing = 0
 End Function
 
 Private Function ImportModelItemsPerView( _
     ByRef swDrawModel As SldWorks.ModelDoc2, _
     ByRef swDraw As SldWorks.DrawingDoc, _
-    ByVal mask As Long) As Long
+    ByVal mask As Long, _
+    ByVal anchorViewName As String) As Long
 
     On Error GoTo Failed
 
     Dim runningTotal As Long
     runningTotal = 0
+
+    Dim anchorView As SldWorks.View
+    Set anchorView = FindRealViewByName(swDraw, anchorViewName)
+
+    If Not anchorView Is Nothing Then
+        If AllowsModelItemImport(anchorView) Then
+            runningTotal = runningTotal + ImportModelItemsForView( _
+                swDrawModel, swDraw, anchorView, mask)
+        Else
+            AppendImportDiagnostic "  IMPORT_SKIP|view=" & _
+                SafeText(anchorViewName) & "|reason=AnchorNotEligible"
+        End If
+    Else
+        AppendImportDiagnostic "  IMPORT_WARNING|view=" & _
+            SafeText(anchorViewName) & "|reason=AnchorNotFound"
+    End If
 
     Dim swView As SldWorks.View
     Set swView = swDraw.GetFirstView
@@ -83,30 +97,15 @@ Private Function ImportModelItemsPerView( _
         Dim viewName As String
         viewName = swView.Name
 
-        swDrawModel.ClearSelection2 True
-        swDraw.ActivateView viewName
-
-        Dim ok As Boolean
-        ok = swDrawModel.Extension.SelectByID2(viewName, "DRAWINGVIEW", 0, 0, 0, False, 0, Nothing, 0)
-
-        If ok Then
-            ' DuplicateDims=True, same contract as the whole-drawing call.
-            Dim inserted As Variant
-            inserted = swDraw.InsertModelAnnotations4( _
-                            swImportModelItemsFromEntireModel, _
-                            mask, _
-                            False, _
-                            True, _
-                            False, _
-                            False, _
-                            False, _
-                            False)
-
-            runningTotal = runningTotal + CountVariantItems(inserted)
+        If StrComp(viewName, anchorViewName, vbBinaryCompare) <> 0 Then
+            If AllowsModelItemImport(swView) Then
+                runningTotal = runningTotal + ImportModelItemsForView( _
+                    swDrawModel, swDraw, swView, mask)
+            Else
+                AppendImportDiagnostic "  IMPORT_SKIP|view=" & _
+                    SafeText(viewName) & "|reason=PictorialOrSheet"
+            End If
         End If
-
-        swDrawModel.ClearSelection2 True
-        swDraw.ActivateView ""
 
         Set swView = swView.GetNextView
     Loop
@@ -115,7 +114,192 @@ Private Function ImportModelItemsPerView( _
     Exit Function
 
 Failed:
-    ImportModelItemsPerView = 0
+    AppendImportDiagnostic "  IMPORT_LOOP_ERROR|error=" & _
+        CStr(Err.Number) & "|description=" & SafeText(Err.Description)
+    ImportModelItemsPerView = runningTotal
+End Function
+
+Private Function ImportModelItemsForView( _
+    ByRef swDrawModel As SldWorks.ModelDoc2, _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByRef swView As SldWorks.View, _
+    ByVal mask As Long) As Long
+
+    On Error GoTo Failed
+
+    If swView Is Nothing Then Exit Function
+
+    Dim viewName As String
+    viewName = swView.Name
+
+    Dim dimsBefore As Long
+    Dim calloutsBefore As Long
+    dimsBefore = CountDisplayDimensionsInView(swView)
+    calloutsBefore = CountHoleCalloutsInView(swView)
+
+    swDrawModel.ClearSelection2 True
+
+    Dim activated As Boolean
+    activated = swDraw.ActivateView(viewName)
+
+    Dim activeMatched As Boolean
+    activeMatched = ActiveViewMatches(swDraw, viewName)
+
+    If activated = False And activeMatched = False Then
+        AppendImportDiagnostic "  IMPORT_SKIP|view=" & SafeText(viewName) & _
+            "|reason=ActivationFailed"
+        GoTo CleanExit
+    End If
+
+    Dim selectedByID As Boolean
+    selectedByID = swDrawModel.Extension.SelectByID2( _
+        viewName, "DRAWINGVIEW", 0#, 0#, 0#, False, 0, Nothing, 0)
+
+    Dim selectionCount As Long
+    selectionCount = swDrawModel.SelectionManager.GetSelectedObjectCount2(-1)
+
+    Dim selectionType As Long
+    selectionType = 0
+    If selectionCount = 1 Then
+        selectionType = swDrawModel.SelectionManager.GetSelectedObjectType3(1, -1)
+    End If
+
+    If activeMatched = False Or selectionCount <> 1 Or _
+        selectionType <> swSelDRAWINGVIEWS Then
+
+        AppendImportDiagnostic "  IMPORT_SKIP|view=" & SafeText(viewName) & _
+            "|reason=SelectionContractFailed" & _
+            "|activated=" & CStr(activated) & _
+            "|activeMatched=" & CStr(activeMatched) & _
+            "|selectedByID=" & CStr(selectedByID) & _
+            "|selectionCount=" & CStr(selectionCount) & _
+            "|selectionType=" & CStr(selectionType)
+        GoTo CleanExit
+    End If
+
+    ' DuplicateDims=True means eliminate duplicates. AllViews=False binds the
+    ' insertion to the selected drawing view, which is verified immediately
+    ' above by active-view and selection-list readback.
+    Dim inserted As Variant
+    inserted = swDraw.InsertModelAnnotations4( _
+                    swImportModelItemsFromEntireModel, _
+                    mask, _
+                    False, _
+                    True, _
+                    False, _
+                    False, _
+                    False, _
+                    False)
+
+    Dim returnedCount As Long
+    Dim dimsAfter As Long
+    Dim calloutsAfter As Long
+    returnedCount = CountVariantItems(inserted)
+    dimsAfter = CountDisplayDimensionsInView(swView)
+    calloutsAfter = CountHoleCalloutsInView(swView)
+
+    AppendImportDiagnostic "  IMPORT_VIEW|view=" & SafeText(viewName) & _
+        "|activated=" & CStr(activated) & _
+        "|activeMatched=" & CStr(activeMatched) & _
+        "|selectedByID=" & CStr(selectedByID) & _
+        "|selectionCount=" & CStr(selectionCount) & _
+        "|selectionType=" & CStr(selectionType) & _
+        "|returned=" & CStr(returnedCount) & _
+        "|dimsBefore=" & CStr(dimsBefore) & _
+        "|dimsAfter=" & CStr(dimsAfter) & _
+        "|calloutsBefore=" & CStr(calloutsBefore) & _
+        "|calloutsAfter=" & CStr(calloutsAfter)
+
+    ImportModelItemsForView = returnedCount
+
+CleanExit:
+    swDrawModel.ClearSelection2 True
+    Exit Function
+
+Failed:
+    Dim errorNumber As Long
+    Dim errorDescription As String
+    errorNumber = Err.Number
+    errorDescription = Err.Description
+    AppendImportDiagnostic "  IMPORT_VIEW_ERROR|view=" & SafeText(viewName) & _
+        "|error=" & CStr(errorNumber) & _
+        "|description=" & SafeText(errorDescription)
+    Resume CleanExit
+End Function
+
+Private Function FindRealViewByName( _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByVal viewName As String) As SldWorks.View
+
+    On Error GoTo SafeExit
+
+    Dim swView As SldWorks.View
+    Set swView = swDraw.GetFirstView
+    If Not swView Is Nothing Then Set swView = swView.GetNextView
+
+    Do While Not swView Is Nothing
+        If StrComp(swView.Name, viewName, vbBinaryCompare) = 0 Then
+            Set FindRealViewByName = swView
+            Exit Function
+        End If
+        Set swView = swView.GetNextView
+    Loop
+
+SafeExit:
+End Function
+
+Private Function AllowsModelItemImport(ByRef swView As SldWorks.View) As Boolean
+    If swView Is Nothing Then Exit Function
+
+    Dim role As Long
+    role = Module8_ViewClassifier.ClassifyView(swView)
+
+    Select Case role
+        Case Module8_ViewClassifier.VIEW_ROLE_PICTORIAL, _
+             Module8_ViewClassifier.VIEW_ROLE_SHEET
+            AllowsModelItemImport = False
+        Case Else
+            AllowsModelItemImport = True
+    End Select
+End Function
+
+Private Function ActiveViewMatches( _
+    ByRef swDraw As SldWorks.DrawingDoc, _
+    ByVal expectedViewName As String) As Boolean
+
+    On Error GoTo SafeExit
+
+    Dim activeViewObject As Object
+    Set activeViewObject = swDraw.ActiveDrawingView
+    If activeViewObject Is Nothing Then Exit Function
+
+    Dim activeView As SldWorks.View
+    Set activeView = activeViewObject
+
+    ActiveViewMatches = (StrComp( _
+        activeView.Name, expectedViewName, vbBinaryCompare) = 0)
+
+SafeExit:
+End Function
+
+Private Sub AppendImportDiagnostic(ByVal text As String)
+    mLastImportDiagnostics = mLastImportDiagnostics & text & vbCrLf
+End Sub
+
+Private Function SafeText(ByVal text As String) As String
+    text = Replace(text, vbCr, " ")
+    text = Replace(text, vbLf, " ")
+    text = Replace(text, "|", "/")
+    SafeText = text
+End Function
+
+Public Function DescribeLastImportTransactions() As String
+    If Len(mLastImportDiagnostics) = 0 Then
+        DescribeLastImportTransactions = _
+            "Model item import transactions: not run"
+    Else
+        DescribeLastImportTransactions = mLastImportDiagnostics
+    End If
 End Function
 
 Public Function CountDisplayDimensionsInView(ByRef swView As SldWorks.View) As Long
@@ -130,12 +314,10 @@ Failed:
     CountDisplayDimensionsInView = 0
 End Function
 
-' Section 7 of BASELINE_TO_REFERENCE_DRAWING_GAP.md: whether InsertModelAnnotations4's
-' swInsertholeCallout bit (gated on GlobalConfig.ImportHoleCallouts, default
-' True) actually produces any IDisplayDimension.IsHoleCallout=True entries on
-' this fixture has never been checked -- QA has only ever counted dimensions
-' generically. IDisplayDimension.IsHoleCallout MCP-confirmed 2026-08-06:
-' "Gets whether this display dimension is a hole callout", returns Boolean.
+' Direct callout readback. Live r25/r26 proved that the earlier sheet-context
+' AllViews=True transaction requested swInsertholeCallout but produced zero
+' IDisplayDimension.IsHoleCallout=True entries. The selected-view transaction
+' now records the same count before and after every individual view import.
 Public Function CountHoleCalloutsInView(ByRef swView As SldWorks.View) As Long
     On Error GoTo Failed
 

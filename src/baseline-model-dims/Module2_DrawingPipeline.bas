@@ -110,11 +110,32 @@ Public Sub RunDrawingPipeline( _
         Module4_ModelItemImporter.AutoArrangeAllDrawingDimensions swDrawModel, swDraw
     End If
 
+    ' InsertModelAnnotations4 still returned zero native hole callouts in the
+    ' r27 selected-view run. The controlled fallback reads type-specific Hole
+    ' Wizard data, maps an edge owned by that feature into an orthographic
+    ' drawing view, and inserts an attached leader note. It is deliberately
+    ' separate from the ordinary dimension count and is proved again by QA.
+    If Module1_Main.GlobalConfig.UseModelDimensions And _
+       Module1_Main.GlobalConfig.ImportHoleCallouts Then
+
+        Module9_HoleCalloutEngine.EnsureControlledHoleCallouts _
+            swApp, swPart, swDrawModel, swDraw, holes
+    End If
+
     If Module1_Main.GlobalConfig.PopulateTitle Then
         Module7_TitleBlockEngine.PopulateTitleBlock swPart, swDrawModel, swDraw
     End If
 
     swDrawModel.ForceRebuild3 False
+
+    ' A7/C4 final placement runs only after dimensions, controlled callouts,
+    ' and title-block content exist. Module10 measures the complete travelling
+    ' envelope of each view, plans every move before mutating, preserves scale,
+    ' then rebuilds and fails closed on any remaining collision or boundary
+    ' violation. Its outcome is included in the final QA verdict.
+    Dim layoutPassed As Boolean
+    layoutPassed = Module10_SheetLayoutEngine.ArrangeDrawingContent( _
+        swDrawModel, swDraw)
 
     ' After the rebuild, not before. IAnnotation.IsDangling reads False on a
     ' freshly created ordinate and only becomes True once the drawing has
@@ -129,6 +150,13 @@ Public Sub RunDrawingPipeline( _
     Dim qaReport As String
     qaReport = Module6_QAEngine.BuildRunSummary( _
         swDrawModel, swDraw, holes, importedModelItems, ordinateStatus)
+
+    If layoutPassed = False Then
+        qaReport = "RUN STATUS: FAIL - SHEET LAYOUT" & vbCrLf & _
+            "The layout engine could not place every measured view " & _
+            "envelope. Original view state was restored; inspect the " & _
+            "LAYOUT_REJECT evidence below." & vbCrLf & vbCrLf & qaReport
+    End If
 
     If Len(LastSectionPlan) > 0 Then
         qaReport = qaReport & LastSectionPlan & vbCrLf
@@ -148,7 +176,11 @@ Public Sub RunDrawingPipeline( _
             "WARNING: QA report could not be written to disk." & vbCrLf
     End If
 
-    MsgBox qaReport, vbInformation, "Drawing QA Summary"
+    If layoutPassed = False Then
+        MsgBox qaReport, vbCritical, "Drawing QA FAILED - Sheet Layout"
+    Else
+        MsgBox qaReport, vbInformation, "Drawing QA Summary"
+    End If
     Exit Sub
 
 FailRun:

@@ -2,6 +2,241 @@
 
 Date: 2026-08-08
 
+## 2026-08-08: r43 six-view layout passes compile, runtime, and visual gate
+
+The r42 six-view mixed-callout run did not fail because the planner could not
+fit the views. At scale factor `0.81`, it planned Drawing View1 through
+`Y=0.136312` and Drawing View2 from `Y=0.142312`, exactly the required 6 mm
+apart. After the required rebuild, Drawing View1's complete annotation-aware
+envelope reached `Y=0.136503`: 0.191 mm taller than planned. Final validation
+therefore measured only 5.809 mm, correctly failed
+`ViewEnvelopeCollision:Drawing View1:Drawing View2`, and restored the original
+positions shown in the supplied screenshot.
+
+R43 keeps the 6 mm view and 4 mm protected-region acceptance clearances
+unchanged, but reserves an additional 1 mm during planning. The reserve is
+applied inside the usable sheet boundary and beyond protected/view obstacle
+edges, leaving headroom for post-move rebuild variation. New `LAYOUT_PLAN`
+records expose every intended envelope, and collision failures now include
+both final rectangles and the required clearance.
+
+The companion suite passes 51 tests. Managed deployment evidence
+`swp_deployment/20260808_141911` matches all 15 components and the embedded
+`trunk-2026-08-08-r43` revision. Full-project VBE compilation at
+`probe_runs/20260808_141916` returned `verdict=Clean` and authorized preflight
+returned `ready=True` for P-0251.
+
+The exact six-view mixed-callout rerun
+`macro_qa/20260808_141927_P-0251-14A-001` passed final layout validation with
+six views, 70 protected regions, and a uniform scale factor of `0.729`. Every
+final content envelope is inside the usable sheet and mutually clear. The
+user-supplied full-sheet screenshot confirms the views are separated and
+clear of the title block; both required hole-callout families remain visible.
+A7/C4 are closed for P-0251 at r43. The existing GENERAL NOTES/title-block
+content overlap is the separate open D3 title-annotation problem, not a view
+placement failure.
+
+## 2026-08-08: r42 mixed native/controlled callout reconciliation passes live
+
+The post-r41 screenshot confirmed the six-view layout and showed the remaining
+callout defect directly: the native `4x` M5 callout was present, while the
+required `6x` counterbore family was absent. `Module9_HoleCalloutEngine` had a
+whole-drawing `nativeAtStart > 0` guard, so one native family suppressed the
+controlled fallback for every other family.
+
+R42 replaces that count gate with feature-owned attachment identity. Each
+native `IDisplayDimension.IsHoleCallout` annotation is retained only when an
+entity from `IAnnotation.GetAttachedEntities3` is identical by
+`ISldWorks.IsSame` to a drawing entity mapped from an edge owned by that exact
+Hole Wizard feature. Uncovered families continue through the existing typed,
+model-owned, geometry-attached controlled path. QA now counts proved native
+families plus controlled families, and fails on unattributed/duplicate native
+callouts.
+
+The companion suite passes 50 tests. Guarded deployment readback matched all
+15 managed components at `trunk-2026-08-08-r42`, and full-project VBE
+compilation returned `ready=True|verdict=Clean`.
+
+The authorized mixed-path run at
+`macro_qa/20260808_134847_P-0251-14A-001/QA_REPORT.txt` proves the original
+failure is fixed: `nativeAtStart=1`; the native M5 annotation matched
+`M5x0.8 Tapped Hole1` by one attached owned entity; that family was retained;
+and one controlled `6x` counterbore callout was created with one attachment
+and one leader. Final coverage is one proved native family plus one controlled
+family against two required families, with zero callout failures. The run's
+overall QA failed for a separate final sheet-layout collision between Drawing
+View1 and Drawing View2 after the 0.81 scale plan; it did not fail callout
+coverage. A full-sheet screenshot is still required for visual callout
+acceptance.
+
+## 2026-08-08: r41 six-view layout passes; visual acceptance pending
+
+The user's six-view P-0251 run correctly exposed that r40 could only move
+views, not resize them, and that its single greedy plan had no recovery path.
+R41 now tries the original scales, then uniform measured scale reductions with
+rebuild/readback after each attempt. Same-role views are ordered by measured
+envelope area, and any terminal failure restores the captured view state and
+raises a critical layout-failure dialog.
+
+Deployment readback matched all 15 managed components and full-project VBE
+preflight compilation returned `ready=True|verdict=Clean`. The authorized run
+at `test_assets/iteration_evidence/macro_qa/20260808_104105_P-0251-14A-001/`
+rejected factors 1.0 and 0.9, then passed all six final envelopes at factor
+0.81. The overall QA remains failed for the separate partial native hole-
+callout coverage path (one native family caused the controlled two-family
+fallback to skip). No post-r41 full-sheet screenshot has yet been accepted,
+so the six-view result is runtime layout proof, not visual manufacturing
+acceptance.
+
+## 2026-08-08: A7/C4 accepted on P-0251 at r40
+
+R40 passed every required A7/C4 gate. Deployment readback matched all 15
+managed components, full-project VBE compilation returned
+`ready=True|verdict=Clean`, and
+`test_assets/iteration_evidence/macro_qa/20260808_101825_P-0251-14A-001/QA_REPORT.txt`
+records `SHEET_LAYOUT|status=PASS`, three in-border final envelopes, and
+unchanged scales.
+
+The supplied r40 full-sheet screenshot confirms the section upper-left,
+pictorial upper-right, and front lower-left; view content remains inside the
+frame and clear of the title block; the two controlled-callout leaders are
+separated. A7/C4 is therefore visually accepted for the reference fixture.
+The `GENERAL NOTES` block still overlaps the title area; that is the existing
+D3 note-content/placement defect and is not hidden by the A7/C4 result.
+
+## 2026-08-08: r39 moved sheet is coherent; r40 acceptance run pending
+
+R39 passed deployment/compile and moved all three views. The supplied
+full-sheet screenshot shows the intended zoning and visibly improved callout
+leaders. QA's remaining title collision is at the planned 4 mm tangent:
+title top `0.076749`, front bottom target `0.080749`. R40 applies the existing
+0.01 mm positional tolerance to floating-point clearance equality and emits
+the final remeasured bounds. A clean QA result plus the next screenshot is
+still required before A7/C4 is closed.
+
+## 2026-08-08: r38 disproved envelope coordinates; r39 pending
+
+R38 reached packing with full diagnostics. It reported impossible envelopes:
+front X to `0.598795` and section X to `0.901541` on a 0.420 m sheet, while the
+operator screenshot shows the drawn content much nearer the sheet. The cause
+was treating a display-data-origin offset as an annotation-origin offset. R39
+removes that unsupported composition and sizes text at the documented drawing
+annotation position; no packing or scale policy changed.
+
+## 2026-08-08: r37 reached packing; r38 diagnostic rerun pending
+
+R37 deployed, compiled, measured the title block and sheet notes, then failed
+closed at the first genuine placement decision:
+`NoCollisionFreePlacement:Drawing View1`. No view was moved. R38 reports every
+measured sheet, obstacle, and view-envelope rectangle so the next change can
+address the proved constraint rather than infer it from the provisional
+screenshot.
+
+## 2026-08-08: r36 obstacle-container defect isolated; r37 pending
+
+R36 deployed, read back 15/15, and compiled cleanly, but stopped at the same
+sheet-note stage before any per-note fallback evidence. The defect is local VBA
+storage: `ReDim Preserve` attempted to resize a user-defined-type array holding
+variable-length obstacle names. R37 replaces it with a checked 256-rectangle
+fixed array and adds the actual VBA error to future sheet-note failure evidence.
+
+## 2026-08-08: r35 title block proved; r36 sheet-note correction pending
+
+R35 passed 15/15 deployment readback and full VBE compilation. Its live
+title-block fallback succeeded from 38 structurally checked template lines at
+`0.265624,0.009650,0.410415,0.076749`. Layout then correctly stopped before
+moving views because one sheet note had no valid `INote.GetExtent`. R36 now
+keeps notes protected through either the measured title rectangle or a
+conservative position/text/font-height envelope. The supplied r35 screenshot
+is therefore the untouched provisional layout, not a claimed placement result.
+
+## 2026-08-08: r34 live failure isolated; r35 correction pending rerun
+
+The authorized r34 P-0251 run passed deployment readback (15/15), full VBE
+preflight compilation (`ready=True|verdict=Clean`), ordinate creation, model
+item import, and both controlled callout families. Layout correctly failed
+before moving any view with `TitleBlockExtentUnavailable`. The template has no
+native `ITitleBlock`; the fallback used the wrong interface for sketch-line
+endpoints. R35 now checks `swSketchLINE`, casts to `ISketchLine`, and requires
+measured structural title-block edges. The r35 deploy/compile/runtime result is
+not yet claimed.
+
+## 2026-08-08: A7/C4 source implementation at r34; live gate pending
+
+`Module10_SheetLayoutEngine` now provides the requested sheet-aware placement
+stage. It measures the border, title block, sheet notes, and full
+view-plus-annotation envelopes, uses semantic view roles only as placement
+preferences, preserves view scale, and fails final QA on unresolved bounds or
+collisions. It is called after all final annotations and title content exist.
+
+This is not yet an accepted drawing result. The companion suite passes 49
+tests and 108 subtests, and the read-only deployment preflight identifies r34,
+15 managed components, and the installed bootstrap. Deployment readback, full
+VBE compile, authorized P-0251 runtime evidence, and a new full-sheet
+screenshot remain the next gates. In particular, A7/C4 should not be marked
+visually closed until the operator confirms the final drawing and the two
+controlled callout leaders no longer create an unacceptable crossing/crowding
+condition.
+
+## 2026-08-08: Hole callout gate accepted at r33
+
+The missing-hole-dimension defect is resolved at the source/runtime evidence
+level. Native selected-view model-item import remains enabled and truthfully
+reports zero native hole callouts on installed SOLIDWORKS 2025. The controlled
+fallback then produced both required P-0251 families from typed/model-owned
+sources:
+
+- `6x diameter 6.6 THRU / counterbore diameter 11 depth 6`
+- `4x diameter 4.2 depth 12.4 / M5x0.8 - 6H depth 10`
+
+`test_assets/iteration_evidence/macro_qa/20260808_073616_P-0251-14A-001/QA_REPORT.txt`
+records `created=2`, `failures=0`, one owned-edge attachment and one leader for
+each note, correct 6/4 quantities, and `PASS`. Preflight recorded
+`ready=True|verdict=Clean`; deployment readback matched all 14 managed
+components at `trunk-2026-08-08-r33`; 46 offline tests pass.
+
+The r31 operator screenshot confirmed correct text but showed a crowded
+front-view corner. R33 removed the installed-template tab and moved the
+callout lane into the open gap (x readback 267.673 mm; y 192.5 and 210.5 mm).
+The final r33 full-sheet screenshot confirms both callouts are readable,
+complete, inside the sheet border, and clear of the ordinate text. The
+missing-hole-dimension gate is therefore visually accepted. The two leaders
+still cross; that is now an explicit A7/C4 sheet-aware-placement defect and is
+the next layout task. The generated drawing remains disposable and the
+fixture model was not saved.
+
+## 2026-08-08: No material status change - remaining-work plan created
+
+Read `BASELINE_TO_REFERENCE_DRAWING_GAP.md` and the relevant CodeStack drawing
+API coverage ledger; no VBA source, deployment, fixture, or drawing changed.
+The local task list now treats C9 as closed from the latest P-0251 evidence
+and keeps the SOLIDWORKS API lookup skill plus the applicable CodeStack ledger
+row mandatory before every API-touching design or edit.
+
+## 2026-08-08: C9 section dialog verified end-to-end on P-0251
+
+No source edit or revision change. `MACRO_SOURCE_REVISION` remains
+`trunk-2026-08-08-r26`.
+
+The authorized production runner deployed the trunk with automatic original
+and pre-promotion SWP backups, opened `P-0251-14A-001.SLDPRT` read-only, and
+preflighted `ready=True|verdict=Clean`. Deployment readback was `VERIFY: PASS`:
+all 13 managed components matched source at r26.
+
+**C9 runtime acceptance evidence is now present.** The new QA report
+`test_assets/iteration_evidence/macro_qa/20260808_061024_P-0251-14A-001/QA_REPORT.txt`
+records `section=ON` in the requested configuration and a `Section View J-J`
+roster row (`Type=2`, 13 dimensions). This is the first verified end-to-end
+section-view creation through the repaired form path.
+
+The supplied full-sheet screenshot visually confirms a stepped, hatched,
+readable `SECTION J-J`; C9 is therefore closed. It does **not** accept the
+drawing for manufacturing. Compared with the manual reference, the output
+still has two extra standard views, zero hole callouts, an unmatched section
+layout/dimension set, a plain-text oversized barcode, an incorrect mass
+(`1296.82` rather than `1.30`), and general-notes text colliding with the
+title block. The generated drawing remains unsaved and disposable.
+
 ## 2026-08-08: No material status change
 
 Read-only turn. User asked to continue this chat in a separate Codex app -

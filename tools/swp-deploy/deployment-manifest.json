@@ -65,6 +65,16 @@
       "kind": "StdModule"
     },
     {
+      "name": "Module9_HoleCalloutEngine",
+      "file": "Module9_HoleCalloutEngine.bas",
+      "kind": "StdModule"
+    },
+    {
+      "name": "Module10_SheetLayoutEngine",
+      "file": "Module10_SheetLayoutEngine.bas",
+      "kind": "StdModule"
+    },
+    {
       "name": "Module20_ProbeRunner",
       "file": "Module20_ProbeRunner.bas",
       "kind": "StdModule"

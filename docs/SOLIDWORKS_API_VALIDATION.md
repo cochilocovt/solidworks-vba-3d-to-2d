@@ -13,6 +13,192 @@ The MCP corpus identifies itself as **SOLIDWORKS 2026**, while this project targ
 
 No VBA source file was edited, renamed, moved, or deleted during this analysis. The protected baseline remains unchanged.
 
+## 2026-08-08 r43 post-rebuild layout stability reserve
+
+| API contract | MCP evidence | Current use / assessment |
+|---|---|---|
+| `IView.GetOutline` returns `[X min, Y min, X max, Y max]` in metres on the drawing page | SOLIDWORKS API MCP compatibility snapshot, queried 2026-08-08 | Module10 combines this page-space outline with annotation geometry. The r42 run proved that the complete envelope can change slightly after a view move and rebuild, so an exact-clearance plan is not a stable final plan. |
+| `IView.Position` gets/sets the model view's geometric centre relative to the sheet origin; alignments can constrain or propagate movement, and the drawing must be rebuilt after view changes | SOLIDWORKS API MCP compatibility snapshot, queried 2026-08-08 | Module10 moves by the delta between measured and planned envelopes, rebuilds, remeasures, and validates. R43 adds planning headroom rather than treating the pre-rebuild envelope as immutable. |
+| `IView.ScaleDecimal` gets/sets decimal view scale and changing it requires regeneration | SOLIDWORKS API MCP compatibility snapshot, queried 2026-08-08 | The uniform scale fallback continues to rebuild and remeasure after every scale attempt. No API or enum value changed in r43. |
+| `IModelDoc2.ForceRebuild3(False)` returns whether the active configuration rebuilt successfully | SOLIDWORKS API MCP compatibility snapshot, queried 2026-08-08 | The existing false-return gate is retained. Successful rebuild is followed by envelope remeasurement and independent geometric validation. |
+
+Live r42 evidence quantified the instability: the accepted plan left exactly
+6.000 mm between Drawing View1 and Drawing View2, while the post-rebuild
+envelope grew by 0.191 mm and left 5.809 mm. R43 reserves 1 mm during planning
+but retains the exact 6 mm/4 mm final acceptance rules.
+
+Installed SW2025 evidence on 2026-08-08: full-project VBE compilation returned
+`verdict=Clean`; the authorized six-view P-0251 run
+`macro_qa/20260808_141927_P-0251-14A-001` passed final validation for six views
+and 70 protected regions at scale factor `0.729`. Planned and final envelope
+records remained collision-free after rebuild. The supplied full-sheet
+screenshot visually confirms separated views; no API contract or enum value
+was changed by r43.
+
+## 2026-08-08 r42 partial native-callout family reconciliation
+
+The r41 six-view P-0251 run created one native Hole Wizard callout and exposed
+an incorrect whole-drawing guard in `Module9_HoleCalloutEngine`: any nonzero
+native count suppressed controlled fallback for every family. The API MCP was
+queried before replacing that count gate with per-family identity matching.
+
+- `IView.GetDisplayDimensions()` returns the display dimensions owned by that
+  drawing view. `IDisplayDimension.IsHoleCallout()` identifies native hole
+  callouts; SOLIDWORKS COM Boolean results continue to be tested with
+  `Not (value = False)`.
+- `IDisplayDimension.GetAnnotation()` returns the corresponding
+  `IAnnotation`. `IAnnotation.GetAttachedEntities3()` returns the drawing
+  entities to which the callout is attached; an empty array means it is not
+  associated with geometry.
+- `IFeature.GetFaces()` and `IFace2.GetEdges()` enumerate the model entities
+  owned by one Hole Wizard feature. `IView.GetCorrespondingEntity(modelEdge)`
+  returns the matching drawing-view entity or `Nothing`.
+- `ISldWorks.IsSame(Object1, Object2)` returns `swObjectEquality`, not a
+  Boolean. MCP reports `swObjectNotSame=0`, `swObjectSame=1`, and
+  `swObjectUnsupported=2`; the value `swObjectSame=1` was already recorded as
+  installed-SW2025 validated in this document.
+
+R42 retains a native callout only when one of its attached drawing entities is
+identical to a drawing entity mapped from an edge owned by that exact Hole
+Wizard feature. It then creates the typed, geometry-attached controlled note
+only for uncovered features. Unattributed or duplicate native callouts remain
+fail-closed. CodeStack rows 17 and 31 support the drawing-context entity and
+view-scoped selection pattern used by the controlled note, but do not provide
+family attribution or mixed native/fallback reconciliation.
+
+Installed SW2025 evidence is now available in
+`macro_qa/20260808_134847_P-0251-14A-001/QA_REPORT.txt`:
+`M5x0.8 Tapped Hole1` matched the native callout through one attached owned
+drawing entity with `identity=ISldWorks.IsSame`; the engine retained that
+native family and created only the uncovered `CBORE for M6 Socket Head Cap
+Screw1` controlled definition. The final callout ledger is one native plus one
+controlled family, two required, zero callout failures. The independent sheet
+layout gate failed later and does not invalidate this API/coverage proof.
+
+## 2026-08-08 r34 A7/C4 sheet-aware placement contracts
+
+The SOLIDWORKS API MCP compatibility corpus and the CodeStack drawing ledger
+were checked before implementing `Module10_SheetLayoutEngine`. This is API
+contract evidence, not installed SOLIDWORKS 2025 proof; deployment readback,
+full VBE compilation, and an authorized fixture run remain required.
+
+### Measured sheet regions
+
+- `ISheet.GetSize` returns drawing sheet width and height.
+- `ISheet.GetZoneMargin` returns the requested zone margin. The MCP enum table
+  records `swZoneMargin_e` as `swZoneTopMargin=0`,
+  `swZoneBottomMargin=1`, `swZoneRightMargin=2`, and
+  `swZoneLeftMargin=3`. These four constants are compiled into Module10 but
+  are not yet independently verified in the installed SW2025 type library.
+- `ISheet.TitleBlock` returns the sheet's single title-block object when the
+  template exposes one; `ITitleBlock.GetExtents` returns its upper-left and
+  lower-right sheet-format coordinates.
+- A controlled template can expose no native title-block object. The fallback
+  therefore measures lower-right line geometry returned by
+  `ISheet.GetTemplateSketch` / `ISketch.GetSketchSegments`, and rejects the
+  layout unless enough geometry forms a plausible lower-right rectangle. It
+  does not hard-code the A3 template dimensions.
+
+### Content-envelope and movement contracts
+
+- `IView.GetOutline` returns `[xmin,ymin,xmax,ymax]` in metres on the drawing
+  page. The outline seeds each envelope.
+- `IView.GetDisplayDimensions`, `IDisplayDimension.GetAnnotation`,
+  `IAnnotation.GetPosition`, and `IAnnotation.GetLeaderPointsAtIndex` provide
+  dimension text origins and complete XYZ leader-point arrays.
+- `IDisplayData.GetTextPositionAtIndex` is an offset from the display-data
+  origin, not an absolute page coordinate. Module10 adds it to the documented
+  drawing annotation position. `GetTextHeightAtIndex` is in metres.
+- `IView.GetNotes` and `INote.GetExtent` provide view-owned and sheet-owned
+  note rectangles in sheet space. This makes controlled hole-callout notes,
+  general notes, and the part-identification note visible to placement.
+- Display-data line endpoints are deliberately excluded: the Help does not
+  state their coordinate frame and prior probes produced inconsistent or
+  off-sheet values.
+- `IView.Position` is the view's geometric centre in sheet coordinates.
+  Alignment constraints are honoured and aligned children can be dragged, so
+  Module10 plans all moves, refuses `IView.PositionLocked`, rebuilds through
+  `IModelDoc2.ForceRebuild3(False)`, and remeasures every envelope afterwards.
+- Through r40, `IView.ScaleDecimal` was read before movement and after rebuild
+  and the engine rejected any scale change. The six-view P-0251 run proved
+  that unchanged-scale placement is not always possible, so r41 now writes a
+  uniform fallback scale only after the unchanged-scale plan fails.
+
+CodeStack does not supply a complete sheet-layout recipe. Its useful tested
+patterns here are narrower: preserve a view's outline-centre offset when
+moving it, treat annotation ownership as view-scoped, and do not use automatic
+view rescaling as a substitute for measured placement.
+
+### r41 measured multi-view scale fallback
+
+The API MCP was rechecked before adding the fallback. `IView.ScaleDecimal` is
+a read/write decimal drawing-view scale; its Remarks require rebuilding the
+drawing after view-related changes. `IView.UseParentScale` is the separate
+property that ties a derived view to its parent scale. The current pipeline
+already assigns `ScaleDecimal` to every created standard and section view, so
+r41 applies one common factor to every measured view, rebuilds through
+`IModelDoc2.ForceRebuild3(False)`, and then reads the actual scale and complete
+content envelope back before accepting a plan.
+
+The CodeStack ledger's row 33, "Scale views from size", supports preserving
+scale relationships and rebuilding, but its `GetOutline`-only footprint and
+overwriting size rules are not a production packing algorithm. R41 therefore
+keeps Module10's annotation/note-inclusive envelopes, tries the approved
+scales first, reduces by a common factor only when placement fails, and
+restores the original scale/position state if no accepted plan exists.
+
+Installed SW2025 evidence is now available in
+`macro_qa/20260808_104105_P-0251-14A-001/QA_REPORT.txt`: attempts at factors
+1.0 and 0.9 were rejected, factor 0.81 rebuilt and remeasured successfully,
+and all six final scale readbacks matched the accepted values.
+
+### r35 legacy-template line-interface correction
+
+The first authorized r34 run compiled cleanly but failed before layout with
+`TitleBlockExtentUnavailable`. The template has no native `ITitleBlock`; its
+fallback enumerated `ISketchSegment` objects and attempted line endpoint calls
+late-bound on that base interface, accepting zero lines.
+
+MCP confirms `ISketchSegment.GetType` returns `swSketchSegments_e`, whose
+`swSketchLINE` value is **0**. Its Remarks explicitly direct callers to use the
+segment type to choose the appropriate underlying interface. MCP also confirms
+`ISketchLine.GetStartPoint2` and `GetEndPoint2` return the endpoint sketch
+points or null on failure. R35 therefore checks `GetType`, casts the accepted
+segment to `SldWorks.SketchLine`, and reads the endpoints from that interface.
+The enum and members remain subject to the installed SW2025 compile/runtime
+proof supplied by the next guarded run.
+
+### r36 sheet-note fallback contract
+
+R35 proved the sketch-derived title rectangle live (`segments=38`, bounds
+`0.265624,0.009650,0.410415,0.076749`) and then failed closed because one
+sheet note did not yield a valid `INote.GetExtent` rectangle. MCP confirms
+`IAnnotation.GetTextFormat(0)` returns `ITextFormat` for a simple note and
+`ITextFormat.CharHeight` is the font height in metres. R36 keeps
+`INote.GetExtent` as the primary exact source. If it declines, a note whose
+documented annotation position lies inside the measured title block is already
+protected by that rectangle; any other note receives a deliberately
+conservative symmetric rectangle from its position, rendered text line count,
+maximum line length, and `CharHeight`. A note lacking all of those sources
+still fails layout rather than disappearing from collision checks.
+
+### r39 live correction: display-text offset is not an annotation offset
+
+R38 emitted the first complete layout inputs. The front envelope reached
+`X=0.598795` and the section envelope `X=0.901541` on a `0.420000` m sheet,
+although the full-sheet screenshot visibly kept both much nearer the sheet.
+The false expansion came from adding `IDisplayData.GetTextPositionAtIndex` to
+`IAnnotation.GetPosition`. The Help calls the first value an offset from the
+*display-data origin*; it does not state that this origin equals the annotation
+position. The earlier implementation asserted that unstated equivalence.
+
+R39 uses the documented drawing-sheet annotation position as the text anchor
+and uses display text/height only to size a conservative box around it. It also
+excludes `IAnnotation.GetLeaderPointsAtIndex` from envelope expansion because
+its frame is not stated. This does not omit leader reach: a leader runs between
+an attachment within the view outline and its annotation/note endpoint, so the
+bounding union of the outline and text/note rectangles already encloses it.
+
 ## Three live findings from the first trunk ordinate runs (2026-08-06, r4-r7)
 
 All three are **live evidence** on installed SOLIDWORKS 2025 SP1.2, obtained
@@ -2956,3 +3142,118 @@ without error. `CreateSectionViewAt5` returning non-Nothing is evidence the
 call succeeded, not that the cut is geometrically correct. The operator
 screenshot confirms the section now sits inside the sheet border, which the
 r23 version did not.
+
+## Selected-view annotation import transaction (r27 source, 2026-08-08)
+
+The r27 source correction replaces the sheet-context `AllViews=True` call and
+its aggregate-zero retry with deterministic selected-view transactions. The
+load-bearing contracts were re-queried before editing:
+
+- `IDrawingDoc.InsertModelAnnotations4` inserts into the currently selected
+  drawing view. `AllViews=False` limits insertion to that selected view, and
+  `DuplicateDims=True` eliminates duplicate dimensions. The return is an array
+  of inserted `IAnnotation` objects.
+- `IDrawingDoc.ActivateView` returns a COM Boolean and cannot activate a sheet;
+  `IDrawingDoc.ActiveDrawingView` returns the active `IView`, or `Nothing` when
+  sheet context is active. r27 therefore activates a named real view and checks
+  its name through `ActiveDrawingView` before import.
+- `IModelDocExtension.SelectByID2` selects an exactly named drawing view using
+  type string `DRAWINGVIEW`. `ISelectionMgr.GetSelectedObjectCount2(-1)` and
+  `GetSelectedObjectType3(1, -1)` provide independent selection-list readback.
+- MCP `swSelectType_e` gives `swSelDRAWINGVIEWS=12`. Installed SW2025 SP1.2
+  Phase 0 logs independently recorded `selectionType=12` for every successful
+  selected drawing-view import in
+  `R23_IMPORT_AllViewsTrue_20260731_041602.log` and
+  `R23_IMPORT_SelectedViewsFalse_20260731_041721.log`.
+
+The current source requires active-view match, exactly one selected object, and
+`swSelDRAWINGVIEWS` before calling `InsertModelAnnotations4`. It logs returned
+count and per-view display-dimension/hole-callout counts before and after every
+transaction. This is source/API evidence only until r27 is deployed, compiled,
+and run on an authorized fixture.
+## Controlled typed Hole Wizard callout fallback (r29 source, 2026-08-08)
+
+The r27 P-0251 run proved that a selected drawing view is necessary for a
+deterministic `InsertModelAnnotations4` transaction but is not sufficient to
+make this trunk produce native hole callouts: all six selected-view calls had
+valid active-view and selection readback, returned 17 ordinary annotations in
+total, and left `IsHoleCallout=True` at zero.
+
+The SOLIDWORKS 2025 API MCP was queried before the r28 source change. The
+load-bearing contracts are:
+
+- `IWizardHoleFeatureData2.AccessSelections(TopDoc, Component)` returns a
+  Boolean and must be paired with `ReleaseSelectionAccess` when the definition
+  is not modified. Type-specific dimensional properties include
+  `ThruHoleDiameter`, `TapDrillDiameter`, `TapDrillDepth`,
+  `CounterBoreDiameter`, `CounterBoreDepth`, and `ThreadDepth`.
+- `ICosmeticThreadFeatureData.ThreadCallout` is the drawing callout text stored
+  by the cosmetic-thread feature. Its selection access has the same mandatory
+  release contract.
+- `IFeature.GetFaces` returns the faces owned by the feature;
+  `IFace2.GetEdges` returns their edges; and
+  `IView.GetCorrespondingEntity(modelEdge)` returns the entity for that model
+  edge in that drawing view or `Nothing` when none exists.
+- `IEntity.Select4(False, SelectData)` selects an entity obtained from the
+  active document. `ISelectData.View` scopes that selection to its drawing
+  view. `ISelectionMgr.GetSelectedObjectCount2(-1)` proves the selection list.
+- `IModelDoc2.InsertNote(Text)` takes its leader attachment points from the
+  current selection. With no selection it creates a free-standing note, so r28
+  refuses the result unless `IAnnotation.GetAttachedEntities3` is non-empty and
+  `IAnnotation.GetLeaderCount` is nonzero.
+- `IAnnotation.SetPosition2` uses drawing-sheet metres for notes, and
+  `IAnnotation.GetPosition` returns the three-coordinate readback.
+- The installed SW2025 `gtol.sym` contains `#MOD/*DIAM` and
+  `#HOLE/*SPOT`, `*DEPTH`; therefore the inserted ASCII source uses
+  `<MOD-DIAM>`, `<HOLE-SPOT>`, and `<HOLE-DEPTH>` rather than embedding font
+  glyphs.
+
+Source architecture: r29 creates a controlled note only when native callout
+count is zero, its complete typed family definition is available, and a
+complete circular model edge owned by that Hole Wizard feature maps to a
+complete circular drawing edge in an orthographic view. Partial native family
+coverage is not guessed or duplicated; QA fails closed until family
+attribution can be proved.
+
+The first r28 runtime proved that note attachment and leader creation work, but
+also disproved the legacy raw-sketch quantity and cosmetic-thread text as
+manufacturing sources: they produced `8x`/`2x` and `M5x0.8 Tapped Hole`.
+R29 therefore uses `IWizardHoleFeatureData2.GetSketchPointCount` for seed Hole
+Wizard instances, adds only cylindrical derived faces whose
+`IFace2.GetSeedFeature` points back to that seed feature, and matches their
+`ISurface.CylinderParams` radius to the typed hole radius. It obtains the
+standard-authored thread designation from imported display-dimension prefix
+text through `IView.GetDisplayDimensions` and
+`IDisplayDimension.GetText(swDimensionTextPrefix=1)`. The MCP-confirmed
+`swDimensionTextParts_e` value is 1 for `swDimensionTextPrefix`.
+## Installed callout-format thread designation (r30-r31, 2026-08-08)
+
+The r30 live P-0251 run disproved feature-display-dimension prefix traversal
+as a source for the thread designation. With feature dimensions already on,
+`IFeature.GetFirstDisplayDimension/GetNextDisplayDimension` returned ten
+feature/subfeature dimensions, but their prefixes contained only geometry
+tokens such as `<MOD-DIAM>`; no `M5x0.8 - 6H` text was present. R30 therefore
+failed closed with one of two required callout families.
+
+The r31 correction uses the installed SOLIDWORKS hole-callout format as the
+standard authority instead of inventing a thread class:
+
+- The API MCP was queried for
+  `ISldWorks.GetUserPreferenceStringValue` and
+  `swUserPreferenceStringValue_e.swFileLocationsHoleCalloutFormatFile`, plus
+  `IWizardHoleFeatureData2.Standard` and `FastenerSize`.
+- Installed SOLIDWORKS 2025 `swconst.tlb` reflection returned
+  `swFileLocationsHoleCalloutFormatFile = 26`. The live preference returned
+  `C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\lang\english`, which contains
+  `calloutformat.txt`.
+- The live M5 Hole Wizard feature reported `Standard=JIS` and
+  `FastenerSize=M5x0.8`. In the installed file's `[JIS]` / `TAPPED HOLES`
+  section, `TAP-BLIND` defines the thread line as
+  `<hw-threaddesc> - 6H <HOLE-DEPTH> <hw-threaddepth>`.
+- R31 reads that exact installed `TAP-BLIND` definition, substitutes only the
+  typed `FastenerSize`, and removes the depth tokens because depth is appended
+  separately from typed Hole Wizard values. It does not hard-code `6H` or use
+  the misleading metric `ThreadClass=1B` value.
+- `docs/CODESTACK_DRAWING_API_COVERAGE.md` has no direct tested pattern for
+  callout-format lookup. Its entity-selection patterns remain relevant only
+  to the later view-owned attachment transaction.
